@@ -1,0 +1,33 @@
+{
+  "name": "LobsterLog",
+  "displayName": "LobsterLog",
+  "expo": {
+    "name": "LobsterLog",
+    "slug": "lobsterlog",
+    "version": "1.0.0",
+    "ios": {
+      "bundleIdentifier": "com.Nickerson.LobsterLog",
+      "supportsTablet": true
+    },
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static",
+            "newArchEnabled": false
+          }
+        }
+      ],
+      "@react-native-community/datetimepicker"
+    ],
+    "android": {
+      "package": "com.Nickerson.LobsterLog"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "adc079fa-372a-47de-b18b-8e0827ee7cd8"
+      }
+    }
+  }
+}
