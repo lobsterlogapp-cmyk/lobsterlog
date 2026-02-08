@@ -1,15 +1,25 @@
 {
-  "name": "LobsterLog",
-  "displayName": "LobsterLog",
   "expo": {
     "name": "LobsterLog",
     "slug": "lobsterlog",
-    "version": "1.0.0",
+    "scheme": "lobsterlog",
+    "version": "1.5.17",
+    "icon": "./assets/icon.png",
     "ios": {
       "bundleIdentifier": "com.Nickerson.LobsterLog",
-      "supportsTablet": true
+      "supportsTablet": false,
+      "buildNumber": "33",
+      "config": {
+        "googleMapsApiKey": "AIzaSyAFINeJ44-Tc7oeskFl6VPMG2ScsbztpL0"
+      },
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "LobsterLog uses your location to show your boat's position on the chart and log your catches.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "LobsterLog needs your location to track your trawls even when the app is in the background.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "plugins": [
+      "./revenuecat-plugin.js",
       [
         "expo-build-properties",
         {
@@ -22,7 +32,17 @@
       "@react-native-community/datetimepicker"
     ],
     "android": {
-      "package": "com.Nickerson.LobsterLog"
+      "versionCode": 32,
+      "package": "com.lobsterlog",
+      "permissions": [
+        "com.android.vending.BILLING",
+        "INTERNET"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyAFINeJ44-Tc7oeskFl6VPMG2ScsbztpL0"
+        }
+      }
     },
     "extra": {
       "eas": {
