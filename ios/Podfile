@@ -21,40 +21,48 @@ platform :ios, podfile_properties['ios.deploymentTarget'] || '15.1'
 prepare_react_native_project!
 
 target 'LobsterLog' do
- use_expo_modules!
+  use_expo_modules!
 
- # --- MANUAL OVERRIDE: FORCE REVENUECAT LINKING ---
- pod 'RNPurchases', :path => '../node_modules/react-native-purchases'
- # -------------------------------------------------
+  # Manual Linking for RevenueCat (Bypassing Autolinking)
 
- if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] == '1'
-   config_command = ['node', '-e', "process.argv=['', '', 'config'];require('@react-native-community/cli').run()"];
- else
-   config_command = [
-     'node',
-     '--no-warnings',
-     '--eval',
-     'require(\'expo/bin/autolinking\')',
-     'expo-modules-autolinking',
-     'react-native-config',
-     '--json',
-     '--platform',
-     'ios'
-   ]
- end
+  # 1. Core SDK (Matches node_modules/react-native-purchases/RNPurchases.podspec)
+  pod 'RNPurchases', :path => '../node_modules/react-native-purchases'
 
- config = use_native_modules!(config_command)
+  # 2. UI SDK (Matches node_modules/react-native-purchases-ui/RNPaywalls.podspec)
+  pod 'RNPaywalls', :path => '../node_modules/react-native-purchases-ui'
+          
 
- use_frameworks! :linkage => podfile_properties['ios.useFrameworks'].to_sym if podfile_properties['ios.useFrameworks']
- use_frameworks! :linkage => ENV['USE_FRAMEWORKS'].to_sym if ENV['USE_FRAMEWORKS']
+  if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] == '1'
+    config_command = ['node', '-e', "process.argv=['', '', 'config'];require('@react-native-community/cli').run()"];
+  else
+    config_command = [
+      'node',
+      '--no-warnings',
+      '--eval',
+      'require(\'expo/bin/autolinking\')',
+      'expo-modules-autolinking',
+      'react-native-config',
+      '--json',
+      '--platform',
+      'ios'
+    ]
+  end
 
- use_react_native!(
-   :path => config[:reactNativePath],
-   :hermes_enabled => podfile_properties['expo.jsEngine'] == nil || podfile_properties['expo.jsEngine'] == 'hermes',
-   # An absolute path to your application root.
-   :app_path => "#{Pod::Config.instance.installation_root}/..",
-   :privacy_file_aggregation_enabled => podfile_properties['apple.privacyManifestAggregationEnabled'] != 'false',
- )
+# @generated begin react-native-maps - expo prebuild (DO NOT MODIFY) sync-e9cc66c360abe50bc66d89fffb3c55b034d7d369
+  pod 'react-native-google-maps', path: File.dirname(`node --print "require.resolve('react-native-maps/package.json')"`)
+# @generated end react-native-maps
+  config = use_native_modules!(config_command)
+
+  use_frameworks! :linkage => podfile_properties['ios.useFrameworks'].to_sym if podfile_properties['ios.useFrameworks']
+  use_frameworks! :linkage => ENV['USE_FRAMEWORKS'].to_sym if ENV['USE_FRAMEWORKS']
+
+  use_react_native!(
+    :path => config[:reactNativePath],
+    :hermes_enabled => podfile_properties['expo.jsEngine'] == nil || podfile_properties['expo.jsEngine'] == 'hermes',
+    # An absolute path to your application root.
+    :app_path => "#{Pod::Config.instance.installation_root}/..",
+    :privacy_file_aggregation_enabled => podfile_properties['apple.privacyManifestAggregationEnabled'] != 'false',
+  )
 
   post_install do |installer|
     react_native_post_install(

@@ -1,9 +1,8 @@
-import { initializeApp } from "firebase/app";
-import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
+import { initializeApp, getApp, getApps } from "firebase/app";
+import { initializeAuth, getReactNativePersistence, getAuth } from 'firebase/auth';
 import { getFirestore } from "firebase/firestore";
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 
-// Your REAL configuration (from the console)
 const firebaseConfig = {
   apiKey: "AIzaSyBBBn4stb_YfaT3WHI19lsqrP6dY8We9fg",
   authDomain: "lobster-log.firebaseapp.com",
@@ -14,13 +13,18 @@ const firebaseConfig = {
   measurementId: "G-049HXYBMY1"
 };
 
-// 1. Initialize the App
-const app = initializeApp(firebaseConfig);
+// 1. Initialize App (Check if it already exists first)
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// 2. Initialize Auth with Persistence (Crucial for keeping users logged in on mobile)
-const auth = initializeAuth(app, {
-  persistence: getReactNativePersistence(ReactNativeAsyncStorage)
-});
+// 2. Initialize Auth (Check if it already exists first)
+let auth;
+try {
+  auth = getAuth(app);
+} catch (e) {
+  auth = initializeAuth(app, {
+    persistence: getReactNativePersistence(ReactNativeAsyncStorage)
+  });
+}
 
 // 3. Initialize Database
 const db = getFirestore(app);

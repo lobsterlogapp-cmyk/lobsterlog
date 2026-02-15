@@ -3,12 +3,12 @@
     "name": "LobsterLog",
     "slug": "lobsterlog",
     "scheme": "lobsterlog",
-    "version": "1.5.18",
+    "version": "1.5.19",
     "icon": "./assets/icon.png",
     "ios": {
       "bundleIdentifier": "com.Nickerson.LobsterLog",
       "supportsTablet": false,
-      "buildNumber": "34",
+      "buildNumber": "35",
       "config": {
         "googleMapsApiKey": "AIzaSyAFINeJ44-Tc7oeskFl6VPMG2ScsbztpL0"
       },
@@ -32,7 +32,7 @@
       "@react-native-community/datetimepicker"
     ],
     "android": {
-      "versionCode": 33,
+      "versionCode": 35,
       "package": "com.lobsterlog",
       "permissions": [
         "com.android.vending.BILLING",
