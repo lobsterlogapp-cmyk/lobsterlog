@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { View, Text, TouchableOpacity, Alert, Modal, TextInput, Switch, ActivityIndicator, ScrollView,KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, Modal, TextInput, Switch, ActivityIndicator, ScrollView, KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard, Platform } from 'react-native';
 import MapView, { UrlTile, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { Layers, X, Plus, Minus, MapPin, Trash2, LocateFixed, Clock } from 'lucide-react-native';
@@ -23,6 +23,7 @@ const FishingMap = ({ savedLat, savedLng, onClose, user, dateId }: any) => {
     const [todaysPins, setTodaysPins] = useState<any[]>([]);
     const [historicalPins, setHistoricalPins] = useState<any[]>([]);
     const [myLocation, setMyLocation] = useState<any>(null);
+    const [refreshTrigger, setRefreshTrigger] = useState(0); // For instant heatmap updates
 
     // Tide & UI State
     const [tideInfo, setTideInfo] = useState<any>(null);
@@ -69,7 +70,7 @@ const FishingMap = ({ savedLat, savedLng, onClose, user, dateId }: any) => {
         return () => clearInterval(timer);
     }, [nextTide]);
 
-    // --- LISTEN FOR ACTIVE PINS (With Crash Guard) ---
+    // --- LISTEN FOR ACTIVE PINS ---
     useEffect(() => {
         if (!currentUser) return;
         const q = query(collection(db, 'users', currentUser.uid, 'trawls'), where("status", "==", "active"));
@@ -77,7 +78,6 @@ const FishingMap = ({ savedLat, savedLng, onClose, user, dateId }: any) => {
             const data: any[] = [];
             snap.forEach(d => {
                 const docData = d.data();
-                // GUARD: Only push if coordinates exist
                 if (docData.center && docData.center.lat && docData.center.lng) {
                     data.push({ id: d.id, ...docData });
                 }
@@ -135,118 +135,114 @@ const FishingMap = ({ savedLat, savedLng, onClose, user, dateId }: any) => {
                     snap.forEach(doc => {
                         const data = doc.data();
                         if (seenIds.has(doc.id)) return;
-                        // GUARD: Skip data without valid location
                         if (!data.center || isNaN(data.center.lat) || isNaN(data.center.lng)) return;
 
                         seenIds.add(doc.id);
-
                         const d = new Date(data.dateId);
                         const displayYear = d.getFullYear().toString().slice(-2);
                         matches.push({ id: doc.id, ...data, displayYear });
                     });
                 });
-                console.log(`✅ Found ${matches.length} history pins`);
                 setHistoricalPins(matches);
             } catch (err: any) {
                 console.log("❌ Error fetching history:", err);
-                if(err.message && err.message.includes("index")) {
-                    Alert.alert("Missing Index", "Firestore needs an index to show this heatmap. Check your console logs for the link!");
-                }
             }
         };
         fetchHistory();
-    }, [showHeatmap, currentUser, dateId]);
+    }, [showHeatmap, currentUser, dateId, refreshTrigger]); // Added refreshTrigger
 
-    // --- COLOR LOGIC ---
     const { coloredPins } = useMemo(() => {
-        // Guard against NaN
-        const max = Math.max(...historicalPins.map(p => Number(p.count) || 0), 1);
+        const catches = historicalPins.map(p => Number(p.count) || 0);
+        const max = Math.max(...catches, 1);
 
         const colored = historicalPins.map(pin => {
             const count = Number(pin.count) || 0;
             const percentage = (count / max) * 100;
-            let color = '#94A3B8'; // Default Grey
-            if (percentage >= 90) color = '#EF4444';      // Red
-            else if (percentage >= 70) color = '#F97316'; // Orange
-            else if (percentage >= 50) color = '#EAB308'; // Yellow
-            else if (percentage >= 25) color = '#3B82F6'; // Blue
-            return { ...pin, color, count }; // Ensure count is passed as number
+
+            let color = '#3B82F6'; // Cold (Blue)
+            if (percentage >= 90) color = '#EF4444';      // Hot (Red)
+            else if (percentage >= 70) color = '#F97316'; // Warning (Orange)
+            else if (percentage >= 50) color = '#EAB308'; // Decent (Yellow)
+            else if (percentage >= 25) color = '#FFFFFF'; // Average (White)
+
+            return { ...pin, color, count };
         });
         return { coloredPins: colored };
     }, [historicalPins]);
 
     // --- SAVE LOGIC ---
     const handleDropPin = () => { setSelectedPin(null); setCatchCount(''); setTrawlNumber(''); setModalVisible(true); };
-    const handlePinPress = (pin: any) => { setSelectedPin(pin); setCatchCount(pin.count.toString()); setTrawlNumber(pin.trawlNumber?.toString()||''); setSelectedBait(pin.bait||'Herring'); setModalVisible(true); };
+    const handlePinPress = (pin: any) => { setSelectedPin(pin); setCatchCount(''); setTrawlNumber(pin.trawlNumber?.toString()||''); setSelectedBait(pin.bait||'Herring'); setModalVisible(true); };
 
    const savePin = async () => {
-       if (!currentUser) return;
-       if (!selectedPin && !trawlNumber) { Alert.alert("Missing Info", "Please enter a Trawl Number."); return; }
+          if (!currentUser) return;
+          if (!selectedPin && !trawlNumber) { Alert.alert("Missing Info", "Please enter a Trawl Number."); return; }
 
-       setSaving(true);
-       try {
-           const batch = writeBatch(db);
-           const pinsRef = collection(db, 'users', currentUser.uid, 'trawls');
-           const catchNum = parseInt(catchCount) || 0;
-           const tNum = parseInt(trawlNumber);
+          setSaving(true);
+          try {
+              const batch = writeBatch(db);
+              const pinsRef = collection(db, 'users', currentUser.uid, 'trawls');
+              const catchNum = parseInt(catchCount) || 0;
+              const tNum = parseInt(trawlNumber);
 
-           if (selectedPin) {
-                // Editing a pin you tapped on the map
-                const pinRef = doc(db, 'users', currentUser.uid, 'trawls', selectedPin.id);
-                batch.update(pinRef, { trawlNumber: tNum, count: catchNum, bait: selectedBait });
-           } else {
-               // Dropping a brand new pin from the bottom button
-               let pinLocation = myLocation || regionRef.current || initialRegion;
-               const lat = parseFloat(pinLocation.latitude || pinLocation.lat);
-               const lng = parseFloat(pinLocation.longitude || pinLocation.lng);
+              let boatLoc = myLocation || regionRef.current || initialRegion;
+              const boatLat = parseFloat(boatLoc.latitude || boatLoc.lat);
+              const boatLng = parseFloat(boatLoc.longitude || boatLoc.lng);
 
-               if (isNaN(lat) || isNaN(lng)) {
-                   throw new Error("Invalid Coordinates. Please move the map and try again.");
-               }
+              const oldTrawlQuery = query(pinsRef, where("trawlNumber", "==", tNum), where("status", "==", "active"));
+              const oldSnap = await getDocs(oldTrawlQuery);
 
-               // 1. If you logged a catch, save that catch data to history first
-               if (catchNum > 0) {
-                   const historyDocRef = doc(pinsRef);
-                   batch.set(historyDocRef, {
-                       trawlNumber: tNum,
-                       status: 'history',
-                       dateId: dateId,
-                       haulDate: dateId,
-                       center: { lat: lat, lng: lng },
-                       bait: selectedBait || 'Herring',
-                       count: catchNum,
-                       timestamp: new Date().toISOString()
-                   });
-               }
+              if (!oldSnap.empty) {
+                  oldSnap.forEach((docSnap) => {
+                      const oldData = docSnap.data();
 
-               // 2. Find any old active trap with this number and retire it to history
-               const oldTrawlQuery = query(pinsRef, where("trawlNumber", "==", tNum), where("status", "==", "active"));
-               const oldSnap = await getDocs(oldTrawlQuery);
-               oldSnap.forEach((docSnap) => {
-                   const docRef = doc(db, 'users', currentUser.uid, 'trawls', docSnap.id);
-                   batch.update(docRef, { status: 'history', haulDate: dateId });
-               });
+                      // Calculate Soak Time
+                      const setTime = oldData.timestamp ? new Date(oldData.timestamp) : new Date();
+                      const haulTime = new Date();
+                      const diffInMs = Math.abs(haulTime.getTime() - setTime.getTime());
 
-               // 3. ALWAYS drop a new ACTIVE yellow pin for the trap currently soaking
-               const newDocRef = doc(pinsRef);
-               batch.set(newDocRef, {
-                   trawlNumber: tNum,
-                   status: 'active',
-                   dateId: dateId,
-                   center: { lat: lat, lng: lng },
-                   bait: selectedBait || 'Herring',
-                   count: 0, // Reset the catch count for the new set
-                   timestamp: new Date().toISOString()
-               });
-           }
-           await batch.commit();
-           setModalVisible(false);
-       } catch (e) {
-           Alert.alert("Error", e.message);
-       } finally {
-           setSaving(false);
-       }
-   };
+                      // Convert to total hours
+                      const totalHours = Math.floor(diffInMs / (1000 * 60 * 60));
+                      const days = Math.floor(totalHours / 24);
+                      const remainingHours = totalHours % 24;
+
+                      // Format: "5d 3h" or just "3h" if less than a day
+                      let soakDisplay = days > 0
+                           ? `${days}d ${remainingHours}h`
+                           : `${remainingHours}h`;
+
+                      const docRef = doc(db, 'users', currentUser.uid, 'trawls', docSnap.id);
+
+                      batch.update(docRef, {
+                          status: 'history',
+                          count: catchNum,
+                          haulDate: dateId,
+                          soakTime: soakDisplay,
+                          baitAtHaul: oldData.bait || 'Mackerel'
+                      });
+                  });
+              }
+
+              const newDocRef = doc(pinsRef);
+              batch.set(newDocRef, {
+                  trawlNumber: tNum,
+                  status: 'active',
+                  dateId: dateId,
+                  center: { lat: boatLat, lng: boatLng },
+                  bait: selectedBait || 'Mackerel',
+                  count: 0,
+                  timestamp: new Date().toISOString()
+              });
+
+              await batch.commit();
+              setRefreshTrigger(prev => prev + 1);
+              setModalVisible(false);
+          } catch (e: any) {
+              Alert.alert("Error", e.message);
+          } finally {
+              setSaving(false);
+          }
+      };
 
     const handleDelete = async () => {
         if (!selectedPin || !currentUser) return;
@@ -282,16 +278,13 @@ const FishingMap = ({ savedLat, savedLng, onClose, user, dateId }: any) => {
                 showsMyLocationButton={false}
                 mapType="satellite"
                 onUserLocationChange={(e) => setMyLocation(e.nativeEvent.coordinate)}
-                onRegionChange={(r) => regionRef.current = r}
                 onRegionChangeComplete={(r) => regionRef.current = r}
             >
                 <UrlTile urlTemplate="https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png" maximumZ={19} zIndex={1} />
 
-                {/* 1. HEATMAP LAYER (Safety Checks Added) */}
+                {/* 1. HEATMAP LAYER */}
                 {showHeatmap && coloredPins.map((pin) => {
-                    // STRICT SAFETY CHECK: Don't render bad coordinates
                     if (!pin.center || isNaN(pin.center.lat) || isNaN(pin.center.lng)) return null;
-
                     return (
                         <Marker
                             key={pin.id}
@@ -303,22 +296,19 @@ const FishingMap = ({ savedLat, savedLng, onClose, user, dateId }: any) => {
                             <View style={{
                                 backgroundColor: pin.color,
                                 paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6,
-                                borderWidth: 1, borderColor: 'white',
-                                shadowColor: '#000', shadowOffset: {width: 0, height: 1}, shadowOpacity: 0.3, shadowRadius: 1
+                                borderWidth: 1, borderColor: 'white'
                             }}>
-                                <Text style={{color: 'white', fontWeight: '900', fontSize: 10}}>
-                                    {pin.count} <Text style={{fontSize: 8, color: 'rgba(255,255,255,0.8)'}}>'{pin.displayYear}</Text>
+                                <Text style={{color: pin.color === '#FFFFFF' ? 'black' : 'white', fontWeight: '900', fontSize: 10}}>
+                                    {pin.count} <Text style={{fontSize: 8, opacity: 0.8}}>{pin.displayYear}</Text>
                                 </Text>
                             </View>
                         </Marker>
                     );
                 })}
 
-                {/* 2. ACTIVE PINS (Safety Checks Added) */}
+                {/* 2. ACTIVE PINS */}
                 {!showHeatmap && todaysPins.map((pin) => {
-                    // STRICT SAFETY CHECK
                     if (!pin.center || isNaN(pin.center.lat) || isNaN(pin.center.lng)) return null;
-
                     return (
                         <Marker
                             key={pin.id}
@@ -333,9 +323,8 @@ const FishingMap = ({ savedLat, savedLng, onClose, user, dateId }: any) => {
                 })}
             </MapView>
 
-            {/* --- CONTROLS (Identical to previous, just context preserved) --- */}
+            {/* UI CONTROLS */}
             <View style={{position: 'absolute', top: 50, left: 20}}>
-                {/* TIDE TILE */}
                 {tideInfo && (
                     <View style={{backgroundColor: 'rgba(15, 23, 42, 0.9)', padding: 12, borderRadius: 16, width: 140, marginBottom: 10}}>
                          <Text style={{color: '#94A3B8', fontSize: 10, fontWeight: 'bold', marginBottom: 4}}>CURRENT TIDE</Text>
@@ -351,17 +340,15 @@ const FishingMap = ({ savedLat, savedLng, onClose, user, dateId }: any) => {
                          )}
                     </View>
                 )}
-                {/* HEATMAP */}
                 <View style={{backgroundColor: 'rgba(15, 23, 42, 0.9)', padding: 10, borderRadius: 12, alignItems: 'center', width: 140}}>
                     <View style={{flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 5}}>
                         <Layers size={16} color="#FBBF24" />
-                        <Text style={{color: 'white', fontWeight: 'bold', fontSize: 12}}>HISTORY PINS</Text>
+                        <Text style={{color: 'white', fontWeight: 'bold', fontSize: 12}}>HEAT MAP</Text>
                     </View>
                     <Switch value={showHeatmap} onValueChange={setShowHeatmap} trackColor={{false: '#334155', true: '#FBBF24'}} thumbColor={showHeatmap ? '#FFF' : '#94A3B8'} />
                 </View>
             </View>
 
-            {/* ZOOM CONTROLS */}
             <View style={{position: 'absolute', top: 110, right: 20, backgroundColor: 'rgba(15, 23, 42, 0.9)', borderRadius: 20, padding: 8, gap: 12, alignItems: 'center'}}>
                 <TouchableOpacity onPress={async () => {
                         const camera = await mapRef.current?.getCamera();
@@ -380,10 +367,8 @@ const FishingMap = ({ savedLat, savedLng, onClose, user, dateId }: any) => {
                 <TouchableOpacity onPress={() => myLocation ? mapRef.current?.animateToRegion({...myLocation, latitudeDelta: 0.05, longitudeDelta: 0.05}, 500) : Alert.alert("Waiting for GPS")} style={{padding: 8, backgroundColor: '#2563EB', borderRadius: 12}}><LocateFixed size={24} color="white" /></TouchableOpacity>
             </View>
 
-            {/* CLOSE BUTTON */}
             <TouchableOpacity onPress={onClose} style={{position: 'absolute', top: 50, right: 20, backgroundColor: '#EF4444', padding: 12, borderRadius: 30}}><X size={28} color="white" /></TouchableOpacity>
 
-            {/* DROP PIN BUTTON */}
             <View style={{position: 'absolute', bottom: 40, alignSelf: 'center'}}>
                 <TouchableOpacity onPress={handleDropPin} style={{backgroundColor: '#2563EB', paddingVertical: 16, paddingHorizontal: 32, borderRadius: 40, flexDirection: 'row', gap: 12, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 10}}>
                     <MapPin size={24} color="white" fill="white"/>
@@ -391,20 +376,11 @@ const FishingMap = ({ savedLat, savedLng, onClose, user, dateId }: any) => {
                 </TouchableOpacity>
             </View>
 
-            {/* MODAL */}
             <Modal animationType="slide" transparent={true} visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
-                {/* 1. Allows tapping anywhere in the dark background to close the keyboard */}
                 <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
                      <View style={{flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)'}}>
-
-                        {/* 2. Pushes the white card up when the keyboard opens on iOS */}
-                        <KeyboardAvoidingView
-                            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                        >
-                            {/* Your white modal card starts here */}
+                        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
                             <View style={{backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24}}>
-
-                                {/* Header Row */}
                                 <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20}}>
                                     <TouchableOpacity onPress={() => setModalVisible(false)} style={{padding: 8, backgroundColor: '#F1F5F9', borderRadius: 8}}>
                                         <X size={20} color="#64748B" />
@@ -413,7 +389,6 @@ const FishingMap = ({ savedLat, savedLng, onClose, user, dateId }: any) => {
                                     {selectedPin ? ( <TouchableOpacity onPress={handleDelete} style={{backgroundColor: '#FEF2F2', padding: 8, borderRadius: 8}}><Trash2 size={20} color="#EF4444"/></TouchableOpacity>) : (<View style={{width: 36}} />)}
                                 </View>
 
-                                {/* Trawl Number Input */}
                                 <Text style={{fontSize: 10, fontWeight:'bold', color:'#94A3B8'}}>TRAWL NUMBER</Text>
                                 <TextInput
                                     keyboardType="number-pad"
@@ -426,7 +401,6 @@ const FishingMap = ({ savedLat, savedLng, onClose, user, dateId }: any) => {
                                     onChangeText={setTrawlNumber}
                                 />
 
-                                {/* Catch Count Input */}
                                 <Text style={{fontSize: 10, fontWeight:'bold', color:'#94A3B8'}}>LOBSTERS CAUGHT (From Old Haul)</Text>
                                 <TextInput
                                     ref={catchInputRef}
@@ -439,7 +413,6 @@ const FishingMap = ({ savedLat, savedLng, onClose, user, dateId }: any) => {
                                     onChangeText={setCatchCount}
                                 />
 
-                                {/* Bait Selection */}
                                 <Text style={{fontSize: 10, fontWeight:'bold', color:'#94A3B8', marginTop: 20}}>BAIT (For New Set)</Text>
                                 {isAddingBait ? (
                                     <View style={{flexDirection: 'row', gap: 10, marginTop: 10}}>
@@ -453,11 +426,9 @@ const FishingMap = ({ savedLat, savedLng, onClose, user, dateId }: any) => {
                                     </ScrollView>
                                 )}
 
-                                {/* Save Button */}
                                 <TouchableOpacity onPress={savePin} disabled={saving} style={{marginTop: 20, backgroundColor: '#1E40AF', padding: 16, borderRadius: 12, alignItems: 'center'}}>
                                     {saving ? <ActivityIndicator color="white"/> : <Text style={{color: 'white', fontWeight: 'bold', fontSize: 16}}>Cycle Trawl & Save</Text>}
                                 </TouchableOpacity>
-
                             </View>
                         </KeyboardAvoidingView>
                      </View>
