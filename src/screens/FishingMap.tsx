@@ -291,7 +291,8 @@ const FishingMap = ({ savedLat, savedLng, onClose, user, dateId }: any) => {
                             coordinate={{latitude: parseFloat(pin.center.lat), longitude: parseFloat(pin.center.lng)}}
                             anchor={{x: 0.5, y: 0.5}}
                             opacity={0.9}
-                            tracksViewChanges={false}
+                            zIndex={10}
+                            tracksViewChanges={Platform.OS === 'ios' ? false : true}
                         >
                             <View style={{
                                 backgroundColor: pin.color,

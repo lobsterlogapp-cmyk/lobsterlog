@@ -338,8 +338,8 @@ export default function App() {
               ...prev,
               captainName: data.captainName || prev.captainName || '',
               boatName: data.boatName || prev.boatName || 'New Boat',
-              lat: data.lat || prev.lat || '43.4426',
-              lng: data.lng || prev.lng || '-65.6290',
+              lat: data.lat || null,
+              lng: data.lng || null,
               role: data.role || 'user',
               seasons: data.seasons || {},
               ...data
@@ -508,10 +508,15 @@ export default function App() {
       try {
           // 1. Clean Data
           let finalData = {
-              ...data,
-              lbs: data.lbs || '0',
-              price: data.price || '0',
-              notes: data.notes || ''
+                      lbs: String(data.lbs || '0'),
+                      price: String(data.price || '0'),
+                      temp: String(data.temp || ''),
+                      wind: String(data.wind || ''),
+                      windDir: String(data.windDir || ''),
+                      notes: String(data.notes || ''),
+                      swell: String(data.swell || '0.0'),
+                      gust: String(data.gust || '0.0'),
+                      weather: Array.isArray(data.weather) ? data.weather : []
           };
 
           // 2. Pro Automation (With Safety Checks)
@@ -523,16 +528,22 @@ export default function App() {
                   const weatherAvg = await getAverageWeather(lat, lng);
 
                   // SAFETY: Check if it's a valid number before fixing decimals
-                  if (weatherAvg && typeof weatherAvg.avgWindKnots === 'number' && !isNaN(weatherAvg.avgWindKnots)) {
-                      finalData.wind = weatherAvg.avgWindKnots.toFixed(1);
-                      finalData.swell = weatherAvg.avgSwellMeters?.toFixed(1) || '0.0';
-                      finalData.gust = weatherAvg.avgGustKnots?.toFixed(1) || '0.0';
-                      finalData.windDir = getWindDirection(weatherAvg.avgDirection);
+                  if (weatherAvg) {
+                    finalData.wind = String((weatherAvg.avgWindKnots || 0).toFixed(1));
+                    finalData.swell = String((weatherAvg.avgSwellMeters || 0).toFixed(1));
+                    finalData.gust = String((weatherAvg.avgGustKnots || 0).toFixed(1));
+                    finalData.windDir = getWindDirection(weatherAvg.avgDirection);
                   }
               } catch (weatherErr) {
                   console.log("Weather fetch failed, skipping auto-fill.");
               }
           }
+
+          Object.keys(finalData).forEach(key => {
+                      if (finalData[key] === undefined || finalData[key] === null) {
+                          finalData[key] = '';
+                      }
+                  });
 
           // 3. Final Sanitization (Fixes iPhone Crash)
           const sanitizedData = JSON.parse(JSON.stringify(finalData));
