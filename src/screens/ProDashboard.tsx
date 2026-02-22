@@ -25,12 +25,19 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
 
     // Fetch Data using the new Service
     useEffect(() => {
-        if (isPro && lat && lng) {
+        // GUARD: Don't fetch if lat/lng are missing OR if they match the simulator fallback exactly
+        const isFallback = (lat === '43.4426' || lat === 43.4426);
+
+        if (isPro && lat && lng && !isFallback) {
+            console.log("📍 Valid GPS detected. Loading data for:", lat, lng);
             loadData();
+        } else {
+            console.log("⏳ Waiting for valid GPS lock...");
         }
     }, [isPro, lat, lng]);
 
     const loadData = async () => {
+        console.log(`FETCHING DATA FOR: LAT ${lat} LNG ${lng}`);
         setLoading(true);
         const data = await getWeatherData(lat, lng);
 
@@ -89,9 +96,33 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
         return dataObj.meteo || dataObj.dwd || dataObj.sg || dataObj.noaa || 0;
     };
 
-    const formatTime = (isoString: string) => new Date(isoString).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    const formatDate = (isoString: string) => new Date(isoString).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+    const formatTime = (isoString: string) => {
+        if (!isoString) return '--:--';
 
+        // 1. Create the date object from the UTC string
+        const date = new Date(isoString);
+
+        // 2. Use 'en-GB' or 'en-CA' with the specific Halifax timezone.
+        // This forces the calculation to be UTC - 4 hours (AST)
+        // or UTC - 3 hours (ADT) based on the date.
+        return date.toLocaleTimeString('en-CA', {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true,
+            timeZone: 'America/Halifax'
+        });
+    };
+
+    const formatDate = (isoString: string) => {
+        if (!isoString) return '--';
+        const date = new Date(isoString);
+        // This ensures the date label matches the time you are seeing
+        return date.toLocaleDateString('en-US', {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric'
+        });
+    };
     const getDirectionText = (degrees: number) => {
         if (degrees === undefined || degrees === null) return '--';
         const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
@@ -216,18 +247,29 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
                         {/* --- 2. TIDES SECTION --- */}
                         <View style={styles.sectionContainer}>
                             <Text style={styles.sectionTitle}>Tides (Today)</Text>
-                            {tides.map((tide, index) => (
-                                <View key={index} style={styles.tideRow}>
-                                    <View style={{flexDirection:'row', alignItems:'center', gap: 10}}>
-                                        {tide.type === 'high' ? <TrendingUp size={16} color="#10B981"/> : <TrendingUp size={16} color="#F87171" style={{transform: [{rotate: '180deg'}]}} />}
-                                        <Text style={styles.tideType}>{tide.type === 'high' ? 'High Tide' : 'Low Tide'}</Text>
-                                    </View>
-                                    <View style={{flexDirection:'row', alignItems:'center', gap: 15}}>
-                                        <Text style={styles.tideTime}>{formatTime(tide.time)}</Text>
-                                        <Text style={styles.tideHeight}>{tide.height.toFixed(1)}m</Text>
-                                    </View>
-                                </View>
-                            ))}
+                            {tides && tides.length > 0 ? (
+                                [...tides]
+                                    .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
+                                    .filter(t => new Date(t.time).getTime() > Date.now() - (60 * 60 * 1000))
+                                    .slice(0, 4)
+                                    .map((tide, index) => (
+                                        <View key={index} style={styles.tideRow}>
+                                            <View style={{flexDirection:'row', alignItems:'center', gap: 10}}>
+                                                {tide.type.toLowerCase() === 'high' ?
+                                                    <TrendingUp size={16} color="#10B981"/> :
+                                                    <TrendingUp size={16} color="#F87171" style={{transform: [{rotate: '180deg'}]}}
+                                                />}
+                                                <Text style={styles.tideType}>{tide.type.toLowerCase() === 'high' ? 'High' : 'Low'}</Text>
+                                            </View>
+                                            <View style={{flexDirection:'row', alignItems:'center', gap: 15}}>
+                                                <Text style={styles.tideTime}>{formatTime(tide.time)}</Text>
+                                                <Text style={styles.tideHeight}>{tide.height.toFixed(1)}m</Text>
+                                            </View>
+                                        </View>
+                                    ))
+                            ) : (
+                                <ActivityIndicator size="small" color="#FBBF24" style={{ padding: 20 }} />
+                            )}
                         </View>
 
                         {/* --- 3. HOURLY FORECAST --- */}

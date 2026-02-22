@@ -1,7 +1,7 @@
-import { initializeApp, getApp, getApps } from "firebase/app";
+import { initializeApp, getApps, getApp } from "firebase/app";
 import { initializeAuth, getReactNativePersistence, getAuth } from 'firebase/auth';
 import { getFirestore } from "firebase/firestore";
-import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const firebaseConfig = {
   apiKey: "AIzaSyBBBn4stb_YfaT3WHI19lsqrP6dY8We9fg",
@@ -13,20 +13,23 @@ const firebaseConfig = {
   measurementId: "G-049HXYBMY1"
 };
 
-// 1. Initialize App (Check if it already exists first)
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-
-// 2. Initialize Auth (Check if it already exists first)
+let app;
 let auth;
-try {
-  auth = getAuth(app);
-} catch (e) {
+
+// 1. Initialize App securely (prevents hot-reload crashes)
+if (getApps().length === 0) {
+  app = initializeApp(firebaseConfig);
+  // 2. Initialize Auth WITH local phone storage immediately
   auth = initializeAuth(app, {
-    persistence: getReactNativePersistence(ReactNativeAsyncStorage)
+    persistence: getReactNativePersistence(AsyncStorage)
   });
+} else {
+  // If the app hot-reloads, just grab the already running instance
+  app = getApp();
+  auth = getAuth(app);
 }
 
-// 3. Initialize Database
+// 3. Connect to your new Canadian Firestore database
 const db = getFirestore(app);
 
 export { auth, db };

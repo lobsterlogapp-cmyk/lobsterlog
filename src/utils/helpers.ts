@@ -11,10 +11,10 @@ export function formatDateId(date: Date): string {
     return `${yyyy}-${mm}-${dd}`;
 }
 
-// 2. Parse Local Date (Fixes timezone bugs)
 export function parseLocalDate(dateStr: string): Date {
-    const [y, m, d] = dateStr.split('-').map(Number);
-    return new Date(y, m - 1, d, 12, 0, 0);
+    // This creates the date at midnight UTC, which is much
+    // safer for comparisons than hardcoding Noon.
+    return new Date(`${dateStr}T00:00:00`);
 }
 
 // 3. Compass Direction (Converts degrees to N, NE, etc.)
@@ -22,7 +22,7 @@ export function getWindDirection(degrees: number | null | undefined): string {
     if (degrees === undefined || degrees === null) return '';
     const sectors = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW', 'N'];
     const index = Math.round(degrees / 22.5);
-    return sectors[index % 16];
+    return sectors[index % 16] || '';
 }
 
 // 4. Season Config Helpers
@@ -43,9 +43,17 @@ export function getDefaultSeasonConfig(startYear: number) {
 
 // 5. PRO FEATURE: 12-Hour Weather Averages
 export async function getAverageWeather(lat: string | number, lng: string | number) {
+    // Define the safe fallback object at the top
+    const DEFAULT_WEATHER = {
+        avgWindKnots: 0,
+        avgGustKnots: 0,
+        avgSwellMeters: 0,
+        avgDirection: 0
+    };
+
     try {
         const end = new Date();
-        const start = new Date(end.getTime() - (12 * 60 * 60 * 1000)); // 12 hours ago
+        const start = new Date(end.getTime() - (12 * 60 * 60 * 1000));
 
         const params = 'windSpeed,waveHeight,windDirection,gust';
         const url = `https://api.stormglass.io/v2/weather/point?lat=${lat}&lng=${lng}&params=${params}&start=${start.toISOString()}&end=${end.toISOString()}`;
@@ -57,18 +65,11 @@ export async function getAverageWeather(lat: string | number, lng: string | numb
 
         if (json.errors) throw new Error("Weather API Error");
 
-        // Calculate Averages
-        let totalWind = 0;
-        let totalSwell = 0;
-        let totalGust = 0;
-
-        // Variables for Vector Averaging of Direction
-        let sinSum = 0;
-        let cosSum = 0;
-        let count = 0;
+        let totalWind = 0, totalSwell = 0, totalGust = 0;
+        let sinSum = 0, cosSum = 0, count = 0;
 
         if (json.hours) {
-             json.hours.forEach((hour: any) => {
+            json.hours.forEach((hour: any) => {
                 const wind = hour.windSpeed?.noaa || hour.windSpeed?.sg || 0;
                 const swell = hour.waveHeight?.noaa || hour.waveHeight?.sg || 0;
                 const dir = hour.windDirection?.noaa || hour.windDirection?.sg || 0;
@@ -78,16 +79,15 @@ export async function getAverageWeather(lat: string | number, lng: string | numb
                 totalSwell += swell;
                 totalGust += gust;
 
-                // Convert degrees to radians and sum vectors
                 const rad = dir * (Math.PI / 180);
                 sinSum += Math.sin(rad);
                 cosSum += Math.cos(rad);
-
                 count++;
             });
         }
 
-        if (count === 0) return null;
+        // 1. Check count OUTSIDE the object definition
+        if (count === 0) return DEFAULT_WEATHER;
 
         const avgRad = Math.atan2(sinSum, cosSum);
         let avgDeg = avgRad * (180 / Math.PI);
@@ -101,7 +101,8 @@ export async function getAverageWeather(lat: string | number, lng: string | numb
         };
 
     } catch (error) {
-        console.log("Could not fetch average weather:", error);
-        return null;
+        console.log("Weather fetch failed:", error);
+        // 2. Return the DEFAULT instead of null to prevent the iOS crash
+        return DEFAULT_WEATHER;
     }
 }
