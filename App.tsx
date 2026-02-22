@@ -499,27 +499,29 @@ export default function App() {
     }
   };
 
-  // --- 6. SAVE LOG DATA (Single, Crash-Proof Version) ---
+// --- 6. SAVE LOG DATA (Single, Crash-Proof Version) ---
   const saveLogData = async (data = formData) => {
       if (!user) return;
       setSaving(true);
-      const [year, month, day] = dateId.split('-').map(Number);
+
+      // SAFETY 1: Guarantee we have a string to split
+      const safeDateId = dateId || formatDateId(new Date());
+      const [year, month, day] = safeDateId.split('-').map(Number);
 
       try {
-          // 1. Clean Data
+          // SAFETY 2: Use ?? to cleanly catch null/undefined
           let finalData = {
-                      lbs: String(data.lbs || '0'),
-                      price: String(data.price || '0'),
-                      temp: String(data.temp || ''),
-                      wind: String(data.wind || ''),
-                      windDir: String(data.windDir || ''),
-                      notes: String(data.notes || ''),
-                      swell: String(data.swell || '0.0'),
-                      gust: String(data.gust || '0.0'),
-                      weather: Array.isArray(data.weather) ? data.weather : []
+              lbs: String(data.lbs ?? '0'),
+              price: String(data.price ?? '0'),
+              temp: String(data.temp ?? ''),
+              wind: String(data.wind ?? ''),
+              windDir: String(data.windDir ?? ''),
+              notes: String(data.notes ?? ''),
+              swell: String(data.swell ?? '0.0'),
+              gust: String(data.gust ?? '0.0'),
+              weather: Array.isArray(data.weather) ? data.weather : []
           };
 
-          // 2. Pro Automation (With Safety Checks)
           if (isPro) {
               try {
                   const lat = profile?.lat || '43.4426';
@@ -527,38 +529,32 @@ export default function App() {
 
                   const weatherAvg = await getAverageWeather(lat, lng);
 
-                  // SAFETY: Check if it's a valid number before fixing decimals
                   if (weatherAvg) {
                     finalData.wind = String((weatherAvg.avgWindKnots || 0).toFixed(1));
                     finalData.swell = String((weatherAvg.avgSwellMeters || 0).toFixed(1));
                     finalData.gust = String((weatherAvg.avgGustKnots || 0).toFixed(1));
-                    finalData.windDir = getWindDirection(weatherAvg.avgDirection);
+                    // Wrap the direction in String() just in case
+                    finalData.windDir = String(getWindDirection(weatherAvg.avgDirection) ?? '');
                   }
               } catch (weatherErr) {
                   console.log("Weather fetch failed, skipping auto-fill.");
               }
           }
 
-          Object.keys(finalData).forEach(key => {
-                      if (finalData[key] === undefined || finalData[key] === null) {
-                          finalData[key] = '';
-                      }
-                  });
-
-          // 3. Final Sanitization (Fixes iPhone Crash)
-          const sanitizedData = JSON.parse(JSON.stringify(finalData));
-
-          const logRef = doc(db, 'users', user.uid, 'logs', dateId);
-          await setDoc(logRef, {
-              ...sanitizedData,
-              dateId,
+          // SAFETY 3: Build a clean payload without relying on JSON.parse hacks
+          const payload = {
+              ...finalData,
+              dateId: safeDateId,
               year: year || new Date().getFullYear(),
               month: month || new Date().getMonth() + 1,
               day: day || new Date().getDate(),
               updatedAt: new Date().toISOString()
-          }, { merge: true });
+          };
 
-          Alert.alert("Log Saved", isPro && sanitizedData.wind ? "Weather updated automatically." : "Saved.");
+          const logRef = doc(db, 'users', user.uid, 'logs', safeDateId);
+          await setDoc(logRef, payload, { merge: true });
+
+          Alert.alert("Log Saved", isPro && finalData.wind ? "Weather updated automatically." : "Saved.");
 
       } catch (e) {
           Alert.alert("Save Error", e.message);
