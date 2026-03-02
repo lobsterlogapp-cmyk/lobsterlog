@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { initializeAuth, getReactNativePersistence, getAuth } from 'firebase/auth';
-import { getFirestore } from "firebase/firestore";
+// 1. IMPORT THE NEW FIRESTORE CACHE MODULES
+import { initializeFirestore, getFirestore, persistentLocalCache, persistentSingleTabManager } from "firebase/firestore";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const firebaseConfig = {
@@ -15,21 +16,26 @@ const firebaseConfig = {
 
 let app;
 let auth;
+let db; // 2. CREATE A VARIABLE FOR DB
 
-// 1. Initialize App securely (prevents hot-reload crashes)
 if (getApps().length === 0) {
+  // Fresh load: Initialize everything
   app = initializeApp(firebaseConfig);
-  // 2. Initialize Auth WITH local phone storage immediately
+
   auth = initializeAuth(app, {
     persistence: getReactNativePersistence(AsyncStorage)
   });
+
+  // 3. INITIALIZE FIRESTORE WITH OFFLINE PERSISTENCE
+  db = initializeFirestore(app, {
+    localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() })
+  });
+
 } else {
-  // If the app hot-reloads, just grab the already running instance
+  // Hot reload: Grab the already running instances
   app = getApp();
   auth = getAuth(app);
+  db = getFirestore(app); // Get the existing DB without re-initializing the cache
 }
-
-// 3. Connect to your new Canadian Firestore database
-const db = getFirestore(app);
 
 export { auth, db };

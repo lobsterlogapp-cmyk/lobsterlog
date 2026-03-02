@@ -191,6 +191,7 @@ export default function App() {
   // --- EXISTING STATE ---
   const [logs, setLogs] = useState({});
   const [profile, setProfile] = useState({ captainName: '', boatName: '', seasons: {} });
+  const [isFetchingLocation, setIsFetchingLocation] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -562,6 +563,30 @@ export default function App() {
           setSaving(false);
       }
   };
+
+  const handleGetCurrentLocation = async () => {
+      setIsFetchingLocation(true);
+      try {
+        let { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission Denied', 'Allow location access in your device settings to use this feature.');
+          setIsFetchingLocation(false);
+          return;
+        }
+
+        let location = await Location.getCurrentPositionAsync({
+           accuracy: Location.Accuracy.Balanced,
+        });
+
+        setTempLat(location.coords.latitude.toString());
+        setTempLng(location.coords.longitude.toString());
+
+      } catch (error) {
+        Alert.alert('Location Error', 'Could not fetch your location. Make sure your GPS is enabled.');
+      } finally {
+        setIsFetchingLocation(false);
+      }
+    };
 
   const handleSaveLocation = async () => {
     if (!tempLat || !tempLng) {
@@ -1026,6 +1051,30 @@ export default function App() {
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Set Fishing Location</Text>
             <Text style={styles.modalSubtitle}>Weather data will generate based on this point.</Text>
+            <TouchableOpacity
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: '#EFF6FF',
+                            padding: 12,
+                            borderRadius: 8,
+                            marginBottom: 20,
+                            borderWidth: 1,
+                            borderColor: '#BFDBFE'
+                          }}
+                          onPress={handleGetCurrentLocation}
+                          disabled={isFetchingLocation}
+                        >
+                          {isFetchingLocation ? (
+                             <ActivityIndicator color="#2563EB" />
+                          ) : (
+                             <>
+                               <LocateFixed size={18} color="#2563EB" style={{ marginRight: 8 }} />
+                               <Text style={{ color: '#1E3A8A', fontWeight: 'bold' }}>Use Current GPS Location</Text>
+                             </>
+                          )}
+                      </TouchableOpacity>
             <Text style={styles.inputLabel}>LATITUDE</Text>
             <TextInput style={styles.modalInput} placeholder="43.4426" placeholderTextColor="#64748B" keyboardType="numeric" value={tempLat} onChangeText={setTempLat} />
             <Text style={styles.inputLabel}>LONGITUDE</Text>
