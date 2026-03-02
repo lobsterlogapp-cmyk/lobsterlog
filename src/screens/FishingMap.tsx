@@ -206,9 +206,9 @@ const FishingMap = ({ savedLat, savedLng, onClose, user, dateId }: any) => {
                       const days = Math.floor(totalHours / 24);
                       const remainingHours = totalHours % 24;
 
-                      // Format: "5d 3h" or just "3h" if less than a day
+                      // --- NEW SOAK TIME LOGIC ---
                       let soakDisplay = days > 0
-                           ? `${days}d ${remainingHours}h`
+                           ? (days === 1 ? '1 Day' : `${days} Days`)
                            : `${remainingHours}h`;
 
                       const docRef = doc(db, 'users', currentUser.uid, 'trawls', docSnap.id);
@@ -216,7 +216,11 @@ const FishingMap = ({ savedLat, savedLng, onClose, user, dateId }: any) => {
                       batch.update(docRef, {
                           status: 'history',
                           count: catchNum,
+                          // --- NEW DATE LOGIC ---
+                          dateId: dateId, // Forces it onto today's logbook
+                          setDate: oldData.dateId, // Saves the original set date
                           haulDate: dateId,
+                          // --- YOUR EXISTING DATA (Nothing lost!) ---
                           soakTime: soakDisplay,
                           baitAtHaul: oldData.bait || 'Mackerel'
                       });
@@ -229,7 +233,7 @@ const FishingMap = ({ savedLat, savedLng, onClose, user, dateId }: any) => {
                   status: 'active',
                   dateId: dateId,
                   center: { lat: boatLat, lng: boatLng },
-                  bait: selectedBait || 'Mackerel',
+                  bait: selectedBait || 'Mackerel', // STILL HERE
                   count: 0,
                   timestamp: new Date().toISOString()
               });
@@ -237,7 +241,7 @@ const FishingMap = ({ savedLat, savedLng, onClose, user, dateId }: any) => {
               await batch.commit();
               setRefreshTrigger(prev => prev + 1);
               setModalVisible(false);
-          } catch (e: any) {
+          } catch (e: any) { // Type intact!
               Alert.alert("Error", e.message);
           } finally {
               setSaving(false);
