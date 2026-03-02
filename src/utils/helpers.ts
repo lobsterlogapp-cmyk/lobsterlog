@@ -1,7 +1,7 @@
 // src/utils/helpers.ts
 
 // ⚠️ YOUR API KEYS
-export const STORMGLASS_API_KEY = '39f9eb1e-e694-11f0-a8f4-0242ac130003-39f9eb8c-e694-11f0-a8f4-0242ac130003';
+export const STORMGLASS_API_KEY = process.env.EXPO_PUBLIC_STORMGLASS_API_KEY;
 
 // 1. Format Date for IDs (YYYY-MM-DD)
 export function formatDateId(date: Date): string {
