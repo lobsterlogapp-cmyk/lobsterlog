@@ -1,6 +1,5 @@
 // src/utils/weatherService.ts
 import { formatInTimeZone } from 'date-fns-tz';
-import { STORMGLASS_API_KEY } from './helpers';
 
 const CHS_STATIONS_URL = "https://api-iwls.dfo-mpo.gc.ca/api/v1/stations";
 const CHS_PREDICTIONS_BASE = "https://api-iwls.dfo-mpo.gc.ca/api/v1/stations";
@@ -48,8 +47,8 @@ export const getWeatherData = async (lat: number, lng: number) => {
             console.log("🌊 Fetching NEW Weather...");
             const params = 'airTemperature,waterTemperature,waveHeight,windWaveHeight,swellHeight,secondarySwellHeight,windSpeed,windDirection,gust,currentSpeed,currentDirection';
             const resp = await fetch(`https://api.stormglass.io/v2/weather/point?lat=${lat}&lng=${lng}&params=${params}`, {
-                headers: { 'Authorization': STORMGLASS_API_KEY }
-            });
+                            headers: { 'Authorization': process.env.EXPO_PUBLIC_STORMGLASS_API_KEY as string }
+                        });
             const json = await resp.json();
             if (json.hours) {
                 globalCache.weather = json;
@@ -80,9 +79,11 @@ export const getWeatherData = async (lat: number, lng: number) => {
 
             const [chsResp, sgResp] = await Promise.all([
                 fetch(`${CHS_PREDICTIONS_BASE}/${nearestStation.id}/data?time-series-code=wlp-hilo&from=${fromDate}&to=${toDate}`),
-                fetch(`https://api.stormglass.io/v2/tide/extremes/point?lat=${lat}&lng=${lng}`, {
-                    headers: { 'Authorization': STORMGLASS_API_KEY }
-                })
+                const [chsResp, sgResp] = await Promise.all([
+                                fetch(`${CHS_PREDICTIONS_BASE}/${nearestStation.id}/data?time-series-code=wlp-hilo&from=${fromDate}&to=${toDate}`),
+                                fetch(`https://api.stormglass.io/v2/tide/extremes/point?lat=${lat}&lng=${lng}`, {
+                                    headers: { 'Authorization': process.env.EXPO_PUBLIC_STORMGLASS_API_KEY as string }
+                                })
             ]);
 
             const chsData = await chsResp.json();
