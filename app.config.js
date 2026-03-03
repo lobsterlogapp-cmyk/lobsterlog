@@ -3,12 +3,12 @@ module.exports = {
     name: "LobsterLog",
     slug: "lobsterlog",
     scheme: "lobsterlog",
-    version: "1.7.2",
+    version: "1.7.3",
     icon: "./assets/icon.png",
     ios: {
       bundleIdentifier: "com.Nickerson.LobsterLog",
       supportsTablet: false,
-      buildNumber: "47",
+      buildNumber: "48",
       config: {
         googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY
       },
@@ -32,7 +32,7 @@ module.exports = {
       "@react-native-community/datetimepicker"
     ],
     android: {
-      versionCode: 47,
+      versionCode: 48,
       package: "com.lobsterlog",
       permissions: [
         "com.android.vending.BILLING",
