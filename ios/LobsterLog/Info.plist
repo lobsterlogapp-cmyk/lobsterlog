@@ -41,7 +41,7 @@
 	<key>CFBundleVersion</key>
 	<string>47</string>
 	<key>GMSApiKey</key>
-	<string>${EXPO_PUBLIC_GOOGLE_MAPS_API_KEY}</string>
+	<string>AIzaSyCAHiG7LSZmQPlU7QWNAD0tLRLJVMGN87U</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSMinimumSystemVersion</key>

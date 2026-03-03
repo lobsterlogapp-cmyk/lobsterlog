@@ -15,7 +15,7 @@
     </intent>
   </queries>
   <application android:name=".MainApplication" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:allowBackup="true" android:theme="@style/AppTheme" android:supportsRtl="true" android:enableOnBackInvokedCallback="false">
-    <meta-data android:name="com.google.android.geo.API_KEY" android:value="${EXPO_PUBLIC_GOOGLE_MAPS_API_KEY}"/>
+    <meta-data android:name="com.google.android.geo.API_KEY" android:value="AIzaSyCAHiG7LSZmQPlU7QWNAD0tLRLJVMGN87U"/>
     <meta-data android:name="expo.modules.updates.ENABLED" android:value="false"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0"/>
