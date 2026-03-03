@@ -78,13 +78,11 @@ export const getWeatherData = async (lat: number, lng: number) => {
             const toDate = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
 
             const [chsResp, sgResp] = await Promise.all([
-                fetch(`${CHS_PREDICTIONS_BASE}/${nearestStation.id}/data?time-series-code=wlp-hilo&from=${fromDate}&to=${toDate}`),
-                const [chsResp, sgResp] = await Promise.all([
-                                fetch(`${CHS_PREDICTIONS_BASE}/${nearestStation.id}/data?time-series-code=wlp-hilo&from=${fromDate}&to=${toDate}`),
-                                fetch(`https://api.stormglass.io/v2/tide/extremes/point?lat=${lat}&lng=${lng}`, {
-                                    headers: { 'Authorization': process.env.EXPO_PUBLIC_STORMGLASS_API_KEY as string }
-                                })
-            ]);
+                            fetch(`${CHS_PREDICTIONS_BASE}/${nearestStation.id}/data?time-series-code=wlp-hilo&from=${fromDate}&to=${toDate}`),
+                            fetch(`https://api.stormglass.io/v2/tide/extremes/point?lat=${lat}&lng=${lng}`, {
+                                headers: { 'Authorization': process.env.EXPO_PUBLIC_STORMGLASS_API_KEY as string }
+                            })
+                        ]);
 
             const chsData = await chsResp.json();
             const sgData = await sgResp.json();
