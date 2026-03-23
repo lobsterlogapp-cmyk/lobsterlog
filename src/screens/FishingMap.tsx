@@ -4,9 +4,21 @@ import MapView, { UrlTile, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { Layers, X, Plus, Minus, MapPin, Trash2, LocateFixed, Clock } from 'lucide-react-native';
 
-// Firebase Imports
-import { auth, db } from '../../firebaseConfig';
-import { collection, doc, deleteDoc, query, where, getDocs, writeBatch, arrayUnion, getDoc, onSnapshot } from 'firebase/firestore';
+// NATIVE FIREBASE IMPORTS
+import { auth, db } from '../../firebaseConfig'; // Make sure this path matches where your config file is!
+import {
+  collection,
+  doc,
+  onSnapshot,
+  query,
+  where,
+  getDocs,
+  getDoc,
+  setDoc,
+  writeBatch,
+  serverTimestamp,
+  deleteDoc
+} from '@react-native-firebase/firestore';
 
 // Styles & Services
 import { styles } from '../styles/GlobalStyles';
@@ -23,7 +35,7 @@ const FishingMap = ({ savedLat, savedLng, onClose, user, dateId }: any) => {
     const [todaysPins, setTodaysPins] = useState<any[]>([]);
     const [historicalPins, setHistoricalPins] = useState<any[]>([]);
     const [myLocation, setMyLocation] = useState<any>(null);
-    const [refreshTrigger, setRefreshTrigger] = useState(0); // For instant heatmap updates
+    const [refreshTrigger, setRefreshTrigger] = useState(0);
 
     // Tide & UI State
     const [tideInfo, setTideInfo] = useState<any>(null);
@@ -42,7 +54,6 @@ const FishingMap = ({ savedLat, savedLng, onClose, user, dateId }: any) => {
     const [newBaitName, setNewBaitName] = useState('');
     const [isAddingBait, setIsAddingBait] = useState(false);
 
-    // SAFETY: Ensure initial region are valid numbers
     const initialRegion = {
         latitude: parseFloat(savedLat) || 43.44,
         longitude: parseFloat(savedLng) || -65.62,
@@ -70,22 +81,30 @@ const FishingMap = ({ savedLat, savedLng, onClose, user, dateId }: any) => {
         return () => clearInterval(timer);
     }, [nextTide]);
 
-    // --- LISTEN FOR ACTIVE PINS ---
-    useEffect(() => {
-        if (!currentUser) return;
-        const q = query(collection(db, 'users', currentUser.uid, 'trawls'), where("status", "==", "active"));
-        const unsubscribe = onSnapshot(q, (snap) => {
-            const data: any[] = [];
-            snap.forEach(d => {
-                const docData = d.data();
-                if (docData.center && docData.center.lat && docData.center.lng) {
-                    data.push({ id: d.id, ...docData });
-                }
-            });
-            setTodaysPins(data);
-        });
-        return () => unsubscribe();
-    }, [currentUser]);
+    // --- NATIVE LISTEN FOR ACTIVE PINS ---
+        useEffect(() => {
+            if (!currentUser) return;
+
+            // 1. Define the path to the trawls collection
+            const trawlsRef = collection(db, 'users', currentUser.uid, 'trawls');
+
+            // 2. Build the query
+            const activeTrawlsQuery = query(trawlsRef, where("status", "==", "active"));
+
+            // 3. Listen to the query
+            const unsubscribe = onSnapshot(activeTrawlsQuery, (snap) => {
+                const data: any[] = [];
+                snap?.forEach(d => {
+                    const docData = d.data();
+                    if (docData.center && docData.center.lat && docData.center.lng) {
+                        data.push({ id: d.id, ...docData });
+                    }
+                });
+                setTodaysPins(data);
+            }, (err) => console.log("Pin Listener Error:", err));
+
+            return () => unsubscribe();
+        }, [currentUser]);
 
     // --- HEATMAP LOGIC ---
     const addDays = (date: Date, days: number) => {
@@ -110,21 +129,27 @@ const FishingMap = ({ savedLat, savedLng, onClose, user, dateId }: any) => {
             const queryPromises = [];
 
             for (let i = 0; i <= YEARS_TO_CHECK; i++) {
-                const pastYear = currentYear - i;
-                const pastDate = new Date(targetDate);
-                pastDate.setFullYear(pastYear);
+                            const pastYear = currentYear - i;
+                            const pastDate = new Date(targetDate);
+                            pastDate.setFullYear(pastYear);
 
-                const startStr = addDays(pastDate, -WINDOW_DAYS);
-                const endStr = addDays(pastDate, WINDOW_DAYS);
+                            const startStr = addDays(pastDate, -WINDOW_DAYS);
+                            const endStr = addDays(pastDate, WINDOW_DAYS);
 
-                const q = query(
-                     collection(db, 'users', currentUser.uid, 'trawls'),
-                     where("dateId", ">=", startStr),
-                     where("dateId", "<=", endStr),
-                     where("status", "==", "history")
-                );
-                queryPromises.push(getDocs(q));
-            }
+                            // 1. Define the collection reference
+                            const historyRef = collection(db, 'users', currentUser.uid, 'trawls');
+
+                            // 2. Build the query
+                            const q = query(
+                                historyRef,
+                                where("dateId", ">=", startStr),
+                                where("dateId", "<=", endStr),
+                                where("status", "==", "history")
+                            );
+
+                            // 3. Push the getDocs Promise to your array
+                            queryPromises.push(getDocs(q));
+                        }
 
             try {
                 const snapshots = await Promise.all(queryPromises);
@@ -149,7 +174,7 @@ const FishingMap = ({ savedLat, savedLng, onClose, user, dateId }: any) => {
             }
         };
         fetchHistory();
-    }, [showHeatmap, currentUser, dateId, refreshTrigger]); // Added refreshTrigger
+    }, [showHeatmap, currentUser, dateId, refreshTrigger]);
 
     const { coloredPins } = useMemo(() => {
         const catches = historicalPins.map(p => Number(p.count) || 0);
@@ -170,106 +195,130 @@ const FishingMap = ({ savedLat, savedLng, onClose, user, dateId }: any) => {
         return { coloredPins: colored };
     }, [historicalPins]);
 
-    // --- SAVE LOGIC ---
+    // --- NATIVE SAVE LOGIC ---
     const handleDropPin = () => { setSelectedPin(null); setCatchCount(''); setTrawlNumber(''); setModalVisible(true); };
     const handlePinPress = (pin: any) => { setSelectedPin(pin); setCatchCount(''); setTrawlNumber(pin.trawlNumber?.toString()||''); setSelectedBait(pin.bait||'Herring'); setModalVisible(true); };
 
-   const savePin = async () => {
-          if (!currentUser) return;
-          if (!selectedPin && !trawlNumber) { Alert.alert("Missing Info", "Please enter a Trawl Number."); return; }
+    const savePin = async () => {
+            if (!currentUser) return;
+            if (!selectedPin && !trawlNumber) { Alert.alert("Missing Info", "Please enter a Trawl Number."); return; }
 
-          setSaving(true);
-          try {
-              const batch = writeBatch(db);
-              const pinsRef = collection(db, 'users', currentUser.uid, 'trawls');
-              const catchNum = parseInt(catchCount) || 0;
-              const tNum = parseInt(trawlNumber);
+            setSaving(true);
+            try {
+                // 1. New Modular Batch Syntax
+                const batch = writeBatch(db);
+                const pinsRef = collection(db, 'users', currentUser.uid, 'trawls');
+                const catchNum = parseInt(catchCount) || 0;
+                const tNum = parseInt(trawlNumber);
 
-              let boatLoc = myLocation || regionRef.current || initialRegion;
-              const boatLat = parseFloat(boatLoc.latitude || boatLoc.lat);
-              const boatLng = parseFloat(boatLoc.longitude || boatLoc.lng);
+                let boatLoc = myLocation || regionRef.current || initialRegion;
+                const boatLat = parseFloat(boatLoc.latitude || boatLoc.lat);
+                const boatLng = parseFloat(boatLoc.longitude || boatLoc.lng);
 
-              const oldTrawlQuery = query(pinsRef, where("trawlNumber", "==", tNum), where("status", "==", "active"));
-              const oldSnap = await getDocs(oldTrawlQuery);
+                // 2. New Modular Query Syntax
+                const activeQuery = query(
+                    pinsRef,
+                    where("trawlNumber", "==", tNum),
+                    where("status", "==", "active")
+                );
+                const oldSnap = await getDocs(activeQuery);
 
-              if (!oldSnap.empty) {
-                  oldSnap.forEach((docSnap) => {
-                      const oldData = docSnap.data();
+                if (!oldSnap.empty) {
+                    oldSnap.forEach((docSnap) => {
+                        const oldData = docSnap.data();
 
-                      // Calculate Soak Time
-                      const setTime = oldData.timestamp ? new Date(oldData.timestamp) : new Date();
-                      const haulTime = new Date();
-                      const diffInMs = Math.abs(haulTime.getTime() - setTime.getTime());
+                        const setTime = oldData.timestamp ? new Date(oldData.timestamp.toDate ? oldData.timestamp.toDate() : oldData.timestamp) : new Date();
+                        const haulTime = new Date();
+                        const diffInMs = Math.abs(haulTime.getTime() - setTime.getTime());
 
-                      // Convert to total hours
-                      const totalHours = Math.floor(diffInMs / (1000 * 60 * 60));
-                      const days = Math.floor(totalHours / 24);
-                      const remainingHours = totalHours % 24;
+                        const totalHours = Math.floor(diffInMs / (1000 * 60 * 60));
+                        const days = Math.floor(totalHours / 24);
+                        const remainingHours = totalHours % 24;
 
-                      // --- NEW SOAK TIME LOGIC ---
-                      let soakDisplay = days > 0
-                           ? (days === 1 ? '1 Day' : `${days} Days`)
-                           : `${remainingHours}h`;
+                        let soakDisplay = days > 0
+                             ? (days === 1 ? '1 Day' : `${days} Days`)
+                             : `${remainingHours}h`;
 
-                      const docRef = doc(db, 'users', currentUser.uid, 'trawls', docSnap.id);
+                        // Batch update stays mostly the same, just targeting docSnap.ref
+                        batch.update(docSnap.ref, {
+                            status: 'history',
+                            count: catchNum,
+                            dateId: dateId,
+                            setDate: oldData.dateId,
+                            haulDate: dateId,
+                            soakTime: soakDisplay,
+                            baitAtHaul: oldData.bait || 'Mackerel'
+                        });
+                    });
+                }
 
-                      batch.update(docRef, {
-                          status: 'history',
-                          count: catchNum,
-                          // --- NEW DATE LOGIC ---
-                          dateId: dateId, // Forces it onto today's logbook
-                          setDate: oldData.dateId, // Saves the original set date
-                          haulDate: dateId,
-                          // --- YOUR EXISTING DATA (Nothing lost!) ---
-                          soakTime: soakDisplay,
-                          baitAtHaul: oldData.bait || 'Mackerel'
-                      });
-                  });
-              }
+                // 3. New Modular Document Creation
+                const newDocRef = doc(pinsRef);
+                batch.set(newDocRef, {
+                    trawlNumber: tNum,
+                    status: 'active',
+                    dateId: dateId,
+                    center: { lat: boatLat, lng: boatLng },
+                    bait: selectedBait || 'Mackerel',
+                    count: 0,
+                    timestamp: serverTimestamp() // New serverTimestamp import
+                });
 
-              const newDocRef = doc(pinsRef);
-              batch.set(newDocRef, {
-                  trawlNumber: tNum,
-                  status: 'active',
-                  dateId: dateId,
-                  center: { lat: boatLat, lng: boatLng },
-                  bait: selectedBait || 'Mackerel', // STILL HERE
-                  count: 0,
-                  timestamp: new Date().toISOString()
-              });
-
-              await batch.commit();
-              setRefreshTrigger(prev => prev + 1);
-              setModalVisible(false);
-          } catch (e: any) { // Type intact!
-              Alert.alert("Error", e.message);
-          } finally {
-              setSaving(false);
-          }
-      };
+                await batch.commit();
+                setRefreshTrigger(prev => prev + 1);
+                setModalVisible(false);
+            } catch (e: any) {
+                Alert.alert("Error", e.message);
+            } finally {
+                setSaving(false);
+            }
+        };
 
     const handleDelete = async () => {
-        if (!selectedPin || !currentUser) return;
-        try { await deleteDoc(doc(db, 'users', currentUser.uid, 'trawls', selectedPin.id)); setModalVisible(false); } catch(e) { console.log(e); }
-    };
+            if (!selectedPin || !currentUser) return;
+            try {
+                // New modular deleteDoc syntax
+                const pinDocRef = doc(db, 'users', currentUser.uid, 'trawls', selectedPin.id);
+                await deleteDoc(pinDocRef);
+                setModalVisible(false);
+            } catch(e) {
+                console.log(e);
+            }
+        };
 
     // --- BAIT HELPERS ---
-    useEffect(() => {
-        const loadBaits = async () => {
-            if(!currentUser) return;
-            const snap = await getDoc(doc(db, 'users', currentUser.uid, 'settings', 'preferences'));
-            if(snap.exists() && snap.data().customBaits) setBaitList(prev => [...prev, ...snap.data().customBaits]);
-        };
-        loadBaits();
-    }, [currentUser]);
+        useEffect(() => {
+            const loadBaits = async () => {
+                if(!currentUser) return;
+                // 1. Define the document reference
+                const prefRef = doc(db, 'users', currentUser.uid, 'settings', 'preferences');
 
-    const handleAddCustomBait = async () => {
-        if (!newBaitName.trim()) { setIsAddingBait(false); return; }
-        setBaitList(prev => [...prev, newBaitName]);
-        setSelectedBait(newBaitName);
-        await setDoc(doc(db, 'users', currentUser.uid, 'settings', 'preferences'), { customBaits: arrayUnion(newBaitName) }, { merge: true });
-        setIsAddingBait(false);
-    };
+                // 2. Fetch the document
+                const snap = await getDoc(prefRef);
+
+                if(snap.exists() && snap.data()?.customBaits) {
+                    setBaitList(prev => [...prev, ...snap.data().customBaits]);
+                }
+            };
+            loadBaits();
+        }, [currentUser]);
+
+        const handleAddCustomBait = async () => {
+            if (!newBaitName.trim()) { setIsAddingBait(false); return; }
+
+            setBaitList(prev => [...prev, newBaitName]);
+            setSelectedBait(newBaitName);
+
+            // 1. Define the document reference
+            const prefRef = doc(db, 'users', currentUser.uid, 'settings', 'preferences');
+
+            // 2. Use setDoc with arrayUnion
+            await setDoc(prefRef, {
+                customBaits: arrayUnion(newBaitName)
+            }, { merge: true });
+
+            setIsAddingBait(false);
+        };
 
     return (
         <View style={{flex: 1, backgroundColor: '#1E293B'}}>

@@ -41,19 +41,15 @@ export function getDefaultSeasonConfig(startYear: number) {
     };
 }
 
-// 5. PRO FEATURE: 12-Hour Weather Averages
-export async function getAverageWeather(lat: string | number, lng: string | number) {
-    // Define the safe fallback object at the top
-    const DEFAULT_WEATHER = {
-        avgWindKnots: 0,
-        avgGustKnots: 0,
-        avgSwellMeters: 0,
-        avgDirection: 0
-    };
-
+// 5. PRO FEATURE: 24-Hour Weather Averages & Max Swell
+export async function getAverageWeather(lat: string | number, lng: string | number, dateId: string | null = null) {
     try {
-        const end = new Date();
-        const start = new Date(end.getTime() - (12 * 60 * 60 * 1000));
+        const targetDate = dateId ? new Date(`${dateId}T12:00:00`) : new Date();
+
+        const start = new Date(targetDate);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(targetDate);
+        end.setHours(23, 59, 59, 999);
 
         const params = 'windSpeed,waveHeight,windDirection,gust';
         const url = `https://api.stormglass.io/v2/weather/point?lat=${lat}&lng=${lng}&params=${params}&start=${start.toISOString()}&end=${end.toISOString()}`;
@@ -63,9 +59,9 @@ export async function getAverageWeather(lat: string | number, lng: string | numb
         });
         const json = await response.json();
 
-        if (json.errors) throw new Error("Weather API Error");
+        if (json.errors) return null; // Fail cleanly on API error
 
-        let totalWind = 0, totalSwell = 0, totalGust = 0;
+        let totalWind = 0, totalGust = 0, maxSwell = 0;
         let sinSum = 0, cosSum = 0, count = 0;
 
         if (json.hours) {
@@ -76,8 +72,11 @@ export async function getAverageWeather(lat: string | number, lng: string | numb
                 const gust = hour.gust?.noaa || hour.gust?.sg || 0;
 
                 totalWind += wind;
-                totalSwell += swell;
                 totalGust += gust;
+
+                if (swell > maxSwell) {
+                    maxSwell = swell;
+                }
 
                 const rad = dir * (Math.PI / 180);
                 sinSum += Math.sin(rad);
@@ -86,8 +85,7 @@ export async function getAverageWeather(lat: string | number, lng: string | numb
             });
         }
 
-        // 1. Check count OUTSIDE the object definition
-        if (count === 0) return DEFAULT_WEATHER;
+        if (count === 0) return null; // Fail cleanly if no data
 
         const avgRad = Math.atan2(sinSum, cosSum);
         let avgDeg = avgRad * (180 / Math.PI);
@@ -96,13 +94,12 @@ export async function getAverageWeather(lat: string | number, lng: string | numb
         return {
             avgWindKnots: (totalWind / count) * 1.94384,
             avgGustKnots: (totalGust / count) * 1.94384,
-            avgSwellMeters: (totalSwell / count),
+            avgSwellMeters: maxSwell,
             avgDirection: avgDeg
         };
 
     } catch (error) {
         console.log("Weather fetch failed:", error);
-        // 2. Return the DEFAULT instead of null to prevent the iOS crash
-        return DEFAULT_WEATHER;
+        return null; // THE CRITICAL FIX: Return null instead of fake zeros!
     }
 }

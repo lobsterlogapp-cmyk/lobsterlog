@@ -2,9 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Lock } from 'lucide-react-native';
 
-// Firebase Imports (Notice the ../../ to go back up two folders)
-import { db } from '../../firebaseConfig';
-import { doc, onSnapshot, query, collection, where } from 'firebase/firestore';
+// NATIVE FIREBASE IMPORT
+import firestore from '@react-native-firebase/firestore';
 
 // Style Import
 import { styles } from '../styles/GlobalStyles';
@@ -14,43 +13,60 @@ const BaitStats = ({ user, isPro, onUnlock }: any) => {
      const [loading, setLoading] = useState(true);
      const [seasonStart, setSeasonStart] = useState<Date | null>(null);
 
+     // NATIVE LISTENER 1: Season Config
      useEffect(() => {
          if (!user) return;
-         const unsubConfig = onSnapshot(doc(db, 'users', user.uid, 'settings', 'seasonConfig'), (snap) => {
-             if (snap.exists() && snap.data().baitSeasonStart) {
-                 setSeasonStart(new Date(snap.data().baitSeasonStart));
-             } else {
-                 setSeasonStart(null);
-             }
-         });
+         const unsubConfig = firestore()
+            .collection('users')
+            .doc(user.uid)
+            .collection('settings')
+            .doc('seasonConfig')
+            .onSnapshot((snap) => {
+                // Note: Native uses snap.exists (property), not snap.exists() (function)
+                if (snap && snap.exists && snap.data()?.baitSeasonStart) {
+                    setSeasonStart(new Date(snap.data()?.baitSeasonStart));
+                } else {
+                    setSeasonStart(null);
+                }
+            }, (error) => console.log("BaitStats Config Error:", error));
+
          return () => unsubConfig();
      }, [user]);
 
+     // NATIVE LISTENER 2: Trawl History
      useEffect(() => {
          if (!user) return;
-         const q = query(collection(db, 'users', user.uid, 'trawls'), where("status", "==", "history"));
-         const unsubscribe = onSnapshot(q, (snapshot) => {
-             const baitMap: any = {};
-             snapshot.forEach((doc) => {
-                 const data = doc.data();
-                 if (seasonStart) {
-                     const trawlDate = data.timestamp ? new Date(data.timestamp) : new Date(data.haulDate);
-                     if (trawlDate < seasonStart) return;
-                 }
-                 const bait = data.bait || 'Unknown';
-                 const count = data.count || 0;
-                 if (!baitMap[bait]) baitMap[bait] = { totalCatch: 0, strings: 0 };
-                 baitMap[bait].totalCatch += count;
-                 baitMap[bait].strings += 1;
-             });
-             const stats = Object.keys(baitMap).map(bait => ({
-                 bait,
-                 avg: (baitMap[bait].totalCatch / baitMap[bait].strings).toFixed(1),
-                 strings: baitMap[bait].strings
-             })).sort((a: any, b: any) => b.avg - a.avg);
-             setAverages(stats);
-             setLoading(false);
-         });
+         const unsubscribe = firestore()
+            .collection('users')
+            .doc(user.uid)
+            .collection('trawls')
+            .where("status", "==", "history")
+            .onSnapshot((snapshot) => {
+                const baitMap: any = {};
+
+                snapshot?.forEach((doc) => {
+                    const data = doc.data();
+                    if (seasonStart) {
+                        const trawlDate = data.timestamp ? new Date(data.timestamp.toDate ? data.timestamp.toDate() : data.timestamp) : new Date(data.haulDate);
+                        if (trawlDate < seasonStart) return;
+                    }
+                    const bait = data.bait || 'Unknown';
+                    const count = data.count || 0;
+                    if (!baitMap[bait]) baitMap[bait] = { totalCatch: 0, strings: 0 };
+                    baitMap[bait].totalCatch += count;
+                    baitMap[bait].strings += 1;
+                });
+
+                const stats = Object.keys(baitMap).map(bait => ({
+                    bait,
+                    avg: (baitMap[bait].totalCatch / baitMap[bait].strings).toFixed(1),
+                    strings: baitMap[bait].strings
+                })).sort((a: any, b: any) => b.avg - a.avg);
+
+                setAverages(stats);
+                setLoading(false);
+            }, (error) => console.log("BaitStats Data Error:", error));
+
          return () => unsubscribe();
      }, [user, seasonStart]);
 

@@ -1479,6 +1479,8 @@ PODS:
     - ReactCommon/turbomodule/core
     - SocketRocket
     - Yoga
+  - ExpoSQLite (16.0.10):
+    - ExpoModulesCore
   - EXUpdatesInterface (2.0.0):
     - ExpoModulesCore
   - fast_float (8.0.0)
@@ -1658,6 +1660,14 @@ PODS:
     - hermes-engine/Pre-built (= 0.81.5)
   - hermes-engine/Pre-built (0.81.5)
   - leveldb-library (1.22.6)
+  - MapboxCommon (24.16.6):
+    - Turf (= 4.0.0)
+  - MapboxCoreMaps (11.16.6):
+    - MapboxCommon (= 24.16.6)
+  - MapboxMaps (11.16.6):
+    - MapboxCommon (= 24.16.6)
+    - MapboxCoreMaps (= 11.16.6)
+    - Turf (= 4.0.0)
   - nanopb (3.30910.0):
     - nanopb/decode (= 3.30910.0)
     - nanopb/encode (= 3.30910.0)
@@ -4018,6 +4028,17 @@ PODS:
     - RNFBApp
     - SocketRocket
     - Yoga
+  - rnmapbox-maps (10.2.10):
+    - MapboxMaps (~> 11.16.2)
+    - React
+    - React-Core
+    - rnmapbox-maps/DynamicLibrary (= 10.2.10)
+    - Turf
+  - rnmapbox-maps/DynamicLibrary (10.2.10):
+    - MapboxMaps (~> 11.16.2)
+    - React
+    - React-Core
+    - Turf
   - RNPaywalls (9.7.6):
     - PurchasesHybridCommonUI (= 17.31.0)
     - React-Core
@@ -4027,6 +4048,7 @@ PODS:
   - RNSVG (15.12.1):
     - React-Core
   - SocketRocket (0.7.1)
+  - Turf (4.0.0)
   - Yoga (0.0.0)
 
 DEPENDENCIES:
@@ -4046,6 +4068,7 @@ DEPENDENCIES:
   - ExpoKeepAwake (from `../node_modules/expo/node_modules/expo-keep-awake/ios`)
   - ExpoLocation (from `../node_modules/expo-location/ios`)
   - ExpoModulesCore (from `../node_modules/expo-modules-core`)
+  - ExpoSQLite (from `../node_modules/expo-sqlite/ios`)
   - EXUpdatesInterface (from `../node_modules/expo-updates-interface/ios`)
   - fast_float (from `../node_modules/react-native/third-party-podspecs/fast_float.podspec`)
   - FBLazyVector (from `../node_modules/react-native/Libraries/FBLazyVector`)
@@ -4124,6 +4147,7 @@ DEPENDENCIES:
   - "RNFBApp (from `../node_modules/@react-native-firebase/app`)"
   - "RNFBAuth (from `../node_modules/@react-native-firebase/auth`)"
   - "RNFBFirestore (from `../node_modules/@react-native-firebase/firestore`)"
+  - "rnmapbox-maps (from `../node_modules/@rnmapbox/maps`)"
   - RNPaywalls (from `../node_modules/react-native-purchases-ui`)
   - RNPurchases (from `../node_modules/react-native-purchases`)
   - RNSVG (from `../node_modules/react-native-svg`)
@@ -4151,6 +4175,9 @@ SPEC REPOS:
     - gRPC-Core
     - GTMSessionFetcher
     - leveldb-library
+    - MapboxCommon
+    - MapboxCoreMaps
+    - MapboxMaps
     - nanopb
     - PurchasesHybridCommon
     - PurchasesHybridCommonUI
@@ -4158,6 +4185,7 @@ SPEC REPOS:
     - RevenueCat
     - RevenueCatUI
     - SocketRocket
+    - Turf
 
 EXTERNAL SOURCES:
   boost:
@@ -4192,6 +4220,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/expo-location/ios"
   ExpoModulesCore:
     :path: "../node_modules/expo-modules-core"
+  ExpoSQLite:
+    :path: "../node_modules/expo-sqlite/ios"
   EXUpdatesInterface:
     :path: "../node_modules/expo-updates-interface/ios"
   fast_float:
@@ -4347,6 +4377,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/@react-native-firebase/auth"
   RNFBFirestore:
     :path: "../node_modules/@react-native-firebase/firestore"
+  rnmapbox-maps:
+    :path: "../node_modules/@rnmapbox/maps"
   RNPaywalls:
     :path: "../node_modules/react-native-purchases-ui"
   RNPurchases:
@@ -4375,6 +4407,7 @@ SPEC CHECKSUMS:
   ExpoKeepAwake: 55f75eca6499bb9e4231ebad6f3e9cb8f99c0296
   ExpoLocation: d5b61cb4970fa982e39ca94246a206a0c3b812ca
   ExpoModulesCore: ea7e197ab78b73ec68a3a93241c1fef0ea708c1e
+  ExpoSQLite: 7eedbe476870a5f18d6b89c817c4ac6f299830ad
   EXUpdatesInterface: 5adf50cb41e079c861da6d9b4b954c3db9a50734
   fast_float: b32c788ed9c6a8c584d114d0047beda9664e7cc6
   FBLazyVector: 5beb8028d5a2e75dd9634917f23e23d3a061d2aa
@@ -4398,6 +4431,9 @@ SPEC CHECKSUMS:
   GTMSessionFetcher: 02d6e866e90bc236f48a703a041dfe43e6221a29
   hermes-engine: 9f4dfe93326146a1c99eb535b1cb0b857a3cd172
   leveldb-library: cc8b8f8e013647a295ad3f8cd2ddf49a6f19be19
+  MapboxCommon: 10cbf74edb23c9abcfe2424899d804f288a47334
+  MapboxCoreMaps: f19680d20681797067268284b2292349de861730
+  MapboxMaps: 04c7bf46d66265ad0f4b98484a251777a926c423
   nanopb: fad817b59e0457d11a5dfbde799381cd727c1275
   PurchasesHybridCommon: 21a11c5d66c8a52cf9aede45cecc2efe1551b98b
   PurchasesHybridCommonUI: 60fbb660ebbf224df733c90849c4f3b8f6819f4b
@@ -4475,12 +4511,14 @@ SPEC CHECKSUMS:
   RNFBApp: d1886cba8b15547054afa7095686868c8fe8eeab
   RNFBAuth: b61e95f0f3242db81310634d454a5cdc526c179c
   RNFBFirestore: 743ed5450574c23700894f545ae9cc29382a2627
+  rnmapbox-maps: 67efa02ac3939b9d45e10ad67e3b972f24f3d253
   RNPaywalls: d8ebe418a058fdc7c7b6dd1b3ecb07058d4f1d89
   RNPurchases: 462fb7edb0304dba1db46e3d38368a271ebe4cc2
   RNSVG: d3f55b1e5f680744764389119f1cb7512058672b
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
+  Turf: c9eb11a65d96af58cac523460fd40fec5061b081
   Yoga: cc4a6600d61e4e9276e860d4d68eebb834a050ba
 
-PODFILE CHECKSUM: 207458508c65f41ac7ecac6f8b4e30f064560453
+PODFILE CHECKSUM: 7c621932b9e769c5dc882261d6bc10c70cbb545b
 
 COCOAPODS: 1.16.2

@@ -24,31 +24,23 @@ import { Svg, Path, Rect, Line, Circle } from 'react-native-svg';
 import MapView, { UrlTile, Polyline, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
-// --- FIREBASE IMPORTS ---
+// --- NATIVE FIREBASE IMPORTS ---
 import { auth, db } from './firebaseConfig';
+import {
+  onAuthStateChanged,
+  sendPasswordResetEmail,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  deleteUser
+} from '@react-native-firebase/auth';
 import {
   collection,
   doc,
-  setDoc,
-  getDoc,
   onSnapshot,
-  deleteDoc,
-  addDoc,
-  query,
-  where,
-  getDocs,
-  writeBatch,
-  arrayUnion
-} from 'firebase/firestore';
-
-import {
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  sendPasswordResetEmail,
-  signOut,
-  deleteUser
-} from 'firebase/auth';
+  setDoc,
+  deleteDoc
+} from '@react-native-firebase/firestore';
 
 import * as Location from 'expo-location';
 
@@ -57,13 +49,10 @@ import Purchases, { LOG_LEVEL } from 'react-native-purchases';
 
 // --- ICONS ---
 import {
-  // --- Navigation & Core ---
   Layers, X, Plus, Minus, Play, Square, Trash2, Lock,
   ChevronLeft, ChevronRight, Settings, TrendingUp, Anchor,
   Crown, LogOut, Calendar as CalendarIcon, Scale, FileText,
   Save, History, MapPin, Mail, Ban, RotateCcw, LocateFixed,
-
-  // --- Weather & Data ---
   Wind, Waves, Thermometer, Navigation, Activity, Compass
 } from 'lucide-react-native';
 
@@ -92,17 +81,18 @@ import { styles } from './src/styles/GlobalStyles';
 const LoginScreen = ({ isRegistering, setIsRegistering, email, setEmail, password, setPassword, loading, handleSubmit }) => {
 
   const handleForgotPassword = async () => {
-    if (!email) {
-      Alert.alert("Missing Email", "Please enter your email address in the box above so we know where to send the link.");
-      return;
-    }
-    try {
-      await sendPasswordResetEmail(auth, email);
-      Alert.alert("Email Sent", "Check your inbox for a link to reset your password.");
-    } catch (error) {
-      Alert.alert("Error", error.message);
-    }
-  };
+      if (!email) {
+        Alert.alert("Missing Email", "Please enter your email address in the box above so we know where to send the link.");
+        return;
+      }
+      try {
+        // NEW MODULAR SYNTAX: Pass the 'auth' object as the first parameter
+        await sendPasswordResetEmail(auth, email);
+        Alert.alert("Email Sent", "Check your inbox for a link to reset your password.");
+      } catch (error) {
+        Alert.alert("Error", error.message);
+      }
+    };
 
   return (
     <View style={styles.loginContainer}>
@@ -215,8 +205,6 @@ export default function App() {
 
         const apiKey = Platform.OS === 'ios' ? REVENUECAT_KEYS.apple : REVENUECAT_KEYS.google;
 
-        // GUARD: Stop here if the key is missing.
-        // We set loading to false so the app can show the login screen.
         if (!apiKey) {
           setIsReady(true);
           setLoading(false);
@@ -238,57 +226,52 @@ export default function App() {
         });
 
       } catch (e) {
-              console.log("RevenueCat Init Error:", e.message);
-              setIsReady(true); // Set true so they can still use the free version
-            } finally {
-              setLoading(false);
-            }
+          console.log("RevenueCat Init Error:", e.message);
+          setIsReady(true);
+      } finally {
+          setLoading(false);
+      }
     };
 
     initPurchases();
   }, []);
 
   useEffect(() => {
-      const unsubscribe = onAuthStateChanged(auth, async (u) => {
-        setUser(u);
+        // NEW MODULAR SYNTAX: Pass auth as first parameter
+        const unsubscribe = onAuthStateChanged(auth, async (u) => {
+          setUser(u);
 
-        if (u) {
-          // Wait just a beat to make sure RevenueCat finished configuring
-          setTimeout(async () => {
-            try {
-              const isConfigured = await Purchases.isConfigured();
-              if (isConfigured) {
-                await Purchases.logIn(u.uid);
-                const customerInfo = await Purchases.getCustomerInfo();
-                setIsProStatus(!!customerInfo?.entitlements?.active?.[ENTITLEMENT_ID]);
+          if (u) {
+            setTimeout(async () => {
+              try {
+                const isConfigured = await Purchases.isConfigured();
+                if (isConfigured) {
+                  await Purchases.logIn(u.uid);
+                  const customerInfo = await Purchases.getCustomerInfo();
+                  setIsProStatus(!!customerInfo?.entitlements?.active?.[ENTITLEMENT_ID]);
+                }
+              } catch (e) {
+                console.log("Auth Sync Error:", e.message);
               }
-            } catch (e) {
-              console.log("Auth Sync Error:", e.message);
-            }
-          }, 500); // 500ms delay
-        } else {
-          setIsProStatus(false);
-          await Purchases.logOut().catch(() => { });
-        }
-        setLoading(false);
-      });
-      return unsubscribe;
-    }, []);
+            }, 500);
+          } else {
+            setIsProStatus(false);
+            await Purchases.logOut().catch(() => { });
+          }
+          setLoading(false);
+        });
+        return unsubscribe;
+      }, []);
 
   // --- 3. THE MASTER PRO CHECK ---
   const isPro = useMemo(() => {
-    // 1. RevenueCat (Real Purchase)
     if (isProStatus === true) {
       return true;
     }
-
-    // 2. Firestore Role Override (Admin/Tester)
-    // We use optional chaining (?.) so it doesn't crash if profile is loading
-    if (profile?.role === 'admin' || profile?.role === 'tester') {
+    const userRole = typeof profile?.role === 'string' ? profile.role.toLowerCase() : '';
+    if (userRole === 'admin' || userRole === 'tester' || profile?.subscription === 'pro') {
       return true;
     }
-
-    // 3. Default to Locked
     return false;
   }, [isProStatus, profile]);
 
@@ -308,7 +291,7 @@ export default function App() {
     }
   };
 
-// --- 5. RESTORED FIRESTORE LISTENERS (Crash-Proof Version) ---
+  // --- 5. NATIVE FIRESTORE LISTENERS ---
     useEffect(() => {
       setSelectedHistoryDate(new Date(currentDate));
     }, [currentDate]);
@@ -316,46 +299,41 @@ export default function App() {
     useEffect(() => {
       if (!user) return;
 
-      // 1. Listen to Logs
+      // 1. NEW MODULAR SYNTAX: Native Listener for Logs
       const logsRef = collection(db, 'users', user.uid, 'logs');
       const unsubLogs = onSnapshot(logsRef, (snap) => {
-        const newLogs = {};
-        snap.forEach(d => newLogs[d.id] = d.data());
-        setLogs(newLogs);
-      }, (error) => console.log("Logs Error:", error));
+          const newLogs = {};
+          snap?.forEach(d => newLogs[d.id] = d.data());
+          setLogs(newLogs);
+        }, (error) => console.log("Logs Error:", error));
 
-      // 2. Listen to Profile (Replaced with Safer Logic)
+      // 2. NEW MODULAR SYNTAX: Native Listener for Profile
       const profileRef = doc(db, 'users', user.uid, 'settings', 'profile');
-
-      // Switch to onSnapshot for real-time updates & better stability
       const unsubProfile = onSnapshot(profileRef, (snap) => {
-        if (snap.exists()) {
-          const data = snap.data();
-          const now = new Date();
-          const currentSeasonStartYear = now.getMonth() < 6 ? now.getFullYear() - 1 : now.getFullYear();
+          if (snap && snap.exists()) { // <-- Note the parentheses on exists()
+            const data = snap.data();
+            const now = new Date();
+            const currentSeasonStartYear = now.getMonth() < 6 ? now.getFullYear() - 1 : now.getFullYear();
 
-          // This 'fallback' logic prevents the app from reading "undefined" and crashing
-          setProfile(prev => ({
-              ...prev,
-              captainName: data.captainName || prev.captainName || '',
-              boatName: data.boatName || prev.boatName || 'New Boat',
-              lat: data.lat || null,
-              lng: data.lng || null,
-              role: data.role || 'user',
-              seasons: data.seasons || {},
-              ...data
-          }));
+            setProfile(prev => ({
+                ...prev,
+                captainName: data.captainName || prev.captainName || '',
+                boatName: data.boatName || prev.boatName || 'New Boat',
+                lat: data.lat || null,
+                lng: data.lng || null,
+                role: data.role || 'user',
+                seasons: data.seasons || {},
+                ...data
+            }));
 
-          // Sync years only if not set
-          setHistoryYear(currentSeasonStartYear);
-          setManageYear(currentSeasonStartYear);
-        } else {
-          // Fallback for brand new accounts
-          setProfile({ captainName: '', boatName: 'New Boat', seasons: {}, role: 'user' });
-        }
-      }, (error) => {
-         console.log("Profile Sync Error:", error.message);
-      });
+            setHistoryYear(currentSeasonStartYear);
+            setManageYear(currentSeasonStartYear);
+          } else {
+            setProfile({ captainName: '', boatName: 'New Boat', seasons: {}, role: 'user' });
+          }
+        }, (error) => {
+           console.log("Profile Sync Error:", error.message);
+        });
 
       return () => {
         unsubLogs();
@@ -500,17 +478,15 @@ export default function App() {
     }
   };
 
-// --- 6. SAVE LOG DATA (Single, Crash-Proof Version) ---
+// --- 6. NATIVE SAVE LOG DATA ---
   const saveLogData = async (data = formData) => {
       if (!user) return;
       setSaving(true);
 
-      // SAFETY 1: Guarantee we have a string to split
       const safeDateId = dateId || formatDateId(new Date());
       const [year, month, day] = safeDateId.split('-').map(Number);
 
       try {
-          // SAFETY 2: Use ?? to cleanly catch null/undefined
           let finalData = {
               lbs: String(data.lbs ?? '0'),
               price: String(data.price ?? '0'),
@@ -523,39 +499,53 @@ export default function App() {
               weather: Array.isArray(data.weather) ? data.weather : []
           };
 
-          if (isPro) {
+          let needsWeatherSync = false;
+
+          // NEW FIX: Did the user manually type in a wind speed?
+          const hasManualWind = data.wind && data.wind.trim() !== '';
+
+          // Only auto-fetch if they are Pro AND they left the wind field blank
+          if (isPro && !hasManualWind) {
               try {
                   const lat = profile?.lat || '43.4426';
                   const lng = profile?.lng || '-65.6290';
 
-                  const weatherAvg = await getAverageWeather(lat, lng);
+                  const weatherPromise = getAverageWeather(lat, lng, safeDateId);
+                  const timeoutPromise = new Promise((_, reject) =>
+                      setTimeout(() => reject(new Error("Timeout: Assumed offshore")), 4000)
+                  );
+
+                  const weatherAvg = await Promise.race([weatherPromise, timeoutPromise]);
 
                   if (weatherAvg) {
                     finalData.wind = String((weatherAvg.avgWindKnots || 0).toFixed(1));
                     finalData.swell = String((weatherAvg.avgSwellMeters || 0).toFixed(1));
                     finalData.gust = String((weatherAvg.avgGustKnots || 0).toFixed(1));
-                    // Wrap the direction in String() just in case
                     finalData.windDir = String(getWindDirection(weatherAvg.avgDirection) ?? '');
+                  } else {
+                    console.log("Weather returned null, flagging for background sync.");
+                    needsWeatherSync = true;
                   }
               } catch (weatherErr) {
-                  console.log("Weather fetch failed, skipping auto-fill.");
+                  console.log("Weather fetch failed or timed out, flagging for background sync.");
+                  needsWeatherSync = true;
               }
           }
 
-          // SAFETY 3: Build a clean payload without relying on JSON.parse hacks
           const payload = {
               ...finalData,
               dateId: safeDateId,
               year: year || new Date().getFullYear(),
               month: month || new Date().getMonth() + 1,
               day: day || new Date().getDate(),
-              updatedAt: new Date().toISOString()
+              updatedAt: new Date().toISOString(),
+              needsWeatherSync
           };
 
-          const logRef = doc(db, 'users', user.uid, 'logs', safeDateId);
-          await setDoc(logRef, payload, { merge: true });
+          const logDocRef = doc(db, 'users', user.uid, 'logs', safeDateId);
+          await setDoc(logDocRef, payload, { merge: true });
 
-          Alert.alert("Log Saved", isPro && finalData.wind ? "Weather updated automatically." : "Saved.");
+          Alert.alert("Log Saved", isPro && !hasManualWind && finalData.wind ? "Weather updated automatically." : "Saved.");
 
       } catch (e) {
           Alert.alert("Save Error", e.message);
@@ -563,7 +553,6 @@ export default function App() {
           setSaving(false);
       }
   };
-
   const handleGetCurrentLocation = async () => {
       setIsFetchingLocation(true);
       try {
@@ -597,10 +586,7 @@ export default function App() {
     setLocationModalVisible(false);
     if (user) {
       const profileRef = doc(db, 'users', user.uid, 'settings', 'profile');
-      await setDoc(profileRef, {
-        lat: tempLat,
-        lng: tempLng
-      }, { merge: true });
+            await setDoc(profileRef, { lat: tempLat, lng: tempLng }, { merge: true });
       Alert.alert("Location Saved", "Weather and charts will update automatically.");
     }
   };
@@ -623,27 +609,29 @@ export default function App() {
       notes: formData.notes ? formData.notes + '\nDid not go out. ' : 'Did not go out. '
     };
     setFormData(skipped);
-    handleSave(skipped);
+    saveLogData(skipped);
   };
 
   const handleLoginSubmit = async () => {
-    if (!email || !password) {
-      Alert.alert("Error", "Please enter both email and password.");
-      return;
-    }
-    setAuthLoading(true);
-    try {
-      if (isRegistering) {
-        await createUserWithEmailAndPassword(auth, email, password);
-      } else {
-        await signInWithEmailAndPassword(auth, email, password);
+      if (!email || !password) {
+        Alert.alert("Error", "Please enter both email and password.");
+        return;
       }
-    } catch (err) {
-      Alert.alert("Authentication Error", err.message);
-    } finally {
-      setAuthLoading(false);
-    }
-  };
+      setAuthLoading(true);
+      try {
+        if (isRegistering) {
+          // NEW MODULAR SYNTAX
+          await createUserWithEmailAndPassword(auth, email, password);
+        } else {
+          // NEW MODULAR SYNTAX
+          await signInWithEmailAndPassword(auth, email, password);
+        }
+      } catch (err) {
+        Alert.alert("Authentication Error", err.message);
+      } finally {
+        setAuthLoading(false);
+      }
+    };
 
   const handleResetSeason = async () => {
     Alert.alert(
@@ -656,10 +644,8 @@ export default function App() {
           style: "destructive",
           onPress: async () => {
             try {
-              // Save the "Now" timestamp as the start of the new season
-              await setDoc(doc(db, 'users', user.uid, 'settings', 'seasonConfig'), {
-                baitSeasonStart: new Date().toISOString()
-              }, { merge: true });
+              const seasonRef = doc(db, 'users', user.uid, 'settings', 'seasonConfig');
+                            await setDoc(seasonRef, { baitSeasonStart: new Date().toISOString() }, { merge: true });
               Alert.alert("Season Reset", "Bait stats have been cleared for the new season!");
             } catch (e) {
               Alert.alert("Error", e.message);
@@ -678,7 +664,6 @@ export default function App() {
       </View>
     );
   }
-  if (loading) return <View style={[styles.container, styles.center]}><ActivityIndicator size="large" color="#1E3A8A" /></View>;
   if (!user) return (
     <LoginScreen
       isRegistering={isRegistering}
@@ -694,14 +679,6 @@ export default function App() {
 
   const editSeasonConfig = (profile.seasons && profile.seasons[manageYear]) || getDefaultSeasonConfig(manageYear);
 
-  if (!isReady || loading) {
-      return (
-        <View style={[styles.container, styles.center]}>
-          <ActivityIndicator size="large" color="#1E3A8A" />
-          <Text style={{ marginTop: 10, color: '#1E3A8A' }}>Loading LobsterLog...</Text>
-        </View>
-      );
-    }
   return (
     <View style={styles.masterContainer}>
       <StatusBar barStyle="light-content" backgroundColor="#1E3A8A" />
@@ -773,7 +750,7 @@ export default function App() {
 
                   <BaitStats user={user} isPro={isPro} onUnlock={() => setPaywallVisible(true)} />
 
-                  {/* RESET SEASON BUTTON (Now located below the graph) */}
+                  {/* RESET SEASON BUTTON */}
                   <TouchableOpacity
                     onPress={handleResetSeason}
                     style={{
@@ -782,7 +759,7 @@ export default function App() {
                       backgroundColor: '#FEF2F2',
                       padding: 12,
                       borderRadius: 12,
-                      marginTop: 20, // Space it out from the graph
+                      marginTop: 20,
                       marginBottom: 20,
                       borderWidth: 1,
                       borderColor: '#FECACA',
@@ -928,7 +905,7 @@ export default function App() {
                       </Text>
                     </View>
                     <TouchableOpacity
-                      style={[styles.outlineButton]} // Remove the opacity reduction so it looks clickable
+                      style={[styles.outlineButton]}
                       onPress={() => {
                         if (!isPro) {
                           setPaywallVisible(true);
@@ -965,8 +942,8 @@ export default function App() {
                     <TouchableOpacity style={styles.saveButton} onPress={async () => {
                       if (!user) return;
                       try {
-                        const profileRef = doc(db, 'users', user.uid, 'settings', 'profile');
-                        await setDoc(profileRef, profile);
+                        const profRef = doc(db, 'users', user.uid, 'settings', 'profile');
+                                                await setDoc(profRef, profile);
                         Alert.alert("Success", "Settings saved!");
                       } catch (e) { Alert.alert("Error", e.message); }
                     }}><Text style={styles.saveButtonText}>Save Settings</Text></TouchableOpacity>
@@ -982,7 +959,7 @@ export default function App() {
                         if (isPro) {
                           setTutorialVisible(true);
                         } else {
-                          setPaywallVisible(true); // <--- This now opens the paywall!
+                          setPaywallVisible(true);
                         }
                       }}
                       style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F1F5F9', padding: 16, borderRadius: 12, marginBottom: 12 }}
@@ -1000,10 +977,10 @@ export default function App() {
                     <TouchableOpacity
                       onPress={handleManageSubscription}
                       style={{
-                        backgroundColor: '#e2e8f0', // Light Gray
+                        backgroundColor: '#e2e8f0',
                         padding: 16,
                         borderRadius: 12,
-                        marginBottom: 12, // Space between this and Log Out
+                        marginBottom: 12,
                         alignItems: 'center',
                         flexDirection: 'row',
                         justifyContent: 'center'
@@ -1014,8 +991,8 @@ export default function App() {
                       </Text>
                     </TouchableOpacity>
 
-                    {/* 2. SIGN OUT (This should be next!) */}
-                    <TouchableOpacity style={styles.outlineButton} onPress={() => signOut(auth)}>
+                    {/* 2. SIGN OUT */}
+                    <TouchableOpacity style={styles.outlineButton} onPress={() => auth().signOut()}>
                       <LogOut size={16} color="#475569" />
                       <Text style={styles.outlineButtonText}>Sign Out</Text>
                     </TouchableOpacity>
@@ -1028,8 +1005,8 @@ export default function App() {
                           text: "Delete", style: "destructive", onPress: async () => {
                             try {
                               const userRef = doc(db, 'users', user.uid);
-                              await deleteDoc(userRef);
-                              await deleteUser(auth.currentUser);
+                                                            await deleteDoc(userRef);
+                                                            await deleteUser(auth.currentUser);
                             } catch (error) { Alert.alert("Error", error.message); }
                           }
                         }
@@ -1087,15 +1064,10 @@ export default function App() {
         </View>
       </Modal>
 
-
-      {/* --- TUTORIAL MODAL (WITH WEATHER PANEL) --- */}
+      {/* --- TUTORIAL MODAL --- */}
       <Modal animationType="slide" transparent={true} visible={tutorialVisible} onRequestClose={() => setTutorialVisible(false)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.95)', justifyContent: 'center', alignItems: 'center' }}>
-
-          {/* Fixed Width Container */}
           <View style={{ backgroundColor: 'white', borderRadius: 24, width: 340, paddingVertical: 24, height: '75%' }}>
-
-            {/* Header */}
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 10 }}>
               <Text style={{ fontSize: 22, fontWeight: '900', color: '#0F172A' }}>LobsterLog Guide</Text>
               <TouchableOpacity onPress={() => setTutorialVisible(false)} style={{ padding: 8, backgroundColor: '#F1F5F9', borderRadius: 20 }}>
@@ -1103,15 +1075,7 @@ export default function App() {
               </TouchableOpacity>
             </View>
 
-            {/* ScrollView */}
-            <ScrollView
-              horizontal
-              pagingEnabled
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ alignItems: 'center' }}
-            >
-
-              {/* SLIDE 1: THE LOG */}
+            <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} contentContainerStyle={{ alignItems: 'center' }}>
               <View style={{ width: 340, paddingHorizontal: 20, alignItems: 'center' }}>
                 <View style={{ height: 160, width: '100%', backgroundColor: '#EFF6FF', borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }}>
                   <Scale size={64} color="#3B82F6" />
@@ -1124,7 +1088,6 @@ export default function App() {
                 </Text>
               </View>
 
-              {/* SLIDE 2: AUTOMATIC WEATHER (NEW) */}
               <View style={{ width: 340, paddingHorizontal: 20, alignItems: 'center' }}>
                 <View style={{ height: 160, width: '100%', backgroundColor: '#E0F2FE', borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }}>
                   <Wind size={64} color="#0EA5E9" />
@@ -1137,7 +1100,6 @@ export default function App() {
                 </Text>
               </View>
 
-              {/* SLIDE 3: MAP BASICS */}
               <View style={{ width: 340, paddingHorizontal: 20, alignItems: 'center' }}>
                 <View style={{ height: 160, width: '100%', backgroundColor: '#F0FDF4', borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }}>
                   <MapPin size={64} color="#22C55E" />
@@ -1150,7 +1112,6 @@ export default function App() {
                 </Text>
               </View>
 
-              {/* SLIDE 4: THE SWAP CYCLE */}
               <View style={{ width: 340, paddingHorizontal: 20, alignItems: 'center' }}>
                 <View style={{ height: 160, width: '100%', backgroundColor: '#FEF2F2', borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }}>
                   <Layers size={64} color="#EF4444" />
@@ -1165,7 +1126,6 @@ export default function App() {
                 </Text>
               </View>
 
-              {/* SLIDE 5: DATA ENTRY */}
               <View style={{ width: 340, paddingHorizontal: 20, alignItems: 'center' }}>
                 <View style={{ height: 160, width: '100%', backgroundColor: '#FFF7ED', borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }}>
                   <Save size={64} color="#F97316" />
@@ -1180,7 +1140,6 @@ export default function App() {
                 </Text>
               </View>
 
-              {/* SLIDE 6: HEATMAP */}
               <View style={{ width: 340, paddingHorizontal: 20, alignItems: 'center' }}>
                 <View style={{ height: 160, width: '100%', backgroundColor: '#F5F3FF', borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }}>
                   <TrendingUp size={64} color="#8B5CF6" />
@@ -1197,10 +1156,8 @@ export default function App() {
 
             </ScrollView>
 
-            {/* Pagination & Button */}
             <View style={{ alignItems: 'center', width: '100%', paddingHorizontal: 20 }}>
               <Text style={{ color: '#94A3B8', fontSize: 12, fontWeight: 'bold', marginBottom: 15 }}>SWIPE FOR MORE →</Text>
-
               <TouchableOpacity onPress={() => setTutorialVisible(false)} style={{ backgroundColor: '#0F172A', paddingVertical: 16, width: '100%', borderRadius: 16, alignItems: 'center' }}>
                 <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>Got it, Let's Fish</Text>
               </TouchableOpacity>
@@ -1209,6 +1166,7 @@ export default function App() {
           </View>
         </View>
       </Modal>
+
       {isReady && (
         <PaywallModal
           visible={paywallVisible}

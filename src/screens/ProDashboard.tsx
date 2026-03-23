@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import {
-    Lock, Navigation, Waves, Wind, Thermometer, TrendingUp, History // <-- Added History icon
+    Lock, Navigation, Waves, Wind, Thermometer, TrendingUp, History
 } from 'lucide-react-native';
 
 // Imports
 import { styles } from '../styles/GlobalStyles';
 import TideArrow from '../components/TideArrow';
 import { getWeatherData } from '../utils/weatherService';
-import { DailyHistoryModal } from '../components/DailyHistoryModal'; // <-- Added Modal Import
-import { auth } from '../../firebaseConfig'; // <-- Added Auth for Firebase
+import { TrawlHistoryModal } from '../components/TrawlHistoryModal';
+
+// NATIVE FIREBASE IMPORT
+import { auth } from '../../firebaseConfig';
 
 const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
     // Weather Data State
@@ -21,11 +23,12 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
 
     // New Logbook State
     const [historyModalVisible, setHistoryModalVisible] = useState(false);
+
+    // NATIVE AUTH CALL
     const [currentUser] = useState(user || auth.currentUser);
 
     // Fetch Data using the new Service
     useEffect(() => {
-        // GUARD: Don't fetch if lat/lng are missing OR if they match the simulator fallback exactly
         const isFallback = (lat === '43.4426' || lat === 43.4426);
 
         if (isPro && lat && lng && !isFallback) {
@@ -49,8 +52,6 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
     const processWeather = (weatherData: any) => {
         const now = new Date();
         if (weatherData.hours && weatherData.hours.length > 0) {
-
-            // 1. PREP STEP: Calculate "Real" Waves and "Dominant" Direction for every hour
             const processedHours = weatherData.hours.map((h: any) => {
                 const wHeight = getValue(h.windWaveHeight);
                 const sHeight = getValue(h.swellHeight);
@@ -73,15 +74,10 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
                 };
             });
 
-            // 2. USE THE PREPPED DATA: Update your state with the processed hours
             setCurrent(processedHours[0]);
-
             const allFutureHours = processedHours.filter((h: any) => new Date(h.time) > now);
-
-            // 3-Day Forecast
             setForecast(allFutureHours.slice(0, 72));
 
-            // Long Range
             const distantData = allFutureHours.slice(72).filter((h: any) => {
                 const hour = new Date(h.time).getHours();
                 return hour === 6 || hour === 18;
@@ -90,7 +86,6 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
         }
     };
 
-    // Helpers
     const getValue = (dataObj: any) => {
         if (!dataObj) return 0;
         return dataObj.meteo || dataObj.dwd || dataObj.sg || dataObj.noaa || 0;
@@ -98,13 +93,7 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
 
     const formatTime = (isoString: string) => {
         if (!isoString) return '--:--';
-
-        // 1. Create the date object from the UTC string
         const date = new Date(isoString);
-
-        // 2. Use 'en-GB' or 'en-CA' with the specific Halifax timezone.
-        // This forces the calculation to be UTC - 4 hours (AST)
-        // or UTC - 3 hours (ADT) based on the date.
         return date.toLocaleTimeString('en-CA', {
             hour: 'numeric',
             minute: '2-digit',
@@ -116,13 +105,13 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
     const formatDate = (isoString: string) => {
         if (!isoString) return '--';
         const date = new Date(isoString);
-        // This ensures the date label matches the time you are seeing
         return date.toLocaleDateString('en-US', {
             weekday: 'short',
             month: 'short',
             day: 'numeric'
         });
     };
+
     const getDirectionText = (degrees: number) => {
         if (degrees === undefined || degrees === null) return '--';
         const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
@@ -181,21 +170,16 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
                             <Text style={styles.proTime}>{new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</Text>
                         </View>
 
-                        {/* --- NEW BUTTON ROW START --- */}
                         <View style={{flexDirection: 'row', gap: 10}}>
-                            {/* History Logbook Button */}
                             <TouchableOpacity onPress={() => setHistoryModalVisible(true)} style={{backgroundColor: '#334155', padding: 8, borderRadius: 8, justifyContent: 'center', alignItems: 'center'}}>
                                 <History size={18} color="#FBBF24" />
                             </TouchableOpacity>
 
-                            {/* Existing Open Chart Button */}
                             <TouchableOpacity onPress={onOpenMap} style={{backgroundColor: '#334155', padding: 8, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 6}}>
                                 <Text style={{color: '#FBBF24', fontWeight: 'bold', fontSize: 12}}>OPEN CHART</Text>
                                 <Navigation size={18} color="#FBBF24" />
                             </TouchableOpacity>
                         </View>
-                        {/* --- NEW BUTTON ROW END --- */}
-
                     </View>
                 </View>
 
@@ -203,9 +187,8 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
                     <ActivityIndicator size="large" color="#FBBF24" style={{marginTop: 50}} />
                 ) : current ? (
                     <View>
-                        {/* --- 1. CURRENT CONDITIONS --- */}
+                        {/* CURRENT CONDITIONS */}
                         <View style={styles.weatherGrid}>
-                             {/* Tide Card */}
                             <View style={styles.weatherCard}>
                                 <View style={[styles.weatherIconBox, {
                                     transform: [{ rotate: `${getValue(current.currentDirection)}deg` }],
@@ -218,14 +201,12 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
                                     {(getValue(current.currentSpeed) * 1.94384).toFixed(1)} kts{' '}
                                 </Text>
                             </View>
-                            {/* Wind Card */}
                             <View style={styles.weatherCard}>
                                 <View style={styles.weatherIconBox}><Wind size={24} color="#10B981" /></View>
                                 <Text style={styles.weatherLabel}>WIND</Text>
                                 <Text style={styles.weatherValue}>{(getValue(current.windSpeed) * 1.94384).toFixed(1)} kts</Text>
                                 <Text style={styles.weatherSub}>{getDirectionText(getValue(current.windDirection))}</Text>
                             </View>
-                            {/* Combined Sea Card */}
                             <View style={styles.weatherCard}>
                                 <View style={styles.weatherIconBox}>
                                     <Waves size={24} color="#3B82F6" />
@@ -235,7 +216,6 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
                                     {current.realWaveHeight?.toFixed(1) || '--'} m
                                 </Text>
                             </View>
-                            {/* Temp Card */}
                             <View style={styles.weatherCard}>
                                 <View style={styles.weatherIconBox}><Thermometer size={24} color="#EF4444" /></View>
                                 <Text style={styles.weatherLabel}>AIR TEMP</Text>
@@ -244,7 +224,7 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
                             </View>
                         </View>
 
-                        {/* --- 2. TIDES SECTION --- */}
+                        {/* TIDES SECTION */}
                         <View style={styles.sectionContainer}>
                             <Text style={styles.sectionTitle}>Tides (Today)</Text>
                             {tides && tides.length > 0 ? (
@@ -272,7 +252,7 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
                             )}
                         </View>
 
-                        {/* --- 3. HOURLY FORECAST --- */}
+                        {/* HOURLY FORECAST */}
                         <View style={styles.sectionContainer}>
                             <Text style={styles.sectionTitle}>3 Day Forecast (Hourly)</Text>
                             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -309,7 +289,7 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
                             </ScrollView>
                         </View>
 
-                        {/* --- 4. LONG RANGE OUTLOOK --- */}
+                        {/* LONG RANGE OUTLOOK */}
                         <View style={styles.sectionContainer}>
                             <Text style={styles.sectionTitle}>Long Range Outlook (Days 4-10)</Text>
                             {longRange.map((hour, index) => (
@@ -349,8 +329,7 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
                 <View style={{height: 40}} />
             </ScrollView>
 
-            {/* --- NEW LOGBOOK MODAL --- */}
-            <DailyHistoryModal
+            <TrawlHistoryModal
                 visible={historyModalVisible}
                 onClose={() => setHistoryModalVisible(false)}
                 currentUser={currentUser}
