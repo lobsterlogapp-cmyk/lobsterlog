@@ -95,13 +95,13 @@ packagingOptions {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.Nickerson.LobsterLog'
+    namespace 'com.lobsterlog'
     defaultConfig {
-        applicationId 'com.Nickerson.LobsterLog'
+        applicationId 'com.lobsterlog'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 51
-        versionName "1.7.5"
+        versionCode 59
+        versionName "1.7.9"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }

@@ -3,6 +3,10 @@
 // ⚠️ YOUR API KEYS
 export const STORMGLASS_API_KEY = process.env.EXPO_PUBLIC_STORMGLASS_API_KEY;
 
+// Cache for getAverageWeather to prevent burning API calls
+const weatherCache: Record<string, { data: any; fetchedAt: number }> = {};
+const CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
 // 1. Format Date for IDs (YYYY-MM-DD)
 export function formatDateId(date: Date): string {
     const yyyy = date.getFullYear();
@@ -44,6 +48,13 @@ export function getDefaultSeasonConfig(startYear: number) {
 // 5. PRO FEATURE: 24-Hour Weather Averages & Max Swell
 export async function getAverageWeather(lat: string | number, lng: string | number, dateId: string | null = null) {
     try {
+        const cacheKey = `${lat},${lng},${dateId}`;
+        const cached = weatherCache[cacheKey];
+        if (cached && Date.now() - cached.fetchedAt < CACHE_TTL) {
+          console.log('Using cached weather for', cacheKey);
+          return cached.data;
+        }
+
         const targetDate = dateId ? new Date(`${dateId}T12:00:00`) : new Date();
 
         const start = new Date(targetDate);
@@ -91,12 +102,14 @@ export async function getAverageWeather(lat: string | number, lng: string | numb
         let avgDeg = avgRad * (180 / Math.PI);
         if (avgDeg < 0) avgDeg += 360;
 
-        return {
+        const result = {
             avgWindKnots: (totalWind / count) * 1.94384,
             avgGustKnots: (totalGust / count) * 1.94384,
             avgSwellMeters: maxSwell,
             avgDirection: avgDeg
         };
+        weatherCache[cacheKey] = { data: result, fetchedAt: Date.now() };
+        return result;
 
     } catch (error) {
         console.log("Weather fetch failed:", error);

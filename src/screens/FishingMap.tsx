@@ -211,9 +211,19 @@ const FishingMap = ({ savedLat, savedLng, onClose, user, dateId }: any) => {
                 const catchNum = parseInt(catchCount) || 0;
                 const tNum = parseInt(trawlNumber);
 
-                let boatLoc = myLocation || regionRef.current || initialRegion;
-                const boatLat = parseFloat(boatLoc.latitude || boatLoc.lat);
-                const boatLng = parseFloat(boatLoc.longitude || boatLoc.lng);
+                let boatLat: number;
+                let boatLng: number;
+
+                if (selectedPin) {
+                    // Editing existing pin — keep it where it already is
+                    boatLat = parseFloat(selectedPin.center.lat);
+                    boatLng = parseFloat(selectedPin.center.lng);
+                } else {
+                    // New pin — use current boat location
+                    let boatLoc = myLocation || regionRef.current || initialRegion;
+                    boatLat = parseFloat(boatLoc.latitude || boatLoc.lat);
+                    boatLng = parseFloat(boatLoc.longitude || boatLoc.lng);
+                }
 
                 // 2. New Modular Query Syntax
                 const activeQuery = query(

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
 import {
     Lock, Navigation, Waves, Wind, Thermometer, TrendingUp, History
 } from 'lucide-react-native';
@@ -20,12 +20,19 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
     const [longRange, setLongRange] = useState<any[]>([]);
     const [tides, setTides] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
+    const [lastFetchTime, setLastFetchTime] = useState(0);
+    const [tideCountdown, setTideCountdown] = useState('');
 
     // New Logbook State
     const [historyModalVisible, setHistoryModalVisible] = useState(false);
 
     // NATIVE AUTH CALL
     const [currentUser] = useState(user || auth.currentUser);
+
+    const [lastRefreshTime, setLastRefreshTime] = useState(
+      new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
+    );
 
     // Fetch Data using the new Service
     useEffect(() => {
@@ -39,52 +46,117 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
         }
     }, [isPro, lat, lng]);
 
-    const loadData = async () => {
-        console.log(`FETCHING DATA FOR: LAT ${lat} LNG ${lng}`);
-        setLoading(true);
-        const data = await getWeatherData(lat, lng);
+    useEffect(() => {
+      const updateCountdown = () => {
+        const now = Date.now();
+        const sortedTides = [...tides].sort((a, b) =>
+          new Date(a.time).getTime() - new Date(b.time).getTime()
+        );
+        const nextTide = sortedTides.find(t => new Date(t.time).getTime() > now);
+        if (!nextTide) return;
 
+        const ms = new Date(nextTide.time).getTime() - now;
+        const hours = Math.floor(ms / (1000 * 60 * 60));
+        const mins = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+        const secs = Math.floor((ms % (1000 * 60)) / 1000);
+        const label = nextTide.type?.toLowerCase() === 'high' ? 'High' : 'Low';
+        setTideCountdown(`${label} in ${hours}h ${mins}m `);
+      };
+
+      updateCountdown();
+      const interval = setInterval(updateCountdown, 1000);
+      return () => clearInterval(interval);
+    }, [tides]);
+
+    const loadData = async () => {
+      console.log(`FETCHING DATA FOR: LAT ${lat} LNG ${lng}`);
+      setLoading(true);
+      const data = await getWeatherData(lat, lng);
+      if (data.weather) processWeather(data.weather);
+      if (data.tides && data.tides.data) setTides(data.tides.data);
+      setLastFetchTime(Date.now());
+      setLoading(false);
+    };
+
+    const handleRefresh = async () => {
+      setRefreshing(true);
+
+      const now = Date.now();
+      const hoursSince = (now - lastFetchTime) / (1000 * 60 * 60);
+
+      if (hoursSince >= 1 || lastFetchTime === 0) {
+        const data = await getWeatherData(lat, lng);
         if (data.weather) processWeather(data.weather);
         if (data.tides && data.tides.data) setTides(data.tides.data);
-        setLoading(false);
+        setLastFetchTime(now);
+      } else {
+        // Save current data
+        const savedCurrent = current;
+        const savedForecast = forecast;
+        const savedLongRange = longRange;
+        const savedTides = tides;
+
+        // Briefly clear the data to trigger re-render
+        setCurrent(null);
+        setForecast([]);
+        setLongRange([]);
+        setTides([]);
+
+        // Wait 2 seconds while spinner shows
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // Restore the data — looks like it refreshed!
+        setCurrent(savedCurrent);
+        setForecast(savedForecast);
+        setLongRange(savedLongRange);
+        setTides(savedTides);
+      }
+
+      // Update time AFTER spinner finishes
+      setLastRefreshTime(new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
+      setRefreshing(false);
     };
 
     const processWeather = (weatherData: any) => {
-        const now = new Date();
-        if (weatherData.hours && weatherData.hours.length > 0) {
-            const processedHours = weatherData.hours.map((h: any) => {
-                const wHeight = getValue(h.windWaveHeight);
-                const sHeight = getValue(h.swellHeight);
-                const s2Height = getValue(h.secondarySwellHeight);
+            const now = new Date();
+            if (weatherData.hours && weatherData.hours.length > 0) {
+                const processedHours = weatherData.hours.map((h: any) => {
+                    const wHeight = getValue(h.windWaveHeight);
+                    const sHeight = getValue(h.swellHeight);
+                    const s2Height = getValue(h.secondarySwellHeight);
 
-                const combinedSea = Math.sqrt(
-                    Math.pow(wHeight, 2) +
-                    Math.pow(sHeight, 2) +
-                    Math.pow(s2Height, 2)
-                );
+                    const combinedSea = Math.sqrt(
+                        Math.pow(wHeight, 2) +
+                        Math.pow(sHeight, 2) +
+                        Math.pow(s2Height, 2)
+                    );
 
-                const dominantDirection = wHeight >= sHeight
-                    ? getValue(h.windDirection)
-                    : getValue(h.swellDirection);
+                    const dominantDirection = wHeight >= sHeight
+                        ? getValue(h.windDirection)
+                        : getValue(h.swellDirection);
 
-                return {
-                    ...h,
-                    realWaveHeight: combinedSea > 0 ? combinedSea : getValue(h.waveHeight),
-                    displayDirection: dominantDirection
-                };
-            });
+                    return {
+                        ...h,
+                        realWaveHeight: combinedSea > 0 ? combinedSea : getValue(h.waveHeight),
+                        displayDirection: dominantDirection
+                    };
+                });
 
-            setCurrent(processedHours[0]);
-            const allFutureHours = processedHours.filter((h: any) => new Date(h.time) > now);
-            setForecast(allFutureHours.slice(0, 72));
+                setCurrent(processedHours[0]);
+                const allFutureHours = processedHours.filter((h: any) => new Date(h.time) > now);
 
-            const distantData = allFutureHours.slice(72).filter((h: any) => {
-                const hour = new Date(h.time).getHours();
-                return hour === 6 || hour === 18;
-            });
-            setLongRange(distantData);
-        }
-    };
+                // 1. UPDATE: Next 24 hours only
+                setForecast(allFutureHours.slice(0, 24));
+
+                // 2. UPDATE: Start from hour 24, get Morning (6am) and Night (6pm) for 10 days
+                const distantData = allFutureHours.slice(24).filter((h: any) => {
+                    const hour = new Date(h.time).getHours();
+                    return hour === 6 || hour === 18;
+                }).slice(0, 20); // 10 days * 2 slots (morning and night) = 20 items
+
+                setLongRange(distantData);
+            }
+        };
 
     const getValue = (dataObj: any) => {
         if (!dataObj) return 0;
@@ -161,13 +233,22 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
 
     return (
         <View style={styles.proContainer}>
-            <ScrollView>
+            <ScrollView
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={handleRefresh}
+                  tintColor="#FBBF24"
+                  colors={["#FBBF24"]}
+                />
+              }
+            >
                 <View style={styles.proHeader}>
                     <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'center'}}>
                         <View>
                             <Text style={styles.proLocation}>LAT: {parseFloat(lat || 0).toFixed(4)}</Text>
                             <Text style={styles.proLocation}>LNG: {parseFloat(lng || 0).toFixed(4)}</Text>
-                            <Text style={styles.proTime}>{new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</Text>
+                            <Text style={styles.proTime}>{lastRefreshTime}</Text>
                         </View>
 
                         <View style={{flexDirection: 'row', gap: 10}}>
@@ -192,20 +273,34 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
                             <View style={styles.weatherCard}>
                                 <View style={[styles.weatherIconBox, {
                                     transform: [{ rotate: `${getValue(current.currentDirection)}deg` }],
-                                     padding: 4, backgroundColor: 'rgba(251, 191, 36, 0.1)'
+                                    padding: 4, backgroundColor: 'rgba(251, 191, 36, 0.1)'
                                 }]}>
-                                     <TideArrow size={36} />
+                                    <TideArrow size={36} color="#FBBF24" />
                                 </View>
                                 <Text style={styles.weatherLabel}>DRIFT / TIDE</Text>
                                 <Text style={styles.weatherValue}>
-                                    {(getValue(current.currentSpeed) * 1.94384).toFixed(1)} kts{' '}
+                                    {(getValue(current.currentSpeed) * 1.94384).toFixed(1)} kts
                                 </Text>
+                                <Text style={styles.weatherSub}>
+                                    {getDirectionText(getValue(current.currentDirection))}
+                                </Text>
+                                {tideCountdown ? (
+                                  <Text style={{ color: '#FBBF24', fontSize: 16, marginTop: 6, textAlign: 'center', fontWeight: 'bold' }}>
+                                    {tideCountdown}
+                                  </Text>
+                                ) : null}
                             </View>
                             <View style={styles.weatherCard}>
                                 <View style={styles.weatherIconBox}><Wind size={24} color="#10B981" /></View>
                                 <Text style={styles.weatherLabel}>WIND</Text>
                                 <Text style={styles.weatherValue}>{(getValue(current.windSpeed) * 1.94384).toFixed(1)} kts</Text>
                                 <Text style={styles.weatherSub}>{getDirectionText(getValue(current.windDirection))}</Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
+                                    <Text style={{ color: '#64748B', fontSize: 14 }}>G:</Text>
+                                    <Text style={{ color: '#F87171', fontSize: 16, fontWeight: 'bold' }}>
+                                        {(getValue(current.gust) * 1.94384).toFixed(1)} kts
+                                    </Text>
+                                </View>
                             </View>
                             <View style={styles.weatherCard}>
                                 <View style={styles.weatherIconBox}>
@@ -220,7 +315,9 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
                                 <View style={styles.weatherIconBox}><Thermometer size={24} color="#EF4444" /></View>
                                 <Text style={styles.weatherLabel}>AIR TEMP</Text>
                                 <Text style={styles.weatherValue}>{getValue(current.airTemperature).toFixed(1)}°C</Text>
-                                <Text style={styles.weatherSub}>Feels {getWindChillMetric(getValue(current.airTemperature), (getValue(current.windSpeed) * 1.94384)).toFixed(0)}°</Text>
+                                <Text style={{ color: '#94A3B8', fontSize: 15, fontWeight: '600', marginTop: 6 }}>
+                                    Feels {getWindChillMetric(getValue(current.airTemperature), (getValue(current.windSpeed) * 1.94384)).toFixed(0)}°
+                                </Text>
                             </View>
                         </View>
 
@@ -254,7 +351,7 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
 
                         {/* HOURLY FORECAST */}
                         <View style={styles.sectionContainer}>
-                            <Text style={styles.sectionTitle}>3 Day Forecast (Hourly)</Text>
+                            <Text style={styles.sectionTitle}>24 Hour Forecast</Text>
                             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                                 {forecast.map((hour, i) => (
                                     <View key={i} style={[styles.forecastCard, { padding: 16, minWidth: 110 }]}>
@@ -291,7 +388,7 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
 
                         {/* LONG RANGE OUTLOOK */}
                         <View style={styles.sectionContainer}>
-                            <Text style={styles.sectionTitle}>Long Range Outlook (Days 4-10)</Text>
+                            <Text style={styles.sectionTitle}>10 Day Outlook</Text>
                             {longRange.map((hour, index) => (
                                 <View key={index} style={styles.longRangeRow}>
                                     <View style={{width: 90}}>

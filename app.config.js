@@ -3,13 +3,13 @@ module.exports = {
     name: "LobsterLog",
     slug: "lobsterlog",
     scheme: "lobsterlog",
-    version: "1.7.5",
+    version: "1.7.9",
     icon: "./assets/icon.png",
     ios: {
       bundleIdentifier: "com.Nickerson.LobsterLog",
       googleServicesFile: "./GoogleService-Info.plist",
       supportsTablet: false,
-      buildNumber: "51",
+      buildNumber: "59",
       config: {
         googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY
       },
@@ -42,8 +42,8 @@ module.exports = {
       ]
     ],
     android: {
-      versionCode: 51,
-      package: "com.Nickerson.LobsterLog",
+      versionCode: 59,
+      package: "com.lobsterlog",
       googleServicesFile: "./google-services.json",
       permissions: [
         "com.android.vending.BILLING",

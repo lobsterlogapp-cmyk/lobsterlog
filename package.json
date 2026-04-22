@@ -6,7 +6,8 @@
   "scripts": {
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "lint": "eslint .",
+    "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
+    "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx}\" \"App.tsx\"",
     "start": "expo start",
     "test": "jest"
   },
@@ -38,6 +39,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
+    "@expo/config-plugins": "~54.0.0",
     "@babel/preset-env": "^7.25.3",
     "@babel/runtime": "^7.28.6",
     "@expo/metro-config": "^54.0.13",
