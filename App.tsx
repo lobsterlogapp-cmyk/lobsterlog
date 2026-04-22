@@ -424,25 +424,23 @@ const isAdmin = useMemo(() => {
                         onUnlock={() => setPaywallVisible(true)}
                         lat={profile.lat}
                         lng={profile.lng}
-                      />
-                    ) : view === 'dfo-list' ? (
-                                          <DfoLogsListScreen
-                                            onClose={() => setView('log')}
-                                            onNewLog={() => {
-                                              setEditingLogId(null);
-                                              setView('dfo-demo');
-                                            }}
-                                            onEditLog={(logId) => {
-                                              setEditingLogId(logId);
-                                              setView('dfo-demo');
-                                            }}
-                                          />
-                                        ) : view === 'dfo-demo' ? (
-                                          <DfoDemoScreen
-                                            onClose={() => setView('dfo-list')}
-                                            editingLogId={editingLogId}
-                                          />
-                                        ) : (
+                      />) : view === 'dfo-list' ? (
+                                  <DfoLogsListScreen
+                                    onNewLog={() => {
+                                      setEditingLogId(null);
+                                      setView('dfo-demo');
+                                    }}
+                                    onEditLog={(logId) => {
+                                      setEditingLogId(logId);
+                                      setView('dfo-demo');
+                                    }}
+                                  />
+                                ) : view === 'dfo-demo' ? (
+                                  <DfoDemoScreen
+                                    onClose={() => setView('dfo-list')}
+                                    editingLogId={editingLogId}
+                                  />
+                                ) : (
             <ScrollView
               style={styles.content}
               contentContainerStyle={{ paddingBottom: 60 }}

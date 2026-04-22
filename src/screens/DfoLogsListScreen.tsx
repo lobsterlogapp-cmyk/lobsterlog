@@ -8,17 +8,15 @@ import {
   SafeAreaView,
   Alert,
 } from 'react-native';
-import { ChevronLeft, Plus, FileText, Send, Edit3 } from 'lucide-react-native';
+import { Plus, FileText, Send, Edit3 } from 'lucide-react-native';
 import { loadAllLogs, DfoLog } from '../utils/dfoLogStorage';
 
 interface DfoLogsListScreenProps {
-  onClose: () => void;
   onNewLog: () => void;
   onEditLog: (logId: string) => void;
 }
 
 const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
-  onClose,
   onNewLog,
   onEditLog,
 }) => {
@@ -61,14 +59,9 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={onClose} style={styles.backButton}>
-          <ChevronLeft size={24} color="#1E3A8A" />
-          <Text style={styles.backText}>Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>DFO ELOGs</Text>
-        <View style={{ width: 70 }} />
-      </View>
+            <View style={styles.header}>
+              <Text style={styles.headerTitle}>DFO ELOGs</Text>
+            </View>
 
       <ScrollView
         style={styles.content}
@@ -128,26 +121,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
-  },
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: 70,
-  },
-  backText: {
-    color: '#1E3A8A',
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 2,
-  },
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      backgroundColor: '#FFFFFF',
+      borderBottomWidth: 1,
+      borderBottomColor: '#E2E8F0',
+    },
   headerTitle: {
     color: '#1E293B',
     fontSize: 18,
