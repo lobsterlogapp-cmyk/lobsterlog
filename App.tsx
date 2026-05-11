@@ -91,6 +91,7 @@ import {
 } from './src/utils/helpers';
 
 import { styles } from './src/styles/GlobalStyles';
+import { TimerProvider } from './src/context/TimerContext';
 
 // --- UPDATED MAIN APP COMPONENT ---
 export default function App() {
@@ -331,7 +332,8 @@ const isAdmin = useMemo(() => {
     (profile.seasons && profile.seasons[manageYear]) || getDefaultSeasonConfig(manageYear);
 
   return (
-    <View style={styles.masterContainer}>
+      <TimerProvider>
+      <View style={styles.masterContainer}>
       <StatusBar barStyle="light-content" backgroundColor="#1E3A8A" />
       <View style={styles.header}>
         <View style={styles.headerContent}>
@@ -1026,5 +1028,6 @@ const isAdmin = useMemo(() => {
         />
       )}
     </View>
+        </TimerProvider>
   );
 }

@@ -9,11 +9,13 @@ const TIMEZONE = "America/Halifax";
 let globalCache = {
     weather: null as any,
     tides: null as any,
+    astronomy: null as any,
     lastWeatherFetch: 0,
     lastTideFetch: 0,
+    lastAstronomyFetch: 0,
     lat: 0,
     lng: 0,
-    stations: [] as any[] // Cache the wharf list to save bandwidth
+    stations: [] as any[]
 };
 
 /**
@@ -38,14 +40,15 @@ export const getWeatherData = async (lat: number, lng: number) => {
 
     let result = {
         weather: globalCache.weather,
-        tides: globalCache.tides
+        tides: globalCache.tides,
+        astronomy: globalCache.astronomy
     };
 
     try {
         // A. Weather Fetch (Stormglass)
         if (!isLocSame || !globalCache.weather || (now - globalCache.lastWeatherFetch > WEATHER_TIMEOUT)) {
             console.log("🌊 Fetching NEW Weather...");
-            const params = 'airTemperature,waterTemperature,waveHeight,windWaveHeight,swellHeight,secondarySwellHeight,windSpeed,windDirection,gust,currentSpeed,currentDirection';
+            const params = 'airTemperature,waterTemperature,waveHeight,windWaveHeight,windWaveDirection,swellHeight,secondarySwellHeight,swellDirection,swellPeriod,wavePeriod,windSpeed,windDirection,gust,currentSpeed,currentDirection';
             const resp = await fetch(`https://api.stormglass.io/v2/weather/point?lat=${lat}&lng=${lng}&params=${params}`, {
                             headers: { 'Authorization': process.env.EXPO_PUBLIC_STORMGLASS_API_KEY as string }
                         });
@@ -152,10 +155,29 @@ export const getWeatherData = async (lat: number, lng: number) => {
             }
         }
 
-        // 3. ALWAYS UPDATE POSITION IN CACHE
-        globalCache.lat = lat;
-        globalCache.lng = lng;
-        return result;
+        // C. Astronomy Fetch (Stormglass) — once per day
+                const ASTRONOMY_TIMEOUT = 24 * 60 * 60 * 1000;
+                if (!isLocSame || !globalCache.astronomy || (now - globalCache.lastAstronomyFetch > ASTRONOMY_TIMEOUT)) {
+                    console.log("🌙 Fetching Astronomy...");
+                    const today = new Date().toISOString().split('T')[0];
+                    const astroResp = await fetch(
+                        `https://api.stormglass.io/v2/astronomy/point?lat=${lat}&lng=${lng}&start=${today}&end=${today}`,
+                        { headers: { 'Authorization': process.env.EXPO_PUBLIC_STORMGLASS_API_KEY as string } }
+                    );
+                    const astroJson = await astroResp.json();
+                    console.log("🌙 RAW ASTRO:", JSON.stringify(astroJson));
+                    if (astroJson.data && astroJson.data.length > 0) {
+                        globalCache.astronomy = astroJson.data[0];
+                        globalCache.lastAstronomyFetch = now;
+                        result.astronomy = astroJson.data[0];
+                    }
+
+                }
+
+                // 3. ALWAYS UPDATE POSITION IN CACHE
+                globalCache.lat = lat;
+                globalCache.lng = lng;
+                return result;
 
     } catch (e) {
         console.error("Weather Service Error", e);

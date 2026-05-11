@@ -113,7 +113,7 @@ export const styles = StyleSheet.create({
     proHeader: { padding: 20, backgroundColor: '#0F172A' },
     proLocation: { color: '#94A3B8', fontSize: 12, fontWeight: 'bold', textTransform: 'uppercase' },
     proTime: { color: 'white', fontSize: 32, fontWeight: '300' },
-    weatherGrid: { flexDirection: 'row', flexWrap: 'wrap', padding: 10 },
+    weatherGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 8, paddingTop: 8, paddingBottom: 0 },
     weatherCard: { width: '45%', backgroundColor: '#334155', borderRadius: 16, padding: 16, margin: '2.5%', alignItems: 'center' },
     weatherIconBox: { backgroundColor: 'rgba(255,255,255,0.1)', padding: 10, borderRadius: 50, marginBottom: 10 },
     weatherLabel: { color: '#94A3B8', fontSize: 10, fontWeight: 'bold', marginBottom: 4 },

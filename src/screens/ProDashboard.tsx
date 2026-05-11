@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Animated } from 'react-native';
 import {
     Lock, Navigation, Waves, Wind, Thermometer, TrendingUp, History
 } from 'lucide-react-native';
@@ -23,6 +23,12 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
     const [refreshing, setRefreshing] = useState(false);
     const [lastFetchTime, setLastFetchTime] = useState(0);
     const [tideCountdown, setTideCountdown] = useState('');
+    const [tidePhase, setTidePhase] = useState<'FLOODING' | 'EBBING' | null>(null);
+    const [tideStrength, setTideStrength] = useState<'SLACK' | 'BUILDING' | 'PEAK' | 'EASING' | null>(null);
+    const [slackPulse] = useState(new Animated.Value(1));
+    const [astronomy, setAstronomy] = useState<any>(null);
+    const [seaCharacter, setSeaCharacter] = useState<string>('');
+    const [seaAlignment, setSeaAlignment] = useState<string>('');
 
     // New Logbook State
     const [historyModalVisible, setHistoryModalVisible] = useState(false);
@@ -34,48 +40,93 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
       new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
     );
 
-    // Fetch Data using the new Service
+    const roundedLat = lat ? Math.round(parseFloat(lat) * 10) : 0;
+    const roundedLng = lng ? Math.round(parseFloat(lng) * 10) : 0;
+
     useEffect(() => {
         const isFallback = (lat === '43.4426' || lat === 43.4426);
-
-        if (isPro && lat && lng && !isFallback) {
+        if (isPro && roundedLat && roundedLng && !isFallback) {
             console.log("📍 Valid GPS detected. Loading data for:", lat, lng);
             loadData();
         } else {
             console.log("⏳ Waiting for valid GPS lock...");
         }
-    }, [isPro, lat, lng]);
+    }, [isPro, roundedLat, roundedLng]);
 
     useEffect(() => {
-      const updateCountdown = () => {
-        const now = Date.now();
-        const sortedTides = [...tides].sort((a, b) =>
-          new Date(a.time).getTime() - new Date(b.time).getTime()
-        );
-        const nextTide = sortedTides.find(t => new Date(t.time).getTime() > now);
-        if (!nextTide) return;
+        if (!tideStrength) return;
+        if (tideStrength === 'SLACK') {
+            Animated.loop(
+                Animated.sequence([
+                    Animated.timing(slackPulse, { toValue: 0.3, duration: 800, useNativeDriver: true }),
+                    Animated.timing(slackPulse, { toValue: 1, duration: 800, useNativeDriver: true }),
+                ])
+            ).start();
+        } else {
+            slackPulse.stopAnimation();
+            slackPulse.setValue(1);
+        }
+    }, [tideStrength]);
 
-        const ms = new Date(nextTide.time).getTime() - now;
-        const hours = Math.floor(ms / (1000 * 60 * 60));
-        const mins = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
-        const secs = Math.floor((ms % (1000 * 60)) / 1000);
-        const label = nextTide.type?.toLowerCase() === 'high' ? 'High' : 'Low';
-        setTideCountdown(`${label} in ${hours}h ${mins}m `);
-      };
+    useEffect(() => {
+        const updateCountdown = () => {
+            const now = Date.now();
+            const sortedTides = [...tides].sort((a, b) =>
+                new Date(a.time).getTime() - new Date(b.time).getTime()
+            );
 
-      updateCountdown();
-      const interval = setInterval(updateCountdown, 1000);
-      return () => clearInterval(interval);
+            const prevTide = [...sortedTides].reverse().find(t => new Date(t.time).getTime() <= now);
+            const nextTide = sortedTides.find(t => new Date(t.time).getTime() > now);
+            if (!nextTide) return;
+
+            // Countdown
+            const ms = new Date(nextTide.time).getTime() - now;
+            const hours = Math.floor(ms / (1000 * 60 * 60));
+            const mins = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+            const label = nextTide.type?.toLowerCase() === 'high' ? 'High' : 'Low';
+            setTideCountdown(`${label} in ${hours}h ${mins}m`);
+
+            // FLOOD or EBB
+            if (nextTide.type?.toLowerCase() === 'high') {
+                setTidePhase('FLOOD');
+            } else {
+                setTidePhase('EBB');
+            }
+
+            // Cycle strength — minutes since last tide or until next tide
+            if (prevTide) {
+                const cycleLength = new Date(nextTide.time).getTime() - new Date(prevTide.time).getTime();
+                const elapsed = now - new Date(prevTide.time).getTime();
+                const remaining = new Date(nextTide.time).getTime() - now;
+                const elapsedMins = elapsed / (1000 * 60);
+                const remainingMins = remaining / (1000 * 60);
+
+                if (elapsedMins <= 15 || remainingMins <= 15) {
+                    setTideStrength('SLACK');
+                } else if (elapsedMins <= 120) {
+                    setTideStrength('BUILDING');
+                } else if (elapsedMins <= 240) {
+                    setTideStrength('PEAK');
+                } else {
+                    setTideStrength('EASING');
+                }
+            }
+        };
+
+        updateCountdown();
+        const interval = setInterval(updateCountdown, 1000);
+        return () => clearInterval(interval);
     }, [tides]);
 
     const loadData = async () => {
-      console.log(`FETCHING DATA FOR: LAT ${lat} LNG ${lng}`);
-      setLoading(true);
-      const data = await getWeatherData(lat, lng);
-      if (data.weather) processWeather(data.weather);
-      if (data.tides && data.tides.data) setTides(data.tides.data);
-      setLastFetchTime(Date.now());
-      setLoading(false);
+        console.log(`FETCHING DATA FOR: LAT ${lat} LNG ${lng}`);
+        setLoading(true);
+        const data = await getWeatherData(lat, lng);
+        if (data.weather) processWeather(data.weather);
+        if (data.tides && data.tides.data) setTides(data.tides.data);
+        if (data.astronomy) setAstronomy(data.astronomy);
+        setLastFetchTime(Date.now());
+        setLoading(false);
     };
 
     const handleRefresh = async () => {
@@ -142,7 +193,24 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
                     };
                 });
 
-                setCurrent(processedHours[0]);
+                const now2 = new Date();
+                const closest = processedHours.reduce((prev: any, curr: any) =>
+                    Math.abs(new Date(curr.time).getTime() - now2.getTime()) < Math.abs(new Date(prev.time).getTime() - now2.getTime())
+                        ? curr : prev
+                );
+                setCurrent(closest);
+
+                // Compute sea character from closest hour
+                const swellH = getValue(closest.swellHeight);
+                const windWaveH = getValue(closest.windWaveHeight);
+                const swellP = getValue(closest.swellPeriod);
+                const waveP = getValue(closest.wavePeriod);
+                const windDir = getValue(closest.windDirection);
+                const swellDir = getValue(closest.swellDirection);
+                const windWaveDir = getValue(closest.windWaveDirection);
+                setSeaCharacter(getSeaCharacter(swellP, waveP, swellH, windWaveH));
+                setSeaAlignment(getSeaAlignment(windDir, swellDir, windWaveDir, swellH, windWaveH));
+
                 const allFutureHours = processedHours.filter((h: any) => new Date(h.time) > now);
 
                 // 1. UPDATE: Next 24 hours only
@@ -153,7 +221,6 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
                     const hour = new Date(h.time).getHours();
                     return hour === 6 || hour === 18;
                 }).slice(0, 20); // 10 days * 2 slots (morning and night) = 20 items
-
                 setLongRange(distantData);
             }
         };
@@ -190,7 +257,39 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
         return directions[Math.round(degrees / 45) % 8];
     };
 
+    const getSeaCharacter = (swellPeriod: number, wavePeriod: number, swellHeight: number, windWaveHeight: number): string => {
+        // Weighted average period based on dominant component
+        const totalHeight = swellHeight + windWaveHeight;
+        if (totalHeight === 0) return '--';
+        const dominantPeriod = swellHeight >= windWaveHeight ? swellPeriod : wavePeriod;
+        if (dominantPeriod >= 9) return 'ROLLING';
+        if (dominantPeriod >= 6) return 'MIXED';
+        return 'CHOPPY';
+    };
+
+    const getSeaAlignment = (windDir: number, swellDir: number, windWaveDir: number, swellHeight: number, windWaveHeight: number): string => {
+        // Use dominant component direction
+        const dominantDir = swellHeight >= windWaveHeight ? swellDir : windWaveDir;
+        let angle = Math.abs(windDir - dominantDir);
+        if (angle > 180) angle = 360 - angle;
+        if (angle <= 45) return 'FOLLOWING SEA';
+        if (angle <= 135) return 'CROSSING SEA';
+        return 'WIND AGAINST SEA ⚠';
+    };
+
+    const getMoonEmoji = (phase: number): string => {
+        if (phase < 0.025) return '🌑';
+        if (phase < 0.25) return '🌒';
+        if (phase < 0.475) return '🌓';
+        if (phase < 0.525) return '🌕';
+        if (phase < 0.75) return '🌖';
+        if (phase < 0.975) return '🌗';
+        if (phase < 1.0) return '🌘';
+        return '🌑';
+    };
+
     const getWindChillMetric = (tempC: number, windKts: number) => {
+
         const windKmh = windKts * 1.852;
         if (tempC > 10 || windKmh < 4.8) return tempC;
         return 13.12 + (0.6215 * tempC) - (11.37 * Math.pow(windKmh, 0.16)) + (0.3965 * tempC * Math.pow(windKmh, 0.16));
@@ -270,6 +369,7 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
                     <View>
                         {/* CURRENT CONDITIONS */}
                         <View style={styles.weatherGrid}>
+                            {/* TIDE STATE */}
                             <View style={styles.weatherCard}>
                                 <View style={[styles.weatherIconBox, {
                                     transform: [{ rotate: `${getValue(current.currentDirection)}deg` }],
@@ -277,19 +377,41 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
                                 }]}>
                                     <TideArrow size={36} color="#FBBF24" />
                                 </View>
-                                <Text style={styles.weatherLabel}>DRIFT / TIDE</Text>
-                                <Text style={styles.weatherValue}>
-                                    {(getValue(current.currentSpeed) * 1.94384).toFixed(1)} kts
+                                <Text style={styles.weatherLabel}>TIDE STATE</Text>
+                                <Text style={{
+                                    color: tidePhase === 'FLOODING' ? '#10B981' : '#3B82F6',
+                                    fontSize: 16, fontWeight: '900', marginTop: 4,
+                                    textAlign: 'center', letterSpacing: 1,
+                                }}>
+                                    {tidePhase || '--'}
                                 </Text>
-                                <Text style={styles.weatherSub}>
-                                    {getDirectionText(getValue(current.currentDirection))}
-                                </Text>
+                                {tideStrength === 'SLACK' ? (
+                                    <Animated.Text style={{
+                                        color: '#FBBF24', fontSize: 13, fontWeight: 'bold',
+                                        marginTop: 2, textAlign: 'center', letterSpacing: 1,
+                                        opacity: slackPulse,
+                                    }}>
+                                        SLACK
+                                    </Animated.Text>
+                                ) : (
+                                    <Text style={{
+                                        color: tideStrength === 'BUILDING' ? '#10B981' :
+                                               tideStrength === 'PEAK' ? '#FFFFFF' :
+                                               tideStrength === 'EASING' ? '#64748B' : '#94A3B8',
+                                        fontSize: 13, fontWeight: 'bold', marginTop: 2,
+                                        textAlign: 'center', letterSpacing: 1,
+                                    }}>
+                                        {tideStrength || '--'}
+                                    </Text>
+                                )}
                                 {tideCountdown ? (
-                                  <Text style={{ color: '#FBBF24', fontSize: 16, marginTop: 6, textAlign: 'center', fontWeight: 'bold' }}>
-                                    {tideCountdown}
-                                  </Text>
+                                    <Text style={{ color: '#FBBF24', fontSize: 13, marginTop: 6, textAlign: 'center', fontWeight: 'bold' }}>
+                                        {tideCountdown}
+                                    </Text>
                                 ) : null}
                             </View>
+
+                            {/* WIND */}
                             <View style={styles.weatherCard}>
                                 <View style={styles.weatherIconBox}><Wind size={24} color="#10B981" /></View>
                                 <Text style={styles.weatherLabel}>WIND</Text>
@@ -302,28 +424,126 @@ const ProDashboard = ({ isPro, onOpenMap, onUnlock, lat, lng, user }: any) => {
                                     </Text>
                                 </View>
                             </View>
-                            <View style={styles.weatherCard}>
-                                <View style={styles.weatherIconBox}>
-                                    <Waves size={24} color="#3B82F6" />
+                        </View>
+
+                       {/* SEAS */}
+                       <View style={{ backgroundColor: '#334155', borderRadius: 16, paddingVertical: 10, paddingHorizontal: 16, marginHorizontal: '5%', marginVertical: '2.5%', alignItems: 'center' }}>
+                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                               <Waves size={18} color="#3B82F6" />
+                               <Text style={styles.weatherLabel}>SEAS</Text>
+                           </View>
+                           <Text style={{ color: 'white', fontSize: 28, fontWeight: 'bold', marginBottom: 2 }}>
+                               {current.realWaveHeight?.toFixed(1) || '--'} m
+                           </Text>
+
+                           {/* SWELL + character + WIND WAVE all on one row */}
+                           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginTop: 2 }}>
+                               {/* SWELL - left */}
+                               <View style={{ alignItems: 'center', flex: 1 }}>
+                                   <Text style={{ color: '#64748B', fontSize: 11 }}>SWELL</Text>
+                                   <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>
+                                       {getValue(current.swellHeight).toFixed(1)}m
+                                   </Text>
+                                   <Text style={{ color: '#64748B', fontSize: 11 }}>
+                                       {getValue(current.swellPeriod).toFixed(0)}s · {getDirectionText(getValue(current.swellDirection))}
+                                   </Text>
+                               </View>
+
+                               {/* CENTER - character labels */}
+                               <View style={{ alignItems: 'center', flex: 1 }}>
+                                   <Text style={{
+                                       color: seaCharacter === 'ROLLING' ? '#10B981' :
+                                              seaCharacter === 'MIXED' ? '#FBBF24' : '#F87171',
+                                       fontSize: 13, fontWeight: 'bold', letterSpacing: 1,
+                                   }}>
+                                       {seaCharacter}
+                                   </Text>
+                                   <Text style={{
+                                       color: seaAlignment.includes('⚠') ? '#F87171' :
+                                              seaAlignment === 'CROSSING SEA' ? '#FBBF24' : '#10B981',
+                                       fontSize: 11, fontWeight: 'bold', letterSpacing: 1, textAlign: 'center',
+                                   }}>
+                                       {seaAlignment}
+                                   </Text>
+                               </View>
+
+                               {/* WIND WAVE - right */}
+                               <View style={{ alignItems: 'center', flex: 1 }}>
+                                   <Text style={{ color: '#64748B', fontSize: 11 }}>WIND WAVE</Text>
+                                   <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>
+                                       {getValue(current.windWaveHeight).toFixed(1)}m
+                                   </Text>
+                                   <Text style={{ color: '#64748B', fontSize: 11 }}>
+                                       {getValue(current.wavePeriod).toFixed(0)}s · {getDirectionText(getValue(current.windWaveDirection))}
+                                   </Text>
+                               </View>
+                           </View>
+                       </View>
+
+                        {/* AIR/WATER TEMP + MOON/SUN */}
+                        <View style={{ flexDirection: 'row', marginHorizontal: '5%', marginVertical: '2.5%', gap: '5%' }}>
+                            {/* AIR + WATER TEMP */}
+                            <View style={{ flex: 1, backgroundColor: '#334155', borderRadius: 16, padding: 16, alignItems: 'center' }}>
+                                <View style={{ backgroundColor: 'rgba(255,255,255,0.1)', padding: 10, borderRadius: 50, marginBottom: 10 }}>
+                                    <Thermometer size={24} color="#EF4444" />
                                 </View>
-                                <Text style={styles.weatherLabel}>SEAS</Text>
-                                <Text style={styles.weatherValue}>
-                                    {current.realWaveHeight?.toFixed(1) || '--'} m
+                                <Text style={styles.weatherLabel}>TEMPERATURE</Text>
+                                <Text style={{ color: '#94A3B8', fontSize: 11, fontWeight: 'bold', marginTop: 8 }}>AIR</Text>
+                                <Text style={{ color: 'white', fontSize: 20, fontWeight: 'bold' }}>
+                                    {getValue(current.airTemperature).toFixed(1)}°C
+                                </Text>
+                                <Text style={{ color: '#94A3B8', fontSize: 13, marginTop: 2 }}>
+                                    {((getValue(current.airTemperature) * 9/5) + 32).toFixed(1)}°F
+                                </Text>
+                                <Text style={{ color: '#94A3B8', fontSize: 13, marginTop: 2 }}>
+                                    Feels {getWindChillMetric(getValue(current.airTemperature), (getValue(current.windSpeed) * 1.94384)).toFixed(0)}°C
+                                </Text>
+                                <View style={{ width: '100%', height: 1, backgroundColor: '#475569', marginVertical: 10 }} />
+                                <Text style={{ color: '#94A3B8', fontSize: 11, fontWeight: 'bold' }}>WATER</Text>
+                                <Text style={{ color: 'white', fontSize: 20, fontWeight: 'bold', marginTop: 4 }}>
+                                    {((getValue(current.waterTemperature) * 9/5) + 32).toFixed(1)}°F
                                 </Text>
                             </View>
-                            <View style={styles.weatherCard}>
-                                <View style={styles.weatherIconBox}><Thermometer size={24} color="#EF4444" /></View>
-                                <Text style={styles.weatherLabel}>AIR TEMP</Text>
-                                <Text style={styles.weatherValue}>{getValue(current.airTemperature).toFixed(1)}°C</Text>
-                                <Text style={{ color: '#94A3B8', fontSize: 15, fontWeight: '600', marginTop: 6 }}>
-                                    Feels {getWindChillMetric(getValue(current.airTemperature), (getValue(current.windSpeed) * 1.94384)).toFixed(0)}°
-                                </Text>
+
+                            {/* MOON + SUN */}
+                            <View style={{ flex: 1, backgroundColor: '#334155', borderRadius: 16, padding: 16, alignItems: 'center' }}>
+                                {astronomy ? (
+                                    <>
+                                        <Text style={{ fontSize: 32, marginBottom: 4 }}>
+                                            {getMoonEmoji(astronomy.moonPhase?.current?.value ?? 0)}
+                                        </Text>
+                                        <Text style={{ color: 'white', fontSize: 13, fontWeight: 'bold', textAlign: 'center', marginBottom: 4 }}>
+                                            {astronomy.moonPhase?.current?.text ?? ''}
+                                        </Text>
+                                        <View style={{ width: '100%', height: 1, backgroundColor: '#475569', marginVertical: 8 }} />
+                                        <View style={{ gap: 6, width: '100%' }}>
+                                            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                                                <Text style={{ color: '#64748B', fontSize: 12 }}>FIRST LIGHT</Text>
+                                                <Text style={{ color: '#94A3B8', fontSize: 12 }}>{formatTime(astronomy.nauticalDawn)}</Text>
+                                            </View>
+                                            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                                                <Text style={{ color: '#64748B', fontSize: 12 }}>SUNRISE</Text>
+                                                <Text style={{ color: '#FBBF24', fontSize: 12 }}>{formatTime(astronomy.sunrise)}</Text>
+                                            </View>
+                                            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                                                <Text style={{ color: '#64748B', fontSize: 12 }}>SUNSET</Text>
+                                                <Text style={{ color: '#FBBF24', fontSize: 12 }}>{formatTime(astronomy.sunset)}</Text>
+                                            </View>
+                                            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                                                <Text style={{ color: '#64748B', fontSize: 12 }}>LAST LIGHT</Text>
+                                                <Text style={{ color: '#94A3B8', fontSize: 12 }}>{formatTime(astronomy.nauticalDusk)}</Text>
+                                            </View>
+                                        </View>
+                                    </>
+                                ) : (
+                                    <ActivityIndicator size="small" color="#FBBF24" />
+                                )}
                             </View>
                         </View>
 
                         {/* TIDES SECTION */}
                         <View style={styles.sectionContainer}>
-                            <Text style={styles.sectionTitle}>Tides (Today)</Text>
+                            <Text style={styles.sectionTitle}>Next 4 Tides</Text>
                             {tides && tides.length > 0 ? (
                                 [...tides]
                                     .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
