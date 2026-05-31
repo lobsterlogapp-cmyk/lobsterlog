@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Lock } from 'lucide-react-native';
 
-// NATIVE FIREBASE IMPORT
-import firestore from '@react-native-firebase/firestore';
+import { db } from '../../firebaseConfig';
+import { doc, collection, query, where, onSnapshot } from '@react-native-firebase/firestore';
 
 // Style Import
 import { styles } from '../styles/GlobalStyles';
@@ -16,13 +16,8 @@ const BaitStats = ({ user, isPro, onUnlock }: any) => {
      // NATIVE LISTENER 1: Season Config
      useEffect(() => {
          if (!user) return;
-         const unsubConfig = firestore()
-            .collection('users')
-            .doc(user.uid)
-            .collection('settings')
-            .doc('seasonConfig')
-            .onSnapshot((snap) => {
-                // Note: Native uses snap.exists (property), not snap.exists() (function)
+         const configRef = doc(db, 'users', user.uid, 'settings', 'seasonConfig');
+         const unsubConfig = onSnapshot(configRef, (snap) => {
                 if (snap && snap.exists && snap.data()?.baitSeasonStart) {
                     setSeasonStart(new Date(snap.data()?.baitSeasonStart));
                 } else {
@@ -36,16 +31,13 @@ const BaitStats = ({ user, isPro, onUnlock }: any) => {
      // NATIVE LISTENER 2: Trawl History
      useEffect(() => {
          if (!user) return;
-         const unsubscribe = firestore()
-            .collection('users')
-            .doc(user.uid)
-            .collection('trawls')
-            .where("status", "==", "history")
-            .onSnapshot((snapshot) => {
+         const trawlsRef = collection(db, 'users', user.uid, 'trawls');
+         const trawlsQuery = query(trawlsRef, where("status", "==", "history"));
+         const unsubscribe = onSnapshot(trawlsQuery, (snapshot) => {
                 const baitMap: any = {};
 
-                snapshot?.forEach((doc) => {
-                    const data = doc.data();
+                snapshot?.forEach((trawlDoc) => {
+                    const data = trawlDoc.data();
                     if (seasonStart) {
                         const trawlDate = data.timestamp ? new Date(data.timestamp.toDate ? data.timestamp.toDate() : data.timestamp) : new Date(data.haulDate);
                         if (trawlDate < seasonStart) return;
