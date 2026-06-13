@@ -3,13 +3,13 @@ module.exports = {
     name: "LobsterLog",
     slug: "lobsterlog",
     scheme: "lobsterlog",
-    version: "1.7.14",
+    version: "1.8.6",
     icon: "./assets/icon.png",
     ios: {
       bundleIdentifier: "com.Nickerson.LobsterLog",
       googleServicesFile: "./GoogleService-Info.plist",
       supportsTablet: false,
-      buildNumber: "64",
+      buildNumber: "76",
       config: {
         googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY
       },
@@ -32,17 +32,18 @@ module.exports = {
       ],
       "@react-native-community/datetimepicker",
       "@react-native-firebase/app",
+      "@react-native-firebase/app-check",
       // --- ADDED MAPBOX PLUGIN HERE ---
       [
         "@rnmapbox/maps",
         {
           "RNMapboxMapsImpl": "mapbox",
-          "RNMapboxMapsDownloadToken": process.env.MAPBOX_DOWNLOAD_TOKEN
+          "RNMAPBOX_MAPS_DOWNLOAD_TOKEN": process.env.MAPBOX_DOWNLOADS_TOKEN
         }
       ]
     ],
     android: {
-      versionCode: 64,
+      versionCode: 76,
       package: "com.lobsterlog",
       googleServicesFile: "./google-services.json",
       permissions: [

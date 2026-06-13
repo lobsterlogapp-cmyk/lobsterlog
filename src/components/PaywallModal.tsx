@@ -3,6 +3,8 @@ import { View, Text, Modal, ActivityIndicator, TouchableOpacity, Alert, Linking,
 import Purchases, { PurchasesPackage } from 'react-native-purchases';
 import { Crown } from 'lucide-react-native';
 import { ENTITLEMENT_ID } from '../config/constants';
+import { auth } from '../../firebaseConfig';
+import { runNavionicsPurchase, NAVIONICS_PRODUCT_MONTHLY, NAVIONICS_PRODUCT_ANNUAL } from '../utils/navionicsPurchase';
 
 const PaywallModal = ({ visible, onClose, onPurchaseSuccess, onRestore }: any) => {
     const [offerings, setOfferings] = useState<any>(null);
@@ -41,6 +43,11 @@ const PaywallModal = ({ visible, onClose, onPurchaseSuccess, onRestore }: any) =
             const { customerInfo } = await Purchases.purchasePackage(pack);
             if (customerInfo.entitlements.active[ENTITLEMENT_ID]) {
                 onPurchaseSuccess();
+                // Provision Navionics tiles for the tier just purchased. Fire-and-forget:
+                // a Garmin failure must not block access the user already paid for.
+                const navionicsProductId =
+                    pack.packageType === 'ANNUAL' ? NAVIONICS_PRODUCT_ANNUAL : NAVIONICS_PRODUCT_MONTHLY;
+                void runNavionicsPurchase(navionicsProductId, auth.currentUser?.email || '');
             }
         } catch (e: any) {
             if (!e.userCancelled) Alert.alert("Purchase Error", e.message);

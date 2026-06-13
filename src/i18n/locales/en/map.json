@@ -1,0 +1,31 @@
+{
+  "map": {
+    "title": "Fishing Map",
+    "addPin": "Add Pin",
+    "deletePin": "Delete Pin",
+    "soakTime": "Soak Time",
+    "bait": "Bait",
+    "customBait": "Custom Bait",
+    "heatmap": "Heatmap",
+    "tideDirection": "Tide Direction",
+    "zoomIn": "Zoom In",
+    "zoomOut": "Zoom Out",
+    "missingInfoTitle": "Missing Info",
+    "pleaseEnterTrawl": "Please enter a Trawl Number.",
+    "waitingForGps": "Waiting for GPS",
+    "currentTide": "CURRENT TIDE",
+    "highIn": "HIGH IN:",
+    "lowIn": "LOW IN:",
+    "heatMap": "HEAT MAP",
+    "dropPinLog": "DROP PIN & LOG",
+    "editCatch": "Edit Catch",
+    "logHaulSet": "Log Haul & Set",
+    "trawlNumberLabel": "TRAWL NUMBER",
+    "trawlNumberPlaceholder": "e.g. 15",
+    "lobstersCaughtLabel": "LOBSTERS CAUGHT (From Old Haul)",
+    "baitLabel": "BAIT (For New Set)",
+    "newBaitPlaceholder": "New bait...",
+    "addBaitButton": "Add",
+    "cycleTrawlSave": "Cycle Trawl & Save"
+  }
+}

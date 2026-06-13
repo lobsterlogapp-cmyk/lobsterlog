@@ -26,4 +26,4 @@ export const WEATHER_OPTIONS = [
 ];
 
 // --- View routing ---
-export type AppView = 'log' | 'history' | 'settings' | 'pro' | 'map' | 'dfo-demo' | 'dfo-list';
+export type AppView = 'log' | 'history' | 'settings' | 'pro' | 'map' | 'dfo-demo' | 'dfo-list' | 'dfo-setup' | 'dfo-trip';

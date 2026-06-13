@@ -1,0 +1,32 @@
+{
+  "_todo": "TRANSLATION PENDING",
+  "map": {
+    "title": "Carte de pêche",
+    "addPin": "Ajouter une épingle",
+    "deletePin": "Supprimer l'épingle",
+    "soakTime": "Temps de trempage",
+    "bait": "Appât",
+    "customBait": "Appât personnalisé",
+    "heatmap": "Carte thermique",
+    "tideDirection": "Direction de la marée",
+    "zoomIn": "Zoom avant",
+    "zoomOut": "Zoom arrière",
+    "missingInfoTitle": "Information manquante",
+    "pleaseEnterTrawl": "Entre un numéro de levée.",
+    "waitingForGps": "Attente du GPS",
+    "currentTide": "MARÉE ACTUELLE",
+    "highIn": "HAUTE DANS :",
+    "lowIn": "BASSE DANS :",
+    "heatMap": "CARTE THERMIQUE",
+    "dropPinLog": "DÉPOSER UNE ÉPINGLE",
+    "editCatch": "Modifier la capture",
+    "logHaulSet": "Enregistrer levée et pose",
+    "trawlNumberLabel": "NUMÉRO DE LEVÉE",
+    "trawlNumberPlaceholder": "ex. 15",
+    "lobstersCaughtLabel": "HOMARDS CAPTURÉS (ancienne levée)",
+    "baitLabel": "APPÂT (nouvelle pose)",
+    "newBaitPlaceholder": "Nouvel appât...",
+    "addBaitButton": "Ajouter",
+    "cycleTrawlSave": "Passer à la levée suivante et sauvegarder"
+  }
+}

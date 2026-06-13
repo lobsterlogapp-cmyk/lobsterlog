@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import * as Location from 'expo-location';
+import { useTranslation } from 'react-i18next';
 import {
   Calendar,
   Scale,
@@ -32,6 +33,7 @@ import {
   saveLog,
   loadLogById,
   generateNextTripId,
+  loadLastLog,
   DfoLog,
 } from '../utils/dfoLogStorage';
 import { useTimer } from '../context/TimerContext';
@@ -90,6 +92,8 @@ const parseDateTime = (dateStr: string, timeStr: string): Date => {
 
 const LobsterLogProposalForm = forwardRef<FormHandle, LobsterLogProposalFormProps>(
   ({ editingLogId, onSaved }, ref) => {
+
+  const { t } = useTranslation('common');
 
   const [page, setPage] = useState<ProposalPage>('every-trip');
 
@@ -275,6 +279,16 @@ const LobsterLogProposalForm = forwardRef<FormHandle, LobsterLogProposalFormProp
         const newId = await generateNextTripId(formatDate(new Date()));
         setTripId(newId);
         setDateFished(formatDate(new Date()));
+        // Pre-fill crew and ports from the last completed log
+        const last = await loadLastLog();
+        if (last) {
+          try {
+            const cm = JSON.parse(last.data.crewRegistry || '[]');
+            if (Array.isArray(cm) && cm.length > 0) setCrewMembers(cm);
+          } catch {}
+          if (last.data.departurePort) setDeparturePort(last.data.departurePort);
+          if (last.data.portLanded) setPortLanded(last.data.portLanded);
+        }
       }
       setIsLoaded(true);
           };
@@ -331,15 +345,15 @@ const LobsterLogProposalForm = forwardRef<FormHandle, LobsterLogProposalFormProp
 
   // --- Haul ---
     const handleHaulPress = async () => {
-      if (!haulActive) {
-        await startHaul();
-        await captureGps();
-        // timeStartedHauling synced via useEffect on haulStartTime
-      } else {
-        stopHaul();
-        // timeStoppedHauling synced via useEffect on haulEndTime
-      }
-    };
+        if (!haulActive) {
+          await startHaul();
+          // timeStartedHauling synced via useEffect on haulStartTime
+        } else {
+          stopHaul();
+          // timeStoppedHauling synced via useEffect on haulEndTime
+          await captureGps();
+        }
+      };
 
  // --- Picker ---
  const applyPickerValue = (d: Date) => {
@@ -399,8 +413,8 @@ const LobsterLogProposalForm = forwardRef<FormHandle, LobsterLogProposalFormProp
 
   const handleSheetConfirm = () => {
     const finalType = sheetSelectedType === 'Other' ? sheetCustomType.trim() : sheetSelectedType;
-    if (!finalType) { Alert.alert('Missing', 'Please select a species.'); return; }
-    if (!sheetLbs.trim()) { Alert.alert('Missing', 'Please enter the weight in lbs.'); return; }
+    if (!finalType) { Alert.alert(t('log.missingTitle'), t('log.pleaseSelectSpecies')); return; }
+    if (!sheetLbs.trim()) { Alert.alert(t('log.missingTitle'), t('log.pleaseEnterWeight')); return; }
     setBycatchEntries(prev => [...prev, { species: finalType, lbs: sheetLbs.trim() }]);
     setSheetVisible(false);
   };
@@ -418,18 +432,8 @@ const LobsterLogProposalForm = forwardRef<FormHandle, LobsterLogProposalFormProp
 
   // --- Save (complete) ---
   const handleSave = async () => {
-    if (bycatchYes === null) {
-          Alert.alert('Missing Fields', 'Please answer Yes or No for Bycatch.', [{ text: 'OK' }]);
-          return;
-        }
-        if (bycatchYes === true && bycatchEntries.length === 0) {
-          Alert.alert('Missing Fields', 'You selected Yes for bycatch — please add at least one entry.', [{ text: 'OK' }]);
-          return;
-        }
-
     const coreFields: Record<string, string> = {
       'Date Fished': dateFished,
-      'Departure Port': departurePort,
       'Port Landed': portLanded,
       'Crew Registry': crewMembers.length > 0 ? 'ok' : '',
       'Grid # / Area Fished': gridNumber,
@@ -446,9 +450,9 @@ const LobsterLogProposalForm = forwardRef<FormHandle, LobsterLogProposalFormProp
 
     if (missing.length > 0) {
       Alert.alert(
-        'Missing Fields',
-        `Please fill out every field on Page 1 before saving.\n\nMissing:\n• ${missing.join('\n• ')}`,
-        [{ text: 'OK' }]
+        t('log.missingFieldsTitle'),
+        `${t('log.missingFieldsBody')}${missing.join('\n• ')}`,
+        [{ text: t('nav.ok') }]
       );
       return;
     }
@@ -467,7 +471,7 @@ const LobsterLogProposalForm = forwardRef<FormHandle, LobsterLogProposalFormProp
       setEditingCompleted(true);
       onSaved();
     } else {
-      Alert.alert('Error', 'Could not save the log. Please try again.');
+      Alert.alert(t('settings.errorTitle'), t('log.saveError'));
     }
   };
 
@@ -484,13 +488,13 @@ const LobsterLogProposalForm = forwardRef<FormHandle, LobsterLogProposalFormProp
             style={[styles.yesNoBtn, value === false && styles.yesNoBtnNoActive]}
             onPress={() => onToggle(false)}
           >
-            <Text style={[styles.yesNoBtnText, value === false && styles.yesNoBtnNoText]}>No</Text>
+            <Text style={[styles.yesNoBtnText, value === false && styles.yesNoBtnNoText]}>{t('common.no')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.yesNoBtn, value === true && styles.yesNoBtnYesActive]}
             onPress={() => onToggle(true)}
           >
-            <Text style={[styles.yesNoBtnText, value === true && styles.yesNoBtnYesText]}>Yes</Text>
+            <Text style={[styles.yesNoBtnText, value === true && styles.yesNoBtnYesText]}>{t('common.yes')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -519,7 +523,7 @@ const LobsterLogProposalForm = forwardRef<FormHandle, LobsterLogProposalFormProp
       <Text style={styles.label}>{label}</Text>
       <TouchableOpacity style={styles.timeButton} onPress={() => openPicker(field)}>
         <Text style={[styles.timeButtonText, !value && styles.timeButtonPlaceholder]}>
-          {value || 'Tap to set date & time'}
+          {value || t('log.tapToSetDateTime')}
         </Text>
         <Clock size={16} color="#64748B" />
       </TouchableOpacity>
@@ -533,10 +537,10 @@ const LobsterLogProposalForm = forwardRef<FormHandle, LobsterLogProposalFormProp
     options: string[]
   ) => (
     <View style={styles.fieldRow}>
-      <Text style={styles.label}>SPECIES</Text>
+      <Text style={styles.label}>{t('log.speciesLabel')}</Text>
       <TouchableOpacity style={styles.dropdownBtn} onPress={() => setDropdownOpen(!dropdownOpen)}>
         <Text style={[styles.dropdownBtnText, !species && styles.dropdownPlaceholder]}>
-          {species || 'Select species…'}
+          {species || t('log.selectSpecies')}
         </Text>
         <ChevronDown size={16} color="#64748B" />
       </TouchableOpacity>
@@ -558,7 +562,7 @@ const LobsterLogProposalForm = forwardRef<FormHandle, LobsterLogProposalFormProp
           style={[styles.input, { marginTop: 8 }]}
           value={speciesOther}
           onChangeText={setSpeciesOther}
-          placeholder="Enter species…"
+          placeholder={t('log.enterSpecies')}
           placeholderTextColor="#94A3B8"
           autoFocus
         />
@@ -568,13 +572,13 @@ const LobsterLogProposalForm = forwardRef<FormHandle, LobsterLogProposalFormProp
 
   const renderGpsRow = (lat: string, setLat: (v: string) => void, lng: string, setLng: (v: string) => void) => (
     <View style={styles.fieldRow}>
-      <Text style={styles.label}>GPS LOCATION</Text>
+      <Text style={styles.label}>{t('log.gpsLocationLabel')}</Text>
       <View style={styles.gpsRow}>
         <TextInput style={[styles.input, { flex: 1 }]} value={lat} onChangeText={setLat}
-          placeholder="Lat" placeholderTextColor="#94A3B8" keyboardType="numeric" />
+          placeholder={t('log.latPlaceholder')} placeholderTextColor="#94A3B8" keyboardType="numeric" />
         <View style={{ width: 8 }} />
         <TextInput style={[styles.input, { flex: 1 }]} value={lng} onChangeText={setLng}
-          placeholder="Lng" placeholderTextColor="#94A3B8" keyboardType="numeric" />
+          placeholder={t('log.lngPlaceholder')} placeholderTextColor="#94A3B8" keyboardType="numeric" />
       </View>
     </View>
   );
@@ -582,7 +586,7 @@ const LobsterLogProposalForm = forwardRef<FormHandle, LobsterLogProposalFormProp
   const renderCaptureNowBtn = (onPress: () => void) => (
     <TouchableOpacity style={styles.captureNowBtn} onPress={onPress}>
       <Crosshair size={16} color="#FFFFFF" />
-      <Text style={styles.captureNowText}>Capture Current Time & GPS</Text>
+      <Text style={styles.captureNowText}>{t('log.captureNowBtn')}</Text>
     </TouchableOpacity>
   );
 
@@ -613,10 +617,10 @@ const LobsterLogProposalForm = forwardRef<FormHandle, LobsterLogProposalFormProp
           onPress={() => setPage('every-trip')}
         >
           <Text style={[styles.pageTabText, page === 'every-trip' && styles.pageTabTextActive]}>
-            Page 1: Every Trip
+            {t('log.page1Tab')}
           </Text>
           <View style={[styles.pageTabBadge, page === 'every-trip' && styles.pageTabBadgeActive]}>
-            <Text style={[styles.pageTabBadgeText, page === 'every-trip' && styles.pageTabBadgeTextActive]}>11</Text>
+            <Text style={[styles.pageTabBadgeText, page === 'every-trip' && styles.pageTabBadgeTextActive]}>10</Text>
           </View>
         </TouchableOpacity>
         <TouchableOpacity
@@ -624,7 +628,7 @@ const LobsterLogProposalForm = forwardRef<FormHandle, LobsterLogProposalFormProp
           onPress={() => setPage('when-applicable')}
         >
           <Text style={[styles.pageTabText, page === 'when-applicable' && styles.pageTabTextActive]}>
-            Page 2: When Applicable
+            {t('log.page2Tab')}
           </Text>
           <View style={[styles.pageTabBadge, page === 'when-applicable' && styles.pageTabBadgeActive]}>
             <Text style={[styles.pageTabBadgeText, page === 'when-applicable' && styles.pageTabBadgeTextActive]}>7</Text>
@@ -636,9 +640,7 @@ const LobsterLogProposalForm = forwardRef<FormHandle, LobsterLogProposalFormProp
         <View style={styles.infoBanner}>
           <CheckCircle size={16} color="#15803D" />
           <Text style={styles.infoText}>
-            {page === 'every-trip'
-              ? "Core data every harvester fills out. Fast, simple, respects the harvester's time."
-              : 'Rare events only. These fields appear when a situation actually applies — no daily reporting needed.'}
+            {page === 'every-trip' ? t('log.page1Banner') : t('log.page2Banner')}
           </Text>
         </View>
 
@@ -646,8 +648,8 @@ const LobsterLogProposalForm = forwardRef<FormHandle, LobsterLogProposalFormProp
           <>
             {/* Quick Capture */}
             <View style={styles.captureCard}>
-              <Text style={styles.captureTitle}>Quick Capture</Text>
-              <Text style={styles.captureSubtitle}>Tap to stamp the exact time — or fill manually below</Text>
+              <Text style={styles.captureTitle}>{t('log.quickCaptureTitle')}</Text>
+              <Text style={styles.captureSubtitle}>{t('log.quickCaptureSubtitle')}</Text>
               <TouchableOpacity
                               style={[styles.captureBtn, haulActive && styles.captureBtnActive]}
                               onPress={handleHaulPress}
@@ -661,10 +663,10 @@ const LobsterLogProposalForm = forwardRef<FormHandle, LobsterLogProposalFormProp
                                 !haulActive && !!timeStartedHauling && styles.captureBtnTextDone,
                               ]}>
                                 {haulActive
-                                  ? `Stop Haul  ${haulElapsed}`
+                                  ? `${t('log.stopHaul')}  ${haulElapsed}`
                                   : timeStartedHauling
-                                    ? `Hauled ${timeStartedHauling}–${timeStoppedHauling || '?'}`
-                                    : 'Start Haul'}
+                                    ? t('log.hauledRange', { start: timeStartedHauling, end: timeStoppedHauling || '?' })
+                                    : t('log.startHaul')}
                               </Text>
                             </TouchableOpacity>
             </View>
@@ -673,10 +675,10 @@ const LobsterLogProposalForm = forwardRef<FormHandle, LobsterLogProposalFormProp
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <View style={[styles.sectionIcon, { backgroundColor: '#DBEAFE' }]}><Calendar size={16} color="#1E3A8A" /></View>
-                <Text style={styles.sectionTitle}>Trip Basics</Text>
+                <Text style={styles.sectionTitle}>{t('log.tripBasicsSection')}</Text>
               </View>
               <View style={styles.fieldRow}>
-                <Text style={styles.label}>DATE FISHED</Text>
+                <Text style={styles.label}>{t('log.dateFishedLabel')}</Text>
                 <TouchableOpacity
                   style={styles.timeButton}
                   onPress={() => {
@@ -689,32 +691,19 @@ const LobsterLogProposalForm = forwardRef<FormHandle, LobsterLogProposalFormProp
                   }}
                 >
                   <Text style={[styles.timeButtonText, !dateFished && styles.timeButtonPlaceholder]}>
-                    {dateFished || 'Tap to select date'}
+                    {dateFished || t('log.tapToSelectDate')}
                   </Text>
                   <Calendar size={16} color="#64748B" />
                 </TouchableOpacity>
               </View>
-              {renderField('TRIP ID (AUTO-GENERATED)', tripId, () => {}, '', true)}
-              <View style={styles.fieldRow}>
-                              <Text style={styles.label}>DEPARTURE PORT</Text>
-                              <PortSelector
-                                value={departurePort}
-                                onChange={setDeparturePort}
-                                placeholder="Select departure port..."
-                                savedPorts={savedPorts}
-                                onPortAdded={(port) => setSavedPorts(prev => [...prev, port])}
-                                onPortDeleted={(id, name) => {
-                                  setSavedPorts(prev => prev.filter(p => p.id !== id));
-                                  if (departurePort === name) setDeparturePort('');
-                                }}
-                              />
-                            </View>
+              {renderField(t('log.tripIdLabel'), tripId, () => {}, '', true)}
+
                             <View style={styles.fieldRow}>
-                              <Text style={styles.label}>PORT LANDED</Text>
+                              <Text style={styles.label}>{t('log.portLandedLabel')}</Text>
                               <PortSelector
                                 value={portLanded}
                                 onChange={setPortLanded}
-                                placeholder="Select port landed..."
+                                placeholder={t('log.selectPortLanded')}
                                 savedPorts={savedPorts}
                                 onPortAdded={(port) => setSavedPorts(prev => [...prev, port])}
                                 onPortDeleted={(id, name) => {
@@ -724,69 +713,47 @@ const LobsterLogProposalForm = forwardRef<FormHandle, LobsterLogProposalFormProp
                               />
                             </View>
                             <View style={styles.fieldRow}>
-                              <Text style={styles.label}>CREW REGISTRY</Text>
+                              <Text style={styles.label}>{t('log.crewRegistryLabel')}</Text>
                               <CrewSelector selected={crewMembers} onChange={setCrewMembers} />
                             </View>
             </View>
 
             {/* Haul Times */}
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <View style={[styles.sectionIcon, { backgroundColor: '#DBEAFE' }]}><Clock size={16} color="#1E3A8A" /></View>
-                <Text style={styles.sectionTitle}>Haul Times</Text>
-              </View>
-              {renderTimestampField('TIME STARTED HAULING', timeStartedHauling, 'startHaul')}
-              {renderTimestampField('TIME STOPPED HAULING', timeStoppedHauling, 'stopHaul')}
-            </View>
-
-            {/* Catch & Effort */}
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <View style={[styles.sectionIcon, { backgroundColor: '#DCFCE7' }]}><Scale size={16} color="#15803D" /></View>
-                <Text style={styles.sectionTitle}>Catch & Effort</Text>
-              </View>
-              {renderField('GRID # / AREA FISHED', gridNumber, setGridNumber, 'e.g. 34-12')}
-              {renderField('LOBSTER CATCH WEIGHT (LBS)', catchWeight, setCatchWeight, '0', false, 'numeric')}
-              {renderField('TRAP HAULS', trapHauls, setTrapHauls, '0', false, 'numeric')}
-            </View>
-
-            {/* Bycatch */}
                         <View style={styles.section}>
                           <View style={styles.sectionHeader}>
-                            <View style={[styles.sectionIcon, { backgroundColor: '#FEF3C7' }]}><Anchor size={16} color="#B45309" /></View>
-                            <Text style={styles.sectionTitle}>Bycatch</Text>
+                            <View style={[styles.sectionIcon, { backgroundColor: '#DBEAFE' }]}><Clock size={16} color="#1E3A8A" /></View>
+                            <Text style={styles.sectionTitle}>{t('log.haulTimesSection')}</Text>
                           </View>
-                          {renderYesNoToggle('Was there any bycatch?', bycatchYes, (val) => {
-                            setBycatchYes(val);
-                            if (!val) setBycatchEntries([]);
-                          })}
-                          {bycatchYes === true && (
-                            <View style={{ marginTop: 8 }}>
-                              {bycatchEntries.length === 0 && <Text style={styles.emptyHint}>No bycatch added yet.</Text>}
-                              {bycatchEntries.map((entry, i) => (
-                                <View key={i} style={styles.entryRow}>
-                                  <View style={styles.entryInfo}>
-                                    <Text style={styles.entryType}>{entry.species}</Text>
-                                    <Text style={styles.entryLbs}>{entry.lbs} lbs</Text>
-                                  </View>
-                                  <TouchableOpacity style={styles.deleteBtn} onPress={() => deleteBycatch(i)}>
-                                    <Trash2 size={16} color="#EF4444" />
-                                  </TouchableOpacity>
-                                </View>
-                              ))}
-                              <TouchableOpacity style={styles.addBtn} onPress={openSheet}>
-                                <Plus size={16} color="#1E3A8A" />
-                                <Text style={styles.addBtnText}>Add Bycatch</Text>
-                              </TouchableOpacity>
-                            </View>
-                          )}
+                          {renderTimestampField(t('log.timeStartedHauling'), timeStartedHauling, 'startHaul')}
+                          {renderTimestampField(t('log.timeStoppedHauling'), timeStoppedHauling, 'stopHaul')}
+                        </View>
+
+                        {/* GPS Coordinates */}
+                        <View style={styles.section}>
+                          <View style={styles.sectionHeader}>
+                            <View style={[styles.sectionIcon, { backgroundColor: '#E0E7FF' }]}><Crosshair size={16} color="#4338CA" /></View>
+                            <Text style={styles.sectionTitle}>{t('log.gpsCoordinatesSection')}</Text>
+                          </View>
+                          {renderField(t('log.latitudeLabel'), gpsLat, setGpsLat, '0.0000', false, 'numeric')}
+                          {renderField(t('log.longitudeLabel'), gpsLng, setGpsLng, '0.0000', false, 'numeric')}
+                        </View>
+
+                        {/* Catch & Effort */}
+                        <View style={styles.section}>
+                          <View style={styles.sectionHeader}>
+                            <View style={[styles.sectionIcon, { backgroundColor: '#DCFCE7' }]}><Scale size={16} color="#15803D" /></View>
+                            <Text style={styles.sectionTitle}>{t('log.catchEffortSection')}</Text>
+                          </View>
+                          {renderField(t('log.gridAreaLabel'), gridNumber, setGridNumber, t('log.gridAreaPlaceholder'))}
+                          {renderField(t('log.catchWeightLabel'), catchWeight, setCatchWeight, '0', false, 'numeric')}
+                          {renderField(t('log.trapHaulsLabel'), trapHauls, setTrapHauls, '0', false, 'numeric')}
                         </View>
 
             <View style={styles.countBoxGreen}>
               <Text style={styles.countText}>
-                <Text style={{ fontWeight: '700', color: '#15803D' }}>11 fields</Text> per trip
+                <Text style={{ fontWeight: '700', color: '#15803D' }}>10 fields</Text> {t('log.perTrip')}
               </Text>
-              <Text style={styles.countSubtext}>Every-day essentials. Nothing more.</Text>
+              <Text style={styles.countSubtext}>{t('log.countSubtextPage1')}</Text>
             </View>
           </>
         ) : (
@@ -794,70 +761,84 @@ const LobsterLogProposalForm = forwardRef<FormHandle, LobsterLogProposalFormProp
             <View style={styles.page2Intro}>
               <ClipboardList size={20} color="#1E3A8A" />
               <Text style={styles.page2IntroText}>
-                Tap any section below to report an incident. Leave collapsed if nothing to report.
+                {t('log.page2Intro')}
               </Text>
             </View>
 
-            {renderExpandableSection('gps', 'GPS Coordinates', 'If DFO needs exact location for a specific trip',
-              <>
-                {renderField('LATITUDE', gpsLat, setGpsLat, '0.0000', false, 'numeric')}
-                {renderField('LONGITUDE', gpsLng, setGpsLng, '0.0000', false, 'numeric')}
-              </>
+            {renderExpandableSection('bycatch', t('log.bycatchSection'), t('log.bycatchDesc'),
+                          <>
+                                          {bycatchEntries.length === 0 && <Text style={styles.emptyHint}>{t('log.noBycatchYet')}</Text>}
+                                          {bycatchEntries.map((entry, i) => (
+                                            <View key={i} style={styles.entryRow}>
+                                              <View style={styles.entryInfo}>
+                                                <Text style={styles.entryType}>{entry.species}</Text>
+                                                <Text style={styles.entryLbs}>{t('log.lbsSuffix', { lbs: entry.lbs })}</Text>
+                                              </View>
+                                              <TouchableOpacity style={styles.deleteBtn} onPress={() => deleteBycatch(i)}>
+                                                <Trash2 size={16} color="#EF4444" />
+                                              </TouchableOpacity>
+                                            </View>
+                                          ))}
+                                          <TouchableOpacity style={styles.addBtn} onPress={openSheet}>
+                                            <Plus size={16} color="#1E3A8A" />
+                                            <Text style={styles.addBtnText}>{t('log.addBycatch')}</Text>
+                                          </TouchableOpacity>
+                                        </>
+                        )}
+
+            {renderExpandableSection('vnotch', t('log.vnotchSection'), t('log.vnotchDesc'),
+              renderField(t('log.vnotchLabel'), vNotchCount, setVNotchCount, '0', false, 'numeric')
             )}
 
-            {renderExpandableSection('vnotch', 'V-Notch / Size Counts', 'Report protected lobsters released',
-              renderField('V-NOTCH COUNT', vNotchCount, setVNotchCount, '0', false, 'numeric')
-            )}
-
-            {renderExpandableSection('mammal', 'Marine Mammal Interactions', 'Required only when an interaction occurs',
+            {renderExpandableSection('mammal', t('log.mmSection'), t('log.incidentDesc'),
               <>
                 {renderCaptureNowBtn(captureMmNow)}
                 {renderSpeciesDropdown(mmSpecies, setMmSpecies, mmSpeciesOther, setMmSpeciesOther, mmDropdownOpen, setMmDropdownOpen, MARINE_MAMMAL_OPTIONS)}
-                {renderField('WHAT HAPPENED', mmWhat, setMmWhat, 'Describe the interaction…')}
-                {renderTimestampField('DATE & TIME', mmDate && mmTime ? `${mmDate} ${mmTime}` : '', 'mmTime')}
+                {renderField(t('log.whatHappenedLabel'), mmWhat, setMmWhat, t('log.describeInteraction'))}
+                {renderTimestampField(t('log.dateTimeLabel'), mmDate && mmTime ? `${mmDate} ${mmTime}` : '', 'mmTime')}
                 {renderGpsRow(mmLat, setMmLat, mmLng, setMmLng)}
               </>
             )}
 
-            {renderExpandableSection('sar', 'Species At Risk Interactions', 'Required only when an interaction occurs',
+            {renderExpandableSection('sar', t('log.sarSection'), t('log.incidentDesc'),
               <>
                 {renderCaptureNowBtn(captureSarNow)}
                 {renderSpeciesDropdown(sarSpecies, setSarSpecies, sarSpeciesOther, setSarSpeciesOther, sarDropdownOpen, setSarDropdownOpen, SAR_OPTIONS)}
-                {renderField('WHAT HAPPENED', sarWhat, setSarWhat, 'Describe the interaction…')}
-                {renderTimestampField('DATE & TIME', sarDate && sarTime ? `${sarDate} ${sarTime}` : '', 'sarTime')}
+                {renderField(t('log.whatHappenedLabel'), sarWhat, setSarWhat, t('log.describeInteraction'))}
+                {renderTimestampField(t('log.dateTimeLabel'), sarDate && sarTime ? `${sarDate} ${sarTime}` : '', 'sarTime')}
                 {renderGpsRow(sarLat, setSarLat, sarLng, setSarLng)}
               </>
             )}
 
-            {renderExpandableSection('lost', 'Lost / Found Gear', 'Required only when gear is lost or found',
+            {renderExpandableSection('lost', t('log.lostGearSection'), t('log.lostGearDesc'),
               <>
                 {renderCaptureNowBtn(captureLostGearNow)}
-                {renderField('GEAR TYPE', lostGearType, setLostGearType, 'e.g. Wire trap')}
-                {renderField('WHAT HAPPENED', lostGearWhat, setLostGearWhat, 'Describe…')}
-                {renderTimestampField('DATE & TIME', lostGearDate && lostGearTime ? `${lostGearDate} ${lostGearTime}` : '', 'lostGearTime')}
+                {renderField(t('log.gearTypeLabel'), lostGearType, setLostGearType, t('log.gearTypePlaceholder'))}
+                {renderField(t('log.whatHappenedLabel'), lostGearWhat, setLostGearWhat, t('log.describePlaceholder'))}
+                {renderTimestampField(t('log.dateTimeLabel'), lostGearDate && lostGearTime ? `${lostGearDate} ${lostGearTime}` : '', 'lostGearTime')}
                 {renderGpsRow(lostGearLat, setLostGearLat, lostGearLng, setLostGearLng)}
               </>
             )}
 
-            {renderExpandableSection('transfer', 'Transfers (Boat/Carrier/Pound)', 'Required only when catch is transferred',
-              renderField('DETAILS', transfers, setTransfers, 'Describe the transfer')
+            {renderExpandableSection('transfer', t('log.transfersSection'), t('log.transfersDesc'),
+              renderField(t('log.detailsLabel'), transfers, setTransfers, t('log.describeTransfer'))
             )}
-            {renderExpandableSection('personal', 'Personal Use Declaration', 'Required only when retaining for personal use',
-              renderField('POUNDS', personalUse, setPersonalUse, '0', false, 'numeric')
+            {renderExpandableSection('personal', t('log.personalUseSection'), t('log.personalUseDesc'),
+              renderField(t('log.poundsLabel'), personalUse, setPersonalUse, '0', false, 'numeric')
             )}
 
             <View style={styles.countBoxBlue}>
               <Text style={styles.countText}>
-                <Text style={{ fontWeight: '700', color: '#1E3A8A' }}>0 fields</Text> needed today
+                <Text style={{ fontWeight: '700', color: '#1E3A8A' }}>0 fields</Text> {t('log.neededToday')}
               </Text>
-              <Text style={styles.countSubtext}>These only appear when an event actually happens.</Text>
+              <Text style={styles.countSubtext}>{t('log.countSubtextPage2')}</Text>
             </View>
           </>
         )}
 
         <TouchableOpacity style={styles.submitButton} onPress={handleSave}>
           <Save size={18} color="#FFFFFF" />
-          <Text style={styles.submitText}>Save DFO Log</Text>
+          <Text style={styles.submitText}>{t('log.saveButton')}</Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -868,10 +849,10 @@ const LobsterLogProposalForm = forwardRef<FormHandle, LobsterLogProposalFormProp
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <TouchableOpacity onPress={() => setPickerVisible(false)}>
-                  <Text style={styles.modalCancel}>Cancel</Text>
+                  <Text style={styles.modalCancel}>{t('nav.cancel')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => { applyPickerValue(tempDate); setPickerVisible(false); }}>
-                  <Text style={styles.modalConfirm}>Done</Text>
+                  <Text style={styles.modalConfirm}>{t('nav.done')}</Text>
                 </TouchableOpacity>
               </View>
               <DateTimePicker
@@ -899,11 +880,11 @@ const LobsterLogProposalForm = forwardRef<FormHandle, LobsterLogProposalFormProp
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setSheetVisible(false)}>
           <TouchableOpacity activeOpacity={1} onPress={() => {}}>
             <View style={styles.sheetContent}>
-              <Text style={styles.sheetTitle}>Add Bycatch</Text>
-              <Text style={styles.sheetLabel}>SPECIES</Text>
+              <Text style={styles.sheetTitle}>{t('log.addBycatch')}</Text>
+              <Text style={styles.sheetLabel}>{t('log.speciesLabel')}</Text>
               <TouchableOpacity style={styles.dropdownBtn} onPress={() => setSheetDropdownOpen(o => !o)}>
                 <Text style={[styles.dropdownBtnText, !sheetSelectedType && styles.dropdownPlaceholder]}>
-                  {sheetSelectedType || 'Select…'}
+                  {sheetSelectedType || t('log.selectPlaceholder')}
                 </Text>
                 <ChevronDown size={16} color="#64748B" />
               </TouchableOpacity>
@@ -924,19 +905,19 @@ const LobsterLogProposalForm = forwardRef<FormHandle, LobsterLogProposalFormProp
                 <TextInput
                   style={[styles.input, { marginTop: 8 }]}
                   value={sheetCustomType} onChangeText={setSheetCustomType}
-                  placeholder="Enter species…" placeholderTextColor="#94A3B8" autoFocus
+                  placeholder={t('log.enterSpecies')} placeholderTextColor="#94A3B8" autoFocus
                 />
               )}
-              <Text style={[styles.sheetLabel, { marginTop: 14 }]}>WEIGHT (LBS)</Text>
+              <Text style={[styles.sheetLabel, { marginTop: 14 }]}>{t('log.weightLbsLabel')}</Text>
               <TextInput
                 style={styles.input} value={sheetLbs} onChangeText={setSheetLbs}
                 placeholder="0" placeholderTextColor="#94A3B8" keyboardType="numeric"
               />
               <TouchableOpacity style={styles.sheetConfirmBtn} onPress={handleSheetConfirm}>
-                <Text style={styles.sheetConfirmText}>Add Entry</Text>
+                <Text style={styles.sheetConfirmText}>{t('log.addEntry')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.sheetCancelBtn} onPress={() => setSheetVisible(false)}>
-                <Text style={styles.sheetCancelText}>Cancel</Text>
+                <Text style={styles.sheetCancelText}>{t('nav.cancel')}</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>

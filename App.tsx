@@ -1,3 +1,6 @@
+// i18n must be imported before screens
+import './src/i18n';
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   StyleSheet,
@@ -18,12 +21,13 @@ import {
   TouchableWithoutFeedback,
   Linking,
   Image,
+  BackHandler,
 } from 'react-native';
 
 import { Svg, Path, Rect, Line, Circle } from 'react-native-svg';
-import MapView, { UrlTile, Polyline, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
+import { useTranslation } from 'react-i18next';
 import { auth, db } from './firebaseConfig';
 import { useAuth } from './src/Hooks/useAuth';
 import { useLogForm } from './src/Hooks/useLogForm';
@@ -75,9 +79,15 @@ import TutorialModal from './src/components/TutorialModal';
 
 import ProDashboard from './src/screens/ProDashboard';
 import LoginScreen from './src/screens/LoginScreen';
-import FishingMap from './src/screens/FishingMap';
-import DfoDemoScreen from './src/screens/DfoDemoScreen';
+import Garminmapbox from './src/screens/Garminmapbox';
+import DfoSetupScreen from './src/screens/DfoSetupScreen';
+import FullDfoForm from './src/components/FullDfoForm';
 import DfoLogsListScreen from './src/screens/DfoLogsListScreen';
+import TripStartConfirmScreen from './src/screens/TripStartConfirmScreen';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { loadCaptainProfile, saveCaptainProfile } from './src/utils/captainStorage';
+import { changeLanguage } from './src/i18n';
+import LanguagePickerScreen from './src/components/LanguagePickerScreen';
 
 import { DEFAULT_LOCATION, WEATHER_OPTIONS, AppView } from './src/config/constants';
 
@@ -113,9 +123,17 @@ export default function App() {
     handleDeleteAccount,
   } = useAuth();
 
+  const { t } = useTranslation('common');
   const [view, setView] = useState<AppView>('log');
   const [tutorialVisible, setTutorialVisible] = useState(false);
-    const [editingLogId, setEditingLogId] = useState<string | null>(null);
+  const [editingLogId, setEditingLogId] = useState<string | null>(null);
+  const [tripStartTime, setTripStartTime] = useState<string>('');
+  const [readOnlyLog, setReadOnlyLog] = useState(false);
+  const [dfoActivated, setDfoActivated] = useState(false);
+  const [prefLanguage, setPrefLanguage] = useState<'en' | 'fr'>('en');
+  const [prefUnits, setPrefUnits] = useState<'lbs' | 'kg'>('lbs');
+  const [captainLocalProfile, setCaptainLocalProfile] = useState<any>({});
+  const [languagePickerShown, setLanguagePickerShown] = useState<boolean | null>(null);
 
   const {
     isProStatus,
@@ -179,6 +197,19 @@ const isAdmin = useMemo(() => {
     loadFormData(logs, dateId);
   }, [dateId, logs]);
 
+  useEffect(() => {
+    Promise.all([
+      loadCaptainProfile(),
+      AsyncStorage.getItem('language_picker_shown'),
+    ]).then(([p, pickerShown]) => {
+      setDfoActivated(p.dfoActivated ?? false);
+      setPrefLanguage(p.language ?? 'en');
+      setPrefUnits(p.units ?? 'lbs');
+      setCaptainLocalProfile(p);
+      setLanguagePickerShown(!!pickerShown);
+    });
+  }, []);
+
   const stats = useMemo(() => {
     if (!profile || !profile.seasons) {
       return { daysFishedThisSeason: 0, lbsCaughtThisWeek: 0, historyMatches: [] };
@@ -218,9 +249,9 @@ const isAdmin = useMemo(() => {
 
     // --- STEP 2: Single pass to build running haul counts per season ---
     // Key = season start year, Value = running count of fishing days
-    const seasonHaulCounts = {};
+    const seasonHaulCounts: Record<number, number> = {};
     // Key = dateId, Value = haul number on that date
-    const haulByDateId = {};
+    const haulByDateId: Record<string, number> = {};
 
     sortedLogs.forEach((log) => {
       const [y, m] = log.dateId.split('-').map(Number);
@@ -240,7 +271,7 @@ const isAdmin = useMemo(() => {
     });
 
     // --- STEP 3: Find history matches (same month/day, different year) ---
-    const historyMatches = [];
+    const historyMatches: any[] = [];
     const selMonth = selectedHistoryDate.getMonth() + 1;
     const selDay = selectedHistoryDate.getDate();
     const selYear = selectedHistoryDate.getFullYear();
@@ -270,7 +301,7 @@ const isAdmin = useMemo(() => {
     return days;
   }, [currentDate]);
 
-  const hasHistoryEvent = (dateToCheck) => {
+  const hasHistoryEvent = (dateToCheck: Date) => {
     const m = dateToCheck.getMonth() + 1;
     const d = dateToCheck.getDate();
     const y = dateToCheck.getFullYear();
@@ -280,17 +311,39 @@ const isAdmin = useMemo(() => {
     });
   };
 
-  const handleDateChange = (days) => {
+  const handleDateChange = (days: number) => {
     const newDate = new Date(currentDate);
     newDate.setDate(newDate.getDate() + days);
     setCurrentDate(newDate);
   };
 
-  const handleCalendarChange = (event, selectedDate) => {
+  const handleCalendarChange = (event: any, selectedDate?: Date) => {
     setShowDatePicker(false);
     if (selectedDate) {
       setCurrentDate(selectedDate);
     }
+  };
+
+  const handleLanguageChange = async (lang: 'en' | 'fr') => {
+    setPrefLanguage(lang);
+    const updated = { ...captainLocalProfile, language: lang };
+    setCaptainLocalProfile(updated);
+    await saveCaptainProfile(updated);
+  };
+
+  const handleUnitsChange = async (u: 'lbs' | 'kg') => {
+    setPrefUnits(u);
+    const updated = { ...captainLocalProfile, units: u };
+    setCaptainLocalProfile(updated);
+    await saveCaptainProfile(updated);
+  };
+
+  const handleSavePreferences = async () => {
+    await changeLanguage(prefLanguage);
+    const updated = { ...captainLocalProfile, language: prefLanguage, units: prefUnits };
+    setCaptainLocalProfile(updated);
+    await saveCaptainProfile(updated);
+    Alert.alert(t('settings.preferencesSaved'));
   };
 
   const handleManageSubscription = () => {
@@ -301,12 +354,18 @@ const isAdmin = useMemo(() => {
     }
   };
 
-  if (!isReady || loading) {
+  if (!isReady || loading || languagePickerShown === null) {
     return (
       <View style={[styles.container, styles.center]}>
         <ActivityIndicator size="large" color="#1E3A8A" />
         <Text style={{ marginTop: 10, color: '#1E3A8A' }}>Loading LobsterLog...</Text>
       </View>
+    );
+  }
+
+  if (!languagePickerShown) {
+    return (
+      <LanguagePickerScreen onDone={() => setLanguagePickerShown(true)} />
     );
   }
   if (!user)
@@ -363,24 +422,23 @@ const isAdmin = useMemo(() => {
                         )}
                       </TouchableOpacity>
 
-                      {isAdmin && (
-                                              <TouchableOpacity
-                                                onPress={() => {
-                                                  const isInDfoArea = view === 'dfo-list' || view === 'dfo-demo';
-                                                  setView(isInDfoArea ? 'log' : 'dfo-list');
-                                                }}
-                                                style={[
-                                                  styles.navButton,
-                                                  (view === 'dfo-list' || view === 'dfo-demo') && styles.navButtonActive,
-                                                ]}
-                                              >
-                                                {view === 'dfo-list' || view === 'dfo-demo' ? (
-                                                  <X size={24} color="#F87171" />
-                                                ) : (
-                                                  <ClipboardList size={24} color="#F87171" />
-                                                )}
-                                              </TouchableOpacity>
-                                            )}
+                      <TouchableOpacity
+                        onPress={() => {
+                          const isInDfoArea = view === 'dfo-list' || view === 'dfo-demo' || view === 'dfo-setup' || view === 'dfo-trip';
+                          if (isInDfoArea) { setView('log'); return; }
+                          setView(dfoActivated ? 'dfo-list' : 'dfo-setup');
+                        }}
+                        style={[
+                          styles.navButton,
+                          (view === 'dfo-list' || view === 'dfo-demo' || view === 'dfo-setup' || view === 'dfo-trip') && styles.navButtonActive,
+                        ]}
+                      >
+                        {view === 'dfo-list' || view === 'dfo-demo' || view === 'dfo-setup' || view === 'dfo-trip' ? (
+                          <X size={24} color="#F87171" />
+                        ) : (
+                          <ClipboardList size={24} color="#F87171" />
+                        )}
+                      </TouchableOpacity>
 
                       <TouchableOpacity
                         onPress={() => setView(view === 'history' ? 'log' : 'history')}
@@ -412,13 +470,11 @@ const isAdmin = useMemo(() => {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           {view === 'map' ? (
-                      <FishingMap
-                        savedLat={profile.lat}
-                        savedLng={profile.lng}
-                        user={user}
-                        dateId={dateId}
-                        onClose={() => setView('pro')}
-                      />
+            <Garminmapbox
+              savedLat={profile.lat}
+              savedLng={profile.lng}
+              onClose={() => setView('pro')}
+            />
                     ) : view === 'pro' ? (
                       <ProDashboard
                         isPro={isPro}
@@ -426,21 +482,47 @@ const isAdmin = useMemo(() => {
                         onUnlock={() => setPaywallVisible(true)}
                         lat={profile.lat}
                         lng={profile.lng}
-                      />) : view === 'dfo-list' ? (
+                      />) : view === 'dfo-setup' ? (
+                        <DfoSetupScreen
+                          onActivated={() => {
+                            setDfoActivated(true);
+                            setView('dfo-list');
+                          }}
+                          onClose={() => setView('log')}
+                          isAdmin={isAdmin}
+                        />
+                      ) : view === 'dfo-list' ? (
                                   <DfoLogsListScreen
                                     onNewLog={() => {
                                       setEditingLogId(null);
-                                      setView('dfo-demo');
+                                      setReadOnlyLog(false);
+                                      setView('dfo-trip');
                                     }}
                                     onEditLog={(logId) => {
                                       setEditingLogId(logId);
+                                      setReadOnlyLog(false);
+                                      setView('dfo-demo');
+                                    }}
+                                    onViewLog={(logId) => {
+                                      setEditingLogId(logId);
+                                      setReadOnlyLog(true);
                                       setView('dfo-demo');
                                     }}
                                   />
+                                ) : view === 'dfo-trip' ? (
+                                  <TripStartConfirmScreen
+                                    onConfirm={(ts) => {
+                                      setTripStartTime(ts);
+                                      setView('dfo-demo');
+                                    }}
+                                    onBack={() => setView('dfo-list')}
+                                  />
                                 ) : view === 'dfo-demo' ? (
-                                  <DfoDemoScreen
-                                    onClose={() => setView('dfo-list')}
+                                  <FullDfoForm
+                                    onSaved={() => { setReadOnlyLog(false); setView('dfo-list'); }}
                                     editingLogId={editingLogId}
+                                    readOnly={readOnlyLog}
+                                    onBack={() => { setReadOnlyLog(false); setView('dfo-list'); }}
                                   />
                                 ) : (
             <ScrollView
@@ -777,7 +859,7 @@ const isAdmin = useMemo(() => {
                   <View style={styles.card}>
                     <View style={styles.locationHeaderRow}>
                       <MapPin size={24} color="#FBBF24" />
-                      <Text style={styles.cardHeader}>Fishing Location</Text>
+                      <Text style={styles.cardHeader}>{t('settings.fishingLocationCard')}</Text>
                       {isPro && (
                         <View style={styles.proBadge}>
                           <Text style={styles.proBadgeText}>PRO</Text>
@@ -785,7 +867,7 @@ const isAdmin = useMemo(() => {
                       )}
                     </View>
                     <View style={styles.settingsCoordBox}>
-                      <Text style={styles.settingsCoordLabel}>CURRENT COORDINATES</Text>
+                      <Text style={styles.settingsCoordLabel}>{t('settings.currentCoordsLabel')}</Text>
                       <Text style={styles.settingsCoordValue}>
                         {parseFloat(profile.lat || 43.44).toFixed(4)},{' '}
                         {parseFloat(profile.lng || -65.62).toFixed(4)}
@@ -804,34 +886,34 @@ const isAdmin = useMemo(() => {
                       }}
                     >
                       {isPro ? (
-                        <Text style={styles.outlineButtonText}>Update Coordinates</Text>
+                        <Text style={styles.outlineButtonText}>{t('settings.updateCoordsButton')}</Text>
                       ) : (
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                           <Lock size={14} color="#475569" />
-                          <Text style={styles.outlineButtonText}>Upgrade to Change Location</Text>
+                          <Text style={styles.outlineButtonText}>{t('settings.upgradeLocationButton')}</Text>
                         </View>
                       )}
                     </TouchableOpacity>
                   </View>
 
                   <View style={styles.card}>
-                    <Text style={styles.cardHeader}>Captain & Boat</Text>
+                    <Text style={styles.cardHeader}>{t('settings.captainBoatCard')}</Text>
                     <View style={styles.inputGroup}>
-                      <Text style={styles.label}>CAPTAIN NAME</Text>
+                      <Text style={styles.label}>{t('settings.captainNameLabel')}</Text>
                       <TextInput
                         style={styles.input}
                         value={profile.captainName}
-                        onChangeText={(t) => setProfile((p) => ({ ...p, captainName: t }))}
-                        placeholder="John Doe"
+                        onChangeText={(v) => setProfile((p: any) => ({ ...p, captainName: v }))}
+                        placeholder={t('settings.captainNamePlaceholder')}
                       />
                     </View>
                     <View style={styles.inputGroup}>
-                      <Text style={styles.label}>BOAT NAME</Text>
+                      <Text style={styles.label}>{t('settings.boatNameLabel')}</Text>
                       <TextInput
                         style={styles.input}
                         value={profile.boatName}
-                        onChangeText={(t) => setProfile((p) => ({ ...p, boatName: t }))}
-                        placeholder="The Blue Fin"
+                        onChangeText={(v) => setProfile((p: any) => ({ ...p, boatName: v }))}
+                        placeholder={t('settings.boatNamePlaceholder')}
                       />
                     </View>
                   </View>
@@ -844,7 +926,7 @@ const isAdmin = useMemo(() => {
                         <ChevronLeft size={20} color="#2563EB" />
                       </TouchableOpacity>
                       <Text style={{ fontWeight: 'bold', color: '#1E3A8A' }}>
-                        {manageYear} Season Config
+                        {t('settings.seasonConfig', { year: manageYear })}
                       </Text>
                       <TouchableOpacity onPress={() => setManageYear(manageYear + 1)}>
                         <ChevronRight size={20} color="#2563EB" />
@@ -852,7 +934,7 @@ const isAdmin = useMemo(() => {
                     </View>
                     <View style={styles.row}>
                       <View style={styles.col}>
-                        <Text style={styles.label}>START DATE</Text>
+                        <Text style={styles.label}>{t('settings.startDateLabel')}</Text>
                         <TextInput
                           style={styles.input}
                           value={editSeasonConfig.start}
@@ -860,7 +942,7 @@ const isAdmin = useMemo(() => {
                             const currentConfig =
                               (profile.seasons && profile.seasons[manageYear]) ||
                               getDefaultSeasonConfig(manageYear);
-                            setProfile((prev) => ({
+                            setProfile((prev: any) => ({
                               ...prev,
                               seasons: {
                                 ...(prev.seasons || {}),
@@ -871,7 +953,7 @@ const isAdmin = useMemo(() => {
                         />
                       </View>
                       <View style={styles.col}>
-                        <Text style={styles.label}>END DATE</Text>
+                        <Text style={styles.label}>{t('settings.endDateLabel')}</Text>
                         <TextInput
                           style={styles.input}
                           value={editSeasonConfig.end}
@@ -879,7 +961,7 @@ const isAdmin = useMemo(() => {
                             const currentConfig =
                               (profile.seasons && profile.seasons[manageYear]) ||
                               getDefaultSeasonConfig(manageYear);
-                            setProfile((prev) => ({
+                            setProfile((prev: any) => ({
                               ...prev,
                               seasons: {
                                 ...(prev.seasons || {}),
@@ -891,13 +973,71 @@ const isAdmin = useMemo(() => {
                       </View>
                     </View>
                     <TouchableOpacity style={styles.saveButton} onPress={handleSaveProfile}>
-                      <Text style={styles.saveButtonText}>Save Settings</Text>
+                      <Text style={styles.saveButtonText}>{t('settings.saveButton')}</Text>
                     </TouchableOpacity>
                   </View>
 
                   <View style={styles.card}>
-                    <Text style={styles.cardHeader}>Account</Text>
-                    <Text style={styles.signedInText}>Signed in as: {user.email}</Text>
+                    <Text style={styles.cardHeader}>{t('settings.preferencesCard')}</Text>
+
+                    <Text style={styles.label}>{t('settings.languageLabel')}</Text>
+                    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+                      {(['en', 'fr'] as const).map(lang => (
+                        <TouchableOpacity
+                          key={lang}
+                          onPress={() => setPrefLanguage(lang)}
+                          style={{
+                            flex: 1, paddingVertical: 10, borderRadius: 10,
+                            borderWidth: 1.5, alignItems: 'center',
+                            backgroundColor: prefLanguage === lang ? '#1E3A8A' : '#F8FAFC',
+                            borderColor: prefLanguage === lang ? '#1E3A8A' : '#CBD5E1',
+                          }}
+                        >
+                          <Text style={{
+                            fontSize: 14, fontWeight: '600',
+                            color: prefLanguage === lang ? '#FFFFFF' : '#64748B',
+                          }}>
+                            {lang === 'en' ? 'English' : 'Français'}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+
+                    <Text style={styles.label}>{t('settings.weightUnitsLabel')}</Text>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      {(['lbs', 'kg'] as const).map(u => (
+                        <TouchableOpacity
+                          key={u}
+                          onPress={() => setPrefUnits(u)}
+                          style={{
+                            flex: 1, paddingVertical: 10, borderRadius: 10,
+                            borderWidth: 1.5, alignItems: 'center',
+                            backgroundColor: prefUnits === u ? '#1E3A8A' : '#F8FAFC',
+                            borderColor: prefUnits === u ? '#1E3A8A' : '#CBD5E1',
+                          }}
+                        >
+                          <Text style={{
+                            fontSize: 14, fontWeight: '600',
+                            color: prefUnits === u ? '#FFFFFF' : '#64748B',
+                          }}>
+                            {u}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+
+                    <TouchableOpacity
+                      style={[styles.saveButton, { marginTop: 16 }]}
+                      onPress={handleSavePreferences}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.saveButtonText}>{t('settings.savePreferences')}</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.card}>
+                    <Text style={styles.cardHeader}>{t('settings.accountCard')}</Text>
+                    <Text style={styles.signedInText}>{t('settings.signedInAs', { email: user.email })}</Text>
 
                     {/* 1. TUTORIAL BUTTON */}
                     <TouchableOpacity
@@ -918,11 +1058,11 @@ const isAdmin = useMemo(() => {
                         )}
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.tutorialTitle}>How to Use LobsterLog</Text>
+                        <Text style={styles.tutorialTitle}>{t('settings.tutorialTitle')}</Text>
                         <Text style={styles.tutorialSub}>
                           {isPro
-                            ? 'Learn the map cycles & heatmap'
-                            : 'Upgrade to unlock User Guide'}
+                            ? t('settings.tutorialSubPro')
+                            : t('settings.tutorialSubFree')}
                         </Text>
                       </View>
                       <ChevronRight size={20} color="#94A3B8" />
@@ -932,19 +1072,19 @@ const isAdmin = useMemo(() => {
                       onPress={handleManageSubscription}
                       style={styles.manageSubButton}
                     >
-                      <Text style={styles.manageSubText}>Manage Subscription</Text>
+                      <Text style={styles.manageSubText}>{t('settings.manageSubscription')}</Text>
                     </TouchableOpacity>
 
                     {/* 2. SIGN OUT */}
                     <TouchableOpacity style={styles.outlineButton} onPress={handleSignOut}>
                       <LogOut size={16} color="#475569" />
-                      <Text style={styles.outlineButtonText}>Sign Out</Text>
+                      <Text style={styles.outlineButtonText}>{t('settings.signOut')}</Text>
                     </TouchableOpacity>
 
                     {/* 3. DELETE ACCOUNT */}
                     <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteAccount}>
                       <Trash2 size={16} color="#EF4444" />
-                      <Text style={styles.deleteButtonText}>Delete Account</Text>
+                      <Text style={styles.deleteButtonText}>{t('settings.deleteAccount')}</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -952,6 +1092,20 @@ const isAdmin = useMemo(() => {
             </ScrollView>
           )}
         </KeyboardAvoidingView>
+        {isAdmin && (view === 'dfo-list' || view === 'dfo-demo' || view === 'dfo-trip') && (
+          <View
+            style={{ position: 'absolute', bottom: 16, left: 0, right: 0, alignItems: 'center', zIndex: 100, elevation: 10 }}
+            pointerEvents="box-none"
+          >
+            <TouchableOpacity
+              onPress={() => setView('dfo-setup')}
+              activeOpacity={0.85}
+              style={{ backgroundColor: '#EA580C', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8, opacity: 0.85 }}
+            >
+              <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>⚙ DEV: Back to Setup</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       <Modal
@@ -962,9 +1116,9 @@ const isAdmin = useMemo(() => {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Set Fishing Location</Text>
+            <Text style={styles.modalTitle}>{t('settings.locationModalTitle')}</Text>
             <Text style={styles.modalSubtitle}>
-              Weather data will generate based on this point.
+              {t('settings.locationModalSubtitle')}
             </Text>
             <TouchableOpacity
               style={styles.gpsButton}
@@ -976,11 +1130,11 @@ const isAdmin = useMemo(() => {
               ) : (
                 <>
                   <LocateFixed size={18} color="#2563EB" style={{ marginRight: 8 }} />
-                  <Text style={styles.gpsButtonText}>Use Current GPS Location</Text>
+                  <Text style={styles.gpsButtonText}>{t('settings.useGpsButton')}</Text>
                 </>
               )}
             </TouchableOpacity>
-            <Text style={styles.inputLabel}>LATITUDE</Text>
+            <Text style={styles.inputLabel}>{t('settings.latitudeLabel')}</Text>
             <TextInput
               style={styles.modalInput}
               placeholder="43.4426"
@@ -989,7 +1143,7 @@ const isAdmin = useMemo(() => {
               value={tempLat}
               onChangeText={setTempLat}
             />
-            <Text style={styles.inputLabel}>LONGITUDE</Text>
+            <Text style={styles.inputLabel}>{t('settings.longitudeLabel')}</Text>
             <TextInput
               style={styles.modalInput}
               placeholder="-65.6290"
@@ -1003,10 +1157,10 @@ const isAdmin = useMemo(() => {
                 onPress={() => setLocationModalVisible(false)}
                 style={styles.cancelButton}
               >
-                <Text style={{ color: '#94A3B8' }}>Cancel</Text>
+                <Text style={{ color: '#94A3B8' }}>{t('nav.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={handleSaveLocation} style={styles.modalSaveButton}>
-                <Text style={{ color: '#1E293B', fontWeight: 'bold' }}>Save & Update</Text>
+                <Text style={{ color: '#1E293B', fontWeight: 'bold' }}>{t('settings.saveUpdateButton')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1027,6 +1181,7 @@ const isAdmin = useMemo(() => {
           }}
         />
       )}
+
     </View>
         </TimerProvider>
   );

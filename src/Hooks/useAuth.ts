@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Alert } from 'react-native';
+import i18next from 'i18next';
 import Purchases from 'react-native-purchases';
 import { auth } from '../../firebaseConfig';
 import {
@@ -13,7 +14,7 @@ import { doc, deleteDoc } from '@react-native-firebase/firestore';
 import { db } from '../../firebaseConfig';
 
 export function useAuth() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
@@ -34,7 +35,7 @@ export function useAuth() {
               await Purchases.logIn(u.uid);
             }
           } catch (e) {
-            console.log('Auth Sync Error:', e.message);
+            console.log('Auth Sync Error:', (e as any).message);
           }
         }, 500);
       } else {
@@ -63,7 +64,7 @@ export function useAuth() {
      } else {
        await signInWithEmailAndPassword(auth, email, password);
      }
-    } catch (err) {
+    } catch (err: any) {
       const friendlyMessage =
         err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password'
           ? 'Incorrect email or password. Please try again.'
@@ -83,22 +84,26 @@ export function useAuth() {
   const handleSignOut = () => signOut(auth);
 
   const handleDeleteAccount = async () => {
-    Alert.alert('Delete Account', 'Are you sure? This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            const userRef = doc(db, 'users', user.uid);
-            await deleteDoc(userRef);
-            await deleteUser(auth.currentUser);
-          } catch (error) {
-            Alert.alert('Error', error.message);
+    Alert.alert(
+      i18next.t('settings.deleteAccountTitle'),
+      i18next.t('settings.deleteAccountConfirm'),
+      [
+        { text: i18next.t('nav.cancel'), style: 'cancel' },
+        {
+          text: i18next.t('settings.deleteAccountButton'),
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const userRef = doc(db, 'users', user.uid);
+              await deleteDoc(userRef);
+              await deleteUser(auth.currentUser!);
+            } catch (error: any) {
+              Alert.alert(i18next.t('settings.errorTitle'), error.message);
+            }
           }
         }
-      }
-    ]);
+      ]
+    );
   };
 
   return {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Lock } from 'lucide-react-native';
+import { useTranslation } from 'react-i18next';
 
 import { db } from '../../firebaseConfig';
 import { doc, collection, query, where, onSnapshot } from '@react-native-firebase/firestore';
@@ -9,6 +10,7 @@ import { doc, collection, query, where, onSnapshot } from '@react-native-firebas
 import { styles } from '../styles/GlobalStyles';
 
 const BaitStats = ({ user, isPro, onUnlock }: any) => {
+     const { t } = useTranslation('common');
      const [averages, setAverages] = useState<any[]>([]);
      const [loading, setLoading] = useState(true);
      const [seasonStart, setSeasonStart] = useState<Date | null>(null);
@@ -67,8 +69,8 @@ const BaitStats = ({ user, isPro, onUnlock }: any) => {
              <TouchableOpacity onPress={onUnlock} activeOpacity={0.8}>
                  <View style={{backgroundColor: '#F1F5F9', margin: 20, padding: 20, borderRadius: 16, alignItems: 'center'}}>
                      <Lock size={32} color="#94A3B8" style={{marginBottom: 10}}/>
-                     <Text style={{fontWeight: 'bold', fontSize: 16, color: '#334155'}}>Bait Performance</Text>
-                     <Text style={{textAlign: 'center', color: '#64748B', marginTop: 5}}>Upgrade to Pro to track which bait catches the most lobsters.</Text>
+                     <Text style={{fontWeight: 'bold', fontSize: 16, color: '#334155'}}>{t('bait.title')}</Text>
+                     <Text style={{textAlign: 'center', color: '#64748B', marginTop: 5}}>{t('bait.upgradeSub')}</Text>
                  </View>
              </TouchableOpacity>
          );
@@ -79,8 +81,8 @@ const BaitStats = ({ user, isPro, onUnlock }: any) => {
      if (averages.length === 0) {
          return (
              <View style={{margin: 20, padding: 20, backgroundColor: 'white', borderRadius: 16, alignItems: 'center'}}>
-                 <Text style={{color: '#64748B'}}>No bait data for this season yet.</Text>
-                 <Text style={{fontSize: 12, color: '#94A3B8', marginTop: 5}}>Log some trawls to see stats!</Text>
+                 <Text style={{color: '#64748B'}}>{t('bait.noData')}</Text>
+                 <Text style={{fontSize: 12, color: '#94A3B8', marginTop: 5}}>{t('bait.noDataSub')}</Text>
              </View>
          );
      }
@@ -88,9 +90,9 @@ const BaitStats = ({ user, isPro, onUnlock }: any) => {
      return (
          <View style={{margin: 20, padding: 20, backgroundColor: 'white', borderRadius: 24, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10}}>
              <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15}}>
-                 <Text style={{fontSize: 18, fontWeight: '900', color: '#0F172A'}}>Bait Performance</Text>
+                 <Text style={{fontSize: 18, fontWeight: '900', color: '#0F172A'}}>{t('bait.title')}</Text>
                  <View style={{backgroundColor: '#EFF6FF', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6}}>
-                     <Text style={{fontSize: 10, fontWeight: 'bold', color: '#2563EB'}}>AVG LOBSTERS / TRAWL</Text>
+                     <Text style={{fontSize: 10, fontWeight: 'bold', color: '#2563EB'}}>{t('bait.avgLabel')}</Text>
                  </View>
              </View>
 
@@ -98,7 +100,7 @@ const BaitStats = ({ user, isPro, onUnlock }: any) => {
                  <View key={index} style={{marginBottom: 16}}>
                      <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6}}>
                          <Text style={{fontWeight: 'bold', color: '#334155'}}>{item.bait}</Text>
-                         <Text style={{fontWeight: '900', color: '#0F172A'}}>{item.avg} <Text style={{fontSize: 10, color: '#94A3B8', fontWeight: 'normal'}}>avg</Text></Text>
+                         <Text style={{fontWeight: '900', color: '#0F172A'}}>{item.avg} <Text style={{fontSize: 10, color: '#94A3B8', fontWeight: 'normal'}}>{t('bait.avgUnit')}</Text></Text>
                      </View>
                      <View style={{height: 8, backgroundColor: '#F1F5F9', borderRadius: 4, overflow: 'hidden'}}>
                          <View style={{
@@ -108,7 +110,7 @@ const BaitStats = ({ user, isPro, onUnlock }: any) => {
                              borderRadius: 4
                          }} />
                      </View>
-                     <Text style={{fontSize: 10, color: '#94A3B8', marginTop: 4}}>{item.strings} strings logged</Text>
+                     <Text style={{fontSize: 10, color: '#94A3B8', marginTop: 4}}>{t('bait.stringsLogged', { count: item.strings })}</Text>
                  </View>
              ))}
          </View>

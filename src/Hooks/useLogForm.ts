@@ -7,7 +7,7 @@ import { DEFAULT_LOCATION } from '../config/constants';
 
 export function useLogForm(user: any, profile: any, dateId: string, isPro: boolean) {
   const [formData, setFormData] = useState({
-    lbs: '', price: '', temp: '', wind: '', windDir: '', weather: [], notes: ''
+    lbs: '', price: '', temp: '', wind: '', windDir: '', weather: [] as string[], notes: ''
   });
   const [saving, setSaving] = useState(false);
 
@@ -42,7 +42,7 @@ export function useLogForm(user: any, profile: any, dateId: string, isPro: boole
         temp: '',
         wind: '',
         windDir: '',
-        weather: [],
+        weather: [] as string[],
         notes: ''
       });
     }

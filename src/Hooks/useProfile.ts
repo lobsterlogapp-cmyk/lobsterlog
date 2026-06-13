@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Alert } from 'react-native';
+import i18next from 'i18next';
 import * as Location from 'expo-location';
 import { db } from '../../firebaseConfig';
 import {
@@ -11,8 +12,8 @@ import {
 import { getDefaultSeasonConfig } from '../utils/helpers';
 
 export function useProfile(user: any) {
-  const [logs, setLogs] = useState({});
-  const [profile, setProfile] = useState({ captainName: '', boatName: 'New Boat', seasons: {}, role: 'user' });
+  const [logs, setLogs] = useState<Record<string, any>>({});
+  const [profile, setProfile] = useState<any>({ captainName: '', boatName: 'New Boat', seasons: {}, role: 'user' });
   const [historyYear, setHistoryYear] = useState(new Date().getFullYear());
   const [manageYear, setManageYear] = useState(new Date().getFullYear());
   const [locationModalVisible, setLocationModalVisible] = useState(false);
@@ -25,19 +26,19 @@ export function useProfile(user: any) {
 
     const logsRef = collection(db, 'users', user.uid, 'logs');
     const unsubLogs = onSnapshot(logsRef, (snap) => {
-      const newLogs = {};
-      snap?.forEach(d => newLogs[d.id] = d.data());
+      const newLogs: Record<string, any> = {};
+      snap?.forEach((d: any) => newLogs[d.id] = d.data());
       setLogs(newLogs);
     }, (error) => console.log('Logs Error:', error));
 
     const profileRef = doc(db, 'users', user.uid, 'settings', 'profile');
     const unsubProfile = onSnapshot(profileRef, (snap) => {
       if (snap && snap.exists()) {
-        const data = snap.data();
+        const data = snap.data()!;
         const now = new Date();
         const currentSeasonStartYear = now.getMonth() < 6 ? now.getFullYear() - 1 : now.getFullYear();
 
-        setProfile(prev => ({
+        setProfile((prev: any) => ({
           ...prev,
           captainName: data.captainName || prev.captainName || '',
           boatName: data.boatName || prev.boatName || 'New Boat',
@@ -83,7 +84,7 @@ export function useProfile(user: any) {
 
   const handleSaveLocation = async () => {
     if (!tempLat || !tempLng) {
-      Alert.alert('Invalid Input', 'Please enter both Latitude and Longitude.');
+      Alert.alert(i18next.t('settings.invalidInputTitle'), i18next.t('settings.invalidInputBody'));
       return;
     }
 
@@ -92,16 +93,12 @@ export function useProfile(user: any) {
     if (lastChanged) {
       const hoursSince = (Date.now() - new Date(lastChanged).getTime()) / (1000 * 60 * 60);
       if (hoursSince < 24) {
-        const hoursLeft = Math.ceil(24 - hoursSince);
-        Alert.alert(
-          'Location Locked',
-          `You can only update your fishing location once every 24 hours. Try again in ${hoursLeft} hour${hoursLeft === 1 ? '' : 's'}.`
-        );
+        Alert.alert(i18next.t('settings.locationLockedTitle'), i18next.t('settings.locationLockedBody'));
         return;
       }
     }
 
-    setProfile(prev => ({ ...prev, lat: tempLat, lng: tempLng }));
+    setProfile((prev: any) => ({ ...prev, lat: tempLat, lng: tempLng }));
     setLocationModalVisible(false);
     if (user) {
       const profileRef = doc(db, 'users', user.uid, 'settings', 'profile');
@@ -110,7 +107,7 @@ export function useProfile(user: any) {
         lng: tempLng,
         locationLastChanged: new Date().toISOString()
       }, { merge: true });
-      Alert.alert('Location Saved', 'Weather and charts will update automatically.');
+      Alert.alert(i18next.t('settings.locationSavedTitle'), i18next.t('settings.locationSavedBody'));
     }
   };
 
@@ -119,9 +116,9 @@ export function useProfile(user: any) {
     try {
       const profRef = doc(db, 'users', user.uid, 'settings', 'profile');
       await setDoc(profRef, profile);
-      Alert.alert('Success', 'Settings saved!');
+      Alert.alert(i18next.t('settings.successTitle'), i18next.t('settings.settingsSaved'));
     } catch (e) {
-      Alert.alert('Error', e.message);
+      Alert.alert(i18next.t('settings.errorTitle'), (e as any).message);
     }
   };
 
@@ -140,7 +137,7 @@ export function useProfile(user: any) {
               await setDoc(seasonRef, { baitSeasonStart: new Date().toISOString() }, { merge: true });
               Alert.alert('Season Reset', 'Bait stats have been cleared for the new season!');
             } catch (e) {
-              Alert.alert('Error', e.message);
+              Alert.alert('Error', (e as any).message);
             }
           }
         }
