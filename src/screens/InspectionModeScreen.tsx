@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Shield } from 'lucide-react-native';
 import { loadCaptainProfile, CaptainProfile, EMPTY_PROFILE } from '../utils/captainStorage';
 import { loadAllLogs, DfoLog } from '../utils/dfoLogStorage';
@@ -21,7 +21,7 @@ interface Props {
 export default function InspectionModeScreen({ onClose }: Props) {
   const [captain, setCaptain] = useState<CaptainProfile>(EMPTY_PROFILE);
   const [activeDraft, setActiveDraft] = useState<DfoLog | null>(null);
-  const [last5, setLast5] = useState<DfoLog[]>([]);
+  const [last3, setLast3] = useState<DfoLog[]>([]);
   const [qrValue, setQrValue] = useState<string>('');
 
   useEffect(() => {
@@ -31,7 +31,7 @@ export default function InspectionModeScreen({ onClose }: Props) {
         loadAllLogs(), // returns newest-first
       ]);
 
-      const completed = logs.filter(l => l.status === 'complete').slice(0, 5);
+      const completed = logs.filter(l => l.status === 'complete').slice(0, 3);
       // newest-first, so first draft is the most recent
       const latestDraft = logs.find(l => l.status === 'draft') ?? null;
 
@@ -39,7 +39,7 @@ export default function InspectionModeScreen({ onClose }: Props) {
         captain: profile,
         activeTripId: latestDraft?.id ?? null,
         activeTripDate: latestDraft?.dateFished ?? null,
-        last5: completed.map(log => ({
+        last3: completed.map(log => ({
           tripId: log.id,
           dateFished: log.dateFished,
           mode: log.mode,
@@ -92,7 +92,7 @@ export default function InspectionModeScreen({ onClose }: Props) {
 
       setCaptain(profile);
       setActiveDraft(latestDraft);
-      setLast5(completed);
+      setLast3(completed);
       setQrValue(compressed);
     }
 
@@ -181,11 +181,11 @@ export default function InspectionModeScreen({ onClose }: Props) {
           </View>
 
           <Text style={[styles.summarySection, { marginTop: 22 }]}>
-            LAST 5 COMPLETED LOGS
+            LAST 3 COMPLETED LOGS
           </Text>
 
-          {last5.length > 0 ? (
-            last5.map((log, i) => (
+          {last3.length > 0 ? (
+            last3.map((log, i) => (
               <View key={log.id}>
                 {i > 0 && <View style={styles.rowDivider} />}
                 <View style={styles.summaryRow}>

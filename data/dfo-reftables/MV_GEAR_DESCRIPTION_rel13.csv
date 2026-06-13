@@ -1,0 +1,148 @@
+CODE_ID,DESC_FRE,DESC_ENG,GEAR_CLASS_DESC_FRE,GEAR_CLASS_DESC_ENG
+876,Chalut de fond à panneaux,Bottom otter trawl,M,M
+877,Chalut de fond à panneaux (de côté),Bottom otter trawl (side),M,M
+878,Chalut de fond à panneaux (arrière),Bottom otter trawl (stern),M,M
+879,Chalut mésopélagique (indéterminé),Midwater trawl (unspecified),M,M
+880,"Chalut de poisson de fond, modifié",Modified groundfish trawl,M,M
+881,Chalut mésopélagique (de côté),Midwater trawl (side),M,M
+882,Chalut mésopélagique (arrière),Midwater trawl (stern),M,M
+883,Chalut de fond,Bottom pair trawl,M,M
+884,Chalut boeuf mésopélagique,Midwater pair trawl,M,M
+885,Chalut semi-pélagique,Semi/midwater pelagic trawl,M,M
+886,Chalut - Crevette,Shrimp trawl,M,M
+887,Chalut pélagique modifié à crevettes,Modified shrimp midwater trawl,M,M
+888,Senne danoise,Danish seine,M,M
+889,Senne écossaise,Scottish seine,M,M
+890,Senne de rivage,Beach and bar seine,F,F
+891,Filet maillant turbot,Turbot gill net,F,F
+892,Filet maillant morue,Cod gill net,F,F
+893,Filet maillant maquereau,Mackerel gill net,F,F
+894,Filet maillant hareng,Herring gill net,F,F
+895,Seine à bourse,Purse seine,M,M
+896,Lampara,Lampara,M,M
+897,Senne boeuf,Pair seine,M,M
+898,Filet maillant plie,Plaice gill net,F,F
+899,Filet dérivant hareng,Herring drift,F,F
+900,Filet dérivant maquereau,Mackerel drift,F,F
+901,Palangre morue,Cod - longline,F,F
+902,Palangre plie,Plaice - longline,F,F
+903,Palangre flétan,Turbot  - longline,F,F
+904,Palangre thon,Tuna - longline,F,F
+905,Filet maillant,Gillnet,F,F
+906,Filet maillant (dérivant),Gillnet (drift),F,F
+907,Filet maillant (indéterminé),Gill net (unspecified),F,F
+908,Carrelet,Square net,F,F
+909,Parc fermé,Box net,F,F
+910,Filet à poche,Bag net,F,F
+911,Verveux,Fyke net,F,F
+912,Filet haut fond,Shoal net,F,F
+913,Palangrotte,Tethered hooks,F,F
+914,Palangre,Longline,F,F
+915,Turlutte automatique,Automated jigger,F,F
+916,Palangre à requin,Shark longline,F,F
+917,Turlutte,Jigger,F,F
+918,Ligne traînante,Troller lines,M,M
+919,Turlutte mécanisée calmar,Mechanized squid jigger,F,F
+920,Dispositif mécanique,Automated jigger (hand line),F,F
+921,Canne et moulinet (chumming),Rod and reel (chumming),F,F
+922,Ligne à main,Hand line,F,F
+923,Canne et moulinet (pêche à la cuiller),Rod and reel (trolling),F,F
+924,Trappe en filet,Trap net,F,F
+925,Casier,Pot,F,F
+926,Fascine,Weir,F,F
+927,Carrelet fixe,Stationary lift nets,F,F
+928,Nasse,Bow net,F,F
+929,Casier japonais,Japanese trap,F,F
+930,Casier rectangulaire,Rectangular trap,F,F
+931,Casier pour morue (rock cod),Cod pot (for rock cod),F,F
+932,Casier conique,Conical trap,F,F
+933,Casier pyramidal,Pyramidal trap,F,F
+934,Epuisette,Dip net,F,F
+935,Drague (bateau),Dredge (boat),M,M
+936,Drague (manuelle),Dredge (hand),F,F
+937,Râteau hydraulique,Hydraulic rake,M,M
+938,Engin mécanisé,Automatic gear,F,F
+939,Drague hydraulique à convoyeur,Hydraulic device,F,F
+940,Plongée,Diving,F,F
+941,Plongée avec outil manuel,Diving with hand tool,F,F
+942,Corde,Rope,F,F
+943,Harpon et foène,Harpoon and spear,F,F
+944,Pêche (chasse) au phoque,Seal hunting,F,F
+945,Harpon,Spear,F,F
+946,Nasse à anguille,Eel pot,F,F
+947,Harpon électrique,Electric harpoon,F,F
+948,Divers,Miscellaneous,F,F
+949,Râteaux et pinces,Rakes and tongs,F,F
+950,Viviers,Pounds,,
+951,Râteau traînant,Drag rake,M,M
+952,Râteau coupant,Cutter,M,M
+953,Bateau à déchargement,Pumper,M,M
+954,Main et outils à main,Hand and hand held tools,F,F
+955,Mélange de casiers,Mixed of trap - crab,F,F
+956,Sans objet,Unknown,F,F
+1089,Chaluts,Trawls,M,M
+1091,Sennes,Seine nets,,
+1101,Dragues,Dredges,M,M
+1105,Autres engins,Other gear,,
+3396,Filet fixe,Reef Net,F,F
+3398,Bolinche,Ring Net,F,F
+3400,Chalut - plancton,Plankton Trawl,M,M
+3996,Chaluts jumeaux à panneaux,Otter twin trawls,M,M
+3998,Canne et moulinet,Rod and Reel,F,F
+4000,Casier côtier,"Pots, inshore",F,F
+4002,Casier hauturier,"Pots, offshore",F,F
+10581,Chalut de fond à panneaux modifié,Modified bottom otter trawl,M,M
+10583,Chalut à perche pour la crevette,Shrimp beam trawl,M,M
+10585,Senne de rivage modifiée,Tuck seine,F,F
+10587,Drague à concombre de mer,Sea cucumber drag,M,M
+10589,Baril de Myxine du nord,Hagfish Barrel,F,F
+10889,Pinces,Tongs,F,F
+25216,Autres engins retombants (non spécifiés),Falling gear (not specified),,
+25217,Filets maillants encerclants,Encircling gillnets,F,F
+25218,Trémails,Trammel nets,F,F
+25219,Trémails et filets maillants combinés,Combined gillnets-trammel nets,F,F
+25220,Filets maillants et filets emmêlants (non spécifiés),Gillnets and entangling nets (not specified),F,F
+25221,Filets-pièges fixes non couverts,Stationary uncovered pound nets,F,F
+25222,Filets à l'étalage (diables),Stow nets,F,F
+25223,Pièges aériens,Aerial traps,F,F
+25224,Pièges (non spécifiés),Traps (not specified),F,F
+25225,"Casier de 0,15 mètres-cube et moins",Trap net less than 0.15 m3,F,F
+25226,"Casier de 0,16 à 0,30 mètres-cube",Trap net 0.16 m3 to 0.30 m3,F,F
+25227,Palangres calées,Set longlines,F,F
+25228,Palangres dérivantes,Drifting longlines,M,M
+25229,Hameçons et lignes (non spécifiés),Hooks and lines (not specified),F,F
+25230,Dragues mécanisées,Mechanized dredges,F,F
+25231,Engins de récolte (non spécifiés),Harvesting machines (not specified),,
+25232,Engins de pêche récréative,Recreational fishing gear,,
+25233,Pêche à la ligne,Angling,M,M
+25234,Filets soulevés portatifs,Portable lift nets,M,M
+25235,Filets soulevés manoeuvrés du bateau,Boat-operated lift nets,F,F
+25236,Filets soulevés (non spécifiés),Lift nets (not specified),F,F
+25237,Éperviers,Cast nets,F,F
+25238,Sennes manoeuvrées par un bateau,One boat operated purse seines,M,M
+25239,Sennes manoeuvrées par deux bateaux,Two boats operated purse seines,M,M
+25240,Sennes halées à bord,Boat or vessel seines,M,M
+25241,Sennes (non spécifiées),Seines nets (not specified),M,M
+25242,Chaluts de fond,Bottom trawls,M,M
+25243,Chaluts de fond à perche,Bottom beam trawls,M,M
+25244,Chalut de fond à langoustines,Bottom nephrops trawl,M,M
+25245,Chaluts de fond à crevettes,Bottom shrimp trawls,M,M
+25246,Chaluts de fond (non spécifiés),Bottom trawls (not specified),M,M
+25247,Chalut pélagique à panneaux,Midwater otter trawl,M,M
+25248,Chaluts pélagiques à crevettes,Midwater shrimp trawls,M,M
+25249,Chaluts-boeufs (non spécifiés),Pair trawls (not specified),M,M
+25250,Autres chaluts (non spécifiés),Other trawls (not specified),M,M
+37778,Ligne tendue,Tended Line,F,F
+37802,Casier à homard avec entrée(s) sur le dessus,Top Entry lobster trap,F,F
+37836,Casier à homard,Lobster trap,F,F
+37838,Casier à homard modifié,Lobster modified trap,,
+37839,Casier à buccin,Whelk trap,F,F
+39500,Chalut de fond à crevettes - panneaux pélagiques,Bottom shrimp trawl - midwater otters,M,M
+39620,Autre,Other,,
+39737,Casier circulaire (cylindrique),Circular trap (cylindrical),F,F
+39738,Casier carré,Square trap,F,F
+43344,Épuisette avec ailes,Dip net with wings,F,F
+43813,Engin de bouée,Buoy Gear,,
+43839,Arme à feu,Rifle,F,F
+43840,Gourdin,Club,F,F
+43841,Hakapik,Hakapik,F,F

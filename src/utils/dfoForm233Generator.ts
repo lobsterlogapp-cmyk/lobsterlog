@@ -1,0 +1,157 @@
+// DFO Form 233 — Inactivity Report
+// Generator, validator, and AsyncStorage persistence (3-year retention)
+
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { CaptainProfile } from './captainStorage';
+import { buildSaveIncomingFileEnvelope, toCloseTimestamp } from './dfoXmlGenerator';
+import { DFO_CIE_ID, DFO_SOFT_VER } from './dfoConstants';
+
+const THREE_YEARS_MS = 94608000000;
+const STORAGE_KEY = '@form233_entries';
+
+// XSD 43792.233 (xsd_start_date 2022-06-13): FORM_VER_ID for the Inactivity Report
+export const DFO_FORM_VER_ID_233 = 233;
+
+// Picker choices only — XSD REASON is free text (string_2000), no code table
+export const INACTIVITY_REASONS = ['Weather', 'Mechanical', 'Personal', 'Other'];
+
+export interface Form233Entry {
+  uid: string;
+  savedAt: number;
+  periodStartDate: string;   // YYYY-MM-DD
+  periodEndDate: string;     // YYYY-MM-DD
+  reason: string;            // human-readable label
+  licenceNo: string;         // snapshotted from profile at save time
+  fin: string;               // snapshotted from profile at save time
+  sentToDfo: boolean;
+  sentAt?: number;
+}
+
+export function generateForm233Uid(): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  let uid = '';
+  for (let i = 0; i < 6; i++) uid += chars.charAt(Math.floor(Math.random() * chars.length));
+  return uid;
+}
+
+export async function saveForm233Entry(entry: Form233Entry): Promise<void> {
+  const existing = await loadForm233Entries();
+  const cutoff = Date.now() - THREE_YEARS_MS;
+  const filtered = existing.filter(e => e.uid !== entry.uid && e.savedAt > cutoff);
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([...filtered, entry]));
+}
+
+export async function loadForm233Entries(): Promise<Form233Entry[]> {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as Form233Entry[];
+  } catch {
+    return [];
+  }
+}
+
+function xmlEscape(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function tag(name: string, value: string, indent: string = '  '): string {
+  if (!value || !value.trim()) return '';
+  return `${indent}<${name}>${xmlEscape(value.trim())}</${name}>\n`;
+}
+
+// XSD date_12 = YYYYMMDDHHMM. The entry stores calendar dates; the inactivity period
+// covers whole days, so the start opens at 0000 and the end closes at 2359.
+function toDate12FromCalendarDate(dateStr: string, hhmm: '0000' | '2359'): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return '';
+  return dateStr.replace(/-/g, '') + hhmm;
+}
+
+// XSD 43792.233: ELOG → GENERAL_INFO + REPORT[] → REPORT_DTL[].
+// REPORT_UID legitimately exists in F233 (string_6, mandatory) — unlike Form 234.
+export function generateForm233Xml(entry: Form233Entry, profile: CaptainProfile): string {
+  const regId = profile.regId ?? 1004;
+  const startDt = toDate12FromCalendarDate(entry.periodStartDate, '0000');
+  const endDt   = toDate12FromCalendarDate(entry.periodEndDate, '2359');
+
+  let gi = '  <GENERAL_INFO>\n';
+  gi += tag('CIE_ID',      DFO_CIE_ID, '    ');
+  gi += tag('SOFT_VER',    DFO_SOFT_VER, '    ');
+  gi += tag('REG_ID',      String(regId), '    ');
+  gi += tag('FIN',         entry.fin, '    ');
+  gi += tag('VRN',         profile.vesselNumber, '    ');
+  gi += tag('FORM_VER_ID', String(DFO_FORM_VER_ID_233), '    ');
+  gi += '  </GENERAL_INFO>\n';
+
+  let dtl = '    <REPORT_DTL>\n';
+  dtl += tag('START_DT', startDt, '      ');
+  dtl += tag('END_DT',   endDt, '      ');
+  dtl += tag('LIC_NO',   entry.licenceNo, '      ');
+  dtl += tag('REASON',   entry.reason, '      ');
+  dtl += '    </REPORT_DTL>\n';
+
+  let report = '  <REPORT>\n';
+  report += tag('REPORT_UID',  entry.uid || generateForm233Uid(), '    ');
+  // LOGBOOK_UID_REFERED omitted — inactivity not tied to a specific logbook
+  report += tag('DG_CLOSE_DT', toCloseTimestamp(), '    ');
+  report += dtl;
+  report += '  </REPORT>\n';
+
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<ELOG>\n${gi}${report}</ELOG>`;
+}
+
+// Structural check mirroring XSD 43792.233 (nested ELOG/GENERAL_INFO/REPORT/REPORT_DTL).
+// Name-based like the other in-app validators — xmllint against the on-disk XSD remains
+// the authority; this exists to block obviously broken documents before transmission.
+export function validateForm233Xml(xml: string): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+
+  const elem = (name: string): string | null => {
+    const m = xml.match(new RegExp(`<${name}>([\\s\\S]*?)<\\/${name}>`));
+    return m ? m[1].trim() : null;
+  };
+
+  if (!/<ELOG>/.test(xml)) errors.push('Missing root element: ELOG');
+
+  // Mandatory elements per the XSD (FIN/VRN/REM/LOGBOOK_UID_REFERED are optional)
+  (['GENERAL_INFO', 'CIE_ID', 'SOFT_VER', 'REG_ID', 'FORM_VER_ID',
+    'REPORT', 'REPORT_UID', 'DG_CLOSE_DT', 'REPORT_DTL',
+    'START_DT', 'END_DT', 'LIC_NO', 'REASON'] as const)
+    .forEach(name => { if (elem(name) === null) errors.push(`Missing required element: ${name}`); });
+
+  const intFields: [string, RegExp, string][] = [
+    ['CIE_ID',      /^\d{1,10}$/,  'integer_10'],
+    ['REG_ID',      /^\d{1,10}$/,  'integer_10'],
+    ['FORM_VER_ID', /^\d{1,10}$/,  'integer_10'],
+    ['DG_CLOSE_DT', /^\d{14}$/,    'date_14 (YYYYMMDDHHMMSS)'],
+    ['START_DT',    /^\d{12}$/,    'date_12 (YYYYMMDDHHMM)'],
+    ['END_DT',      /^\d{12}$/,    'date_12 (YYYYMMDDHHMM)'],
+  ];
+  for (const [name, re, label] of intFields) {
+    const v = elem(name);
+    if (v !== null && !re.test(v)) errors.push(`${name} is not valid ${label}: ${v}`);
+  }
+
+  const uid = elem('REPORT_UID');
+  if (uid !== null && !/^.{1,6}$/.test(uid)) errors.push(`REPORT_UID must be 1-6 characters (string_6): ${uid}`);
+
+  const start = elem('START_DT');
+  const end = elem('END_DT');
+  if (start && end && /^\d{12}$/.test(start) && /^\d{12}$/.test(end) && end < start)
+    errors.push('END_DT is before START_DT');
+
+  return { valid: errors.length === 0, errors };
+}
+
+// SOAP 1.1 SaveIncomingFile envelope (Web Service guide §3.1) — shared builder lives in
+// dfoXmlGenerator.ts. fileName per Standard v6.1 §3.10 (generateDfoXmlFileName).
+// NOTE: success responses for Form 233 carry <REPORT_UID> (one per report) instead of
+// <LGBK_UID> — parseDfoSoapResponse already collects both.
+export function generateSoap233Envelope(form233Xml: string, elogKey: string, fileName: string): string {
+  return buildSaveIncomingFileEnvelope(elogKey, fileName, form233Xml);
+}
