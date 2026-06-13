@@ -73,7 +73,7 @@
     "vesselNumber": "Numéro de matricule du navire",
     "vesselNumberLabel": "NUMÉRO DU NAVIRE (NMV)",
     "vesselNumberPlaceholder": "ex. 123456",
-    "vrnError": "Le NMV doit être exactement 4, 5 ou 6 chiffres.",
+    "vrnError": "Le NMV doit comporter de 1 à 12 caractères.",
     "licenceNo": "N° de permis MPO",
     "fin": "NIP du titulaire du permis",
     "finLabel": "NIP DU TITULAIRE DU PERMIS",

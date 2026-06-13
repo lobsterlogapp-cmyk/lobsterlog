@@ -838,7 +838,7 @@ function toBase64(s: string): string {
 }
 
 // SOAP 1.1 — HTTP POST, Content-Type: text/xml; charset=utf-8, plus this SOAPAction header
-export const DFO_SOAP_ACTION_SAVE = 'http://tempuri.org/SaveIncomingFile';
+export const DFO_SOAP_ACTION_SAVE = 'http://www.dfo-mpo.gc.ca/SaveIncomingFile';
 
 // XML file name per Standard v6.1 §3.10: [RegionalID]-[LicenceNumber]-[YYYYMMDDHHMMSS].XML
 // Timestamp is generation time, UTC, 14 digits, no separators. Uncompressed .XML (no 7z).
@@ -850,15 +850,17 @@ export function generateDfoXmlFileName(regId: number, licenceNo: string, when: D
   return `${regId}-${licenceNo}-${ts}.XML`;
 }
 
-// SOAP 1.1 envelope invoking SaveIncomingFile (namespace http://tempuri.org/), per the
-// manually-written envelope example in guide §3.1.2.2.1. Auth is the ELOG key alone;
+// SOAP 1.1 envelope invoking SaveIncomingFile. Auth is the ELOG key alone;
 // CIE_ID and SOFT_VER travel only inside the ELOG XML (GENERAL_INFO), never the envelope.
 // Base64 values are XML-safe, so no escaping is needed.
+// Live UAT WSDL (fetched June 13, 2026) overrides this to http://www.dfo-mpo.gc.ca —
+// using the WSDL value since that's what the running service enforces. Discrepancy with
+// guide §3.1.2.2.1 noted for follow-up with Kane.
 export function buildSaveIncomingFileEnvelope(elogKey: string, fileName: string, xmlBody: string): string {
   return `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
-    <SaveIncomingFile xmlns="http://tempuri.org/">
+    <SaveIncomingFile xmlns="http://www.dfo-mpo.gc.ca">
       <p_elogkey>${toBase64(elogKey)}</p_elogkey>
       <p_filename>${toBase64(fileName)}</p_filename>
       <p_body>${toBase64(xmlBody)}</p_body>
@@ -875,7 +877,7 @@ export function generateSoapEnvelope(elogXml: string, elogKey: string, fileName:
 
 // --- ValidateElogKey (guide §3.2) — read-only ELOG key check, no XML document ---
 
-export const DFO_SOAP_ACTION_VALIDATE = 'http://tempuri.org/ValidateElogKey';
+export const DFO_SOAP_ACTION_VALIDATE = 'http://www.dfo-mpo.gc.ca/ValidateElogKey';
 
 // §3.2.1: the key must be uppercase before base64 (lowercase encodes differently and the
 // service rejects it), and must be at least 24 characters.
@@ -883,7 +885,7 @@ export function buildValidateElogKeyEnvelope(elogKey: string): string {
   return `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
-    <ValidateElogKey xmlns="http://tempuri.org/">
+    <ValidateElogKey xmlns="http://www.dfo-mpo.gc.ca">
       <p_elogkey>${toBase64(elogKey.trim().toUpperCase())}</p_elogkey>
     </ValidateElogKey>
   </soap:Body>

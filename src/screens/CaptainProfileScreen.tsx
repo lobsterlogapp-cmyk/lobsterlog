@@ -26,8 +26,11 @@ import { changeLanguage } from '../i18n';
 const isValidFin = (s: string): boolean =>
   /^(\d{9}|[CD]\d{7}|\d{5,6}|DFOCC\d{9})$/.test(s);
 
-// Rule 528 — valid VRN: exactly 4, 5, or 6 digits
-const isValidVrn = (s: string): boolean => /^\d{4,6}$/.test(s);
+// VRN validation — DFO XSD (F222/F233/F234) types VRN as string_12 (max 12 chars,
+// alphanumeric). The original '// Rule 528 — exactly 4-6 digits' citation could not be
+// verified against the on-disk Standard v6.1 or any fact sheet — flagged for follow-up
+// with Kane. Widened to match XSD pending clarification.
+const isValidVrn = (s: string): boolean => /^[A-Za-z0-9]{1,12}$/.test(s);
 
 const LFA_OPTIONS = [
   'LFA 1', 'LFA 2', 'LFA 3', 'LFA 4', 'LFA 5', 'LFA 6', 'LFA 7', 'LFA 8',

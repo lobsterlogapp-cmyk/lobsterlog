@@ -72,7 +72,7 @@
     "vesselNumber": "Vessel Registration Number",
     "vesselNumberLabel": "VESSEL NUMBER (VRN)",
     "vesselNumberPlaceholder": "e.g. 123456",
-    "vrnError": "VRN must be exactly 4, 5, or 6 digits.",
+    "vrnError": "VRN must be 1-12 characters.",
     "licenceNo": "DFO Licence No",
     "fin": "Licence Holder's FIN",
     "finLabel": "LICENCE HOLDER FIN",
