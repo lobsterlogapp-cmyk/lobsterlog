@@ -74,5 +74,11 @@ yarn-error.log
 !.yarn/sdks
 !.yarn/versions
 
-# My Secret Vault
-.envandroid/gradle.properties
+# secrets - do not commit
+.env
+android/gradle.properties
+google-services.json
+GoogleService-Info.plist
+
+# Google Play service account key — never commit this file
+google-services-account.json
