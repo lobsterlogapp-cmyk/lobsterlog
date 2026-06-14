@@ -1,5 +1,5 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
-// Source: data/dfo-reftables/MV_CATCH_USAGE_rel1.csv (11 rows, generated 2026-06-11)
+// Source: data/dfo-reftables/MV_CATCH_USAGE_rel1.csv (11 rows, generated 2026-06-13)
 // Regenerate with: node scripts/generateReftables.js
 
 export interface DfoCatchUsage {

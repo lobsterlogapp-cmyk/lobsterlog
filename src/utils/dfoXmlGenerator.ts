@@ -181,10 +181,9 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   trip += tag('START_DT',  toDate12(startDt), '    ');
   // CREW_NB: Mandatory for QC(88) and MAR(90), Blocked for GLF(89) and NL(91)
   if (subformId === 88 || subformId === 90) trip += tag('CREW_NB', crewNb, '    ');
-  // PORT_ID: Mandatory for QC(88) and NL(91), Blocked for GLF(89) and MAR(90)
-  // TODO open question 4: XSD wants an integer PORT_ID code; departurePort is still a
-  // free-text name — retype pending the ports name→code decision (blueprint §F)
-  if (subformId === 88 || subformId === 91) trip += tag('PORT_ID', d.departurePort, '    ');
+  // PORT_ID (departure): Mandatory for QC(88)/NL(91), Blocked for GLF(89)/MAR(90).
+  // Integer MV_PORT codeId emitted by the DfoPortSelector (Phase 2).
+  if (subformId === 88 || subformId === 91) trip += tag('PORT_ID', d.departurePortCodeId, '    ');
   // OBS_TRIP_NUM: Optional for MAR(90) only, Blocked for 88/89/91
   if (subformId === 90) trip += tag('OBS_TRIP_NUM', d.obsTripNum ?? '', '    ');
   trip += tag('FIRST_ENTRY_DT', toCloseTimestamp(log.firstEntryDt || undefined), '    ');
@@ -299,11 +298,9 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   if (landDt) {
     body += `    <LANDING>\n`;
     body += tag('START_DT', toDate12(landDt), '      ');
-    // PORT_ID: mandatory in landing_type but emission gated to QC(88)/NL(91), still
-    // free-text — TODO open question 4 (ports name→integer-code; whether MAR emits
-    // LANDING.PORT_ID — DFO_MAR_PORT_LIST exists for it). MAR output will fail xmllint
-    // here until resolved.
-    if (subformId === 88 || subformId === 91) body += tag('PORT_ID', d.portLanded, '      ');
+    // PORT_ID (landing): XSD-mandatory for ALL subforms (landing_type). Integer MV_PORT
+    // codeId emitted by the DfoPortSelector (Phase 2) — closes open question 4.
+    body += tag('PORT_ID', d.portLandedCodeId, '      ');
     // LANDING.VRN: carrier vessel — mandatory when USE_CR_IND='Y' (Rule 642),
     // blocked otherwise (Rule 641)
     if (subformId === 88 && d.useCrInd === 'Y') body += tag('VRN', d.carrierVrn ?? '', '      ');

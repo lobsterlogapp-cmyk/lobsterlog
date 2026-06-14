@@ -1,5 +1,6 @@
 // GENERATED FILE — DO NOT EDIT BY HAND. Regenerate: node scripts/generateReftables.js
 
+export { MV_PORT, PORTS_BY_PROVINCE, type DfoPort } from './mvPort';
 export { MV_CATCH_USAGE, type DfoCatchUsage } from './mvCatchUsage';
 export { MV_SPECIMENS_CONDITION, type DfoSpecimensCondition } from './mvSpecimensCondition';
 export { MV_BAIT_CONDITION, type DfoBaitCondition } from './mvBaitCondition';

@@ -53,8 +53,10 @@ const FIXTURES: { name: string; file: string; log: any }[] = [
     const log = baseLog(88, 1006);
     log.data.fmaId = '25640'; // LFA 17b
     log.data.crewRegistry = JSON.stringify(['Crew One', 'Crew Two']);
-    log.data.departurePort = 'Rimouski';   // free-text name — open question 4
-    log.data.portLanded = 'Rimouski';
+    log.data.departurePort = 'RIMOUSKI';
+    log.data.departurePortCodeId = '22648'; // MV_PORT — Rimouski (QC)
+    log.data.portLanded = 'RIMOUSKI';
+    log.data.portLandedCodeId = '22648';
     log.data.soakDuration = '2'; // days (Rule 286) — wire converts to minutes
     log.data.baitEntries = JSON.stringify([{ type: 'Mackerel, Atlantic', lbs: '100' }]);
     // QC-only: USE_CR_IND + carrier VRN (Rules 639/642), PRTNSHP_ID, TRANSFER (Rules 248-252)
@@ -68,17 +70,21 @@ const FIXTURES: { name: string; file: string; log: any }[] = [
     return { name: 'QC-88', file: '/tmp/sample_qc88.xml', log };
   })(),
   (() => {
-    // GLF-89: CREW_NB blocked, PORT_ID blocked, SOAKED_DUR required
+    // GLF-89: CREW_NB blocked, TRIP.PORT_ID blocked, LANDING.PORT_ID mandatory, SOAKED_DUR required
     const log = baseLog(89, 1014);
     log.data.fmaId = '1526'; // LFA 15
+    log.data.portLanded = 'ABOITEAU';
+    log.data.portLandedCodeId = '19322'; // MV_PORT — Aboiteau (NB); LANDING.PORT_ID now mandatory all subforms
     log.data.soakDuration = '2'; // days (Rule 286) — wire converts to minutes
     log.data.baitEntries = JSON.stringify([{ type: 'Squid, Illex', lbs: '100' }]);
     return { name: 'GLF-89', file: '/tmp/sample_glf89.xml', log };
   })(),
   (() => {
-    // MAR-90: CREW_NB mandatory, PORT_ID blocked, SOAKED_DUR blocked, NB_SPCMN_BRD opt
+    // MAR-90: CREW_NB mandatory, TRIP.PORT_ID blocked, LANDING.PORT_ID mandatory, SOAKED_DUR blocked, NB_SPCMN_BRD opt
     const log = baseLog(90, 1004);
     log.data.fmaId = '28599'; // 38b
+    log.data.portLanded = "ABBOTT'S HARBOUR";
+    log.data.portLandedCodeId = '20913'; // MV_PORT — Abbott's Harbour (NS)
     log.data.crewRegistry = JSON.stringify(['Crew One', 'Crew Two']);
     log.data.lgridCodeId = '101';
     log.data.obsTripNum = '';
@@ -94,8 +100,10 @@ const FIXTURES: { name: string; file: string; log: any }[] = [
     // NL-91: PORT_ID mandatory, CREW_NB blocked, SOAKED_DUR required, GEAR_SBTYP_ID req
     const log = baseLog(91, 1002);
     log.data.fmaId = '2071'; // LFA 01
-    log.data.departurePort = 'Port aux Basques'; // free-text name — open question 4
-    log.data.portLanded = 'Port aux Basques';
+    log.data.departurePort = 'PORT AUX BASQUES (CHANNEL)';
+    log.data.departurePortCodeId = '21331'; // MV_PORT — Port aux Basques (NL)
+    log.data.portLanded = 'PORT AUX BASQUES (CHANNEL)';
+    log.data.portLandedCodeId = '21331';
     log.data.soakDuration = '2'; // days (Rule 286) — wire converts to minutes
     log.data.gearSubtypeId = '39684'; // Wooden traps
     log.data.baitEntries = JSON.stringify([{ type: 'Squid, Illex', lbs: '100' }]);

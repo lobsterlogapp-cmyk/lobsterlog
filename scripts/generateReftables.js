@@ -31,6 +31,32 @@ const COLUMN_MAP = {
 };
 
 const TABLES = [
+  // MV_PORT — full 3,970-row port table (TRIP.PORT_ID / LANDING.PORT_ID). MV_PORT-specific
+  // column mapping: DESC_*→name*, nullable PROV_CODE_ID (foreign ports have none), and the
+  // redundant PROV_DESC_* columns dropped (province names come from MV_PROVINCE by codeId).
+  {
+    csv: 'MV_PORT_rel7.csv', module: 'mvPort', exportName: 'MV_PORT', iface: 'DfoPort',
+    columns: {
+      CODE_ID:       { field: 'codeId', type: 'number' },
+      DESC_FRE:      { field: 'nameFr', type: 'string' },
+      DESC_ENG:      { field: 'nameEn', type: 'string' },
+      PROV_CODE_ID:  { field: 'provCodeId', type: 'number?' },
+      PROV_DESC_FRE: null,
+      PROV_DESC_ENG: null,
+    },
+    extraExports: ['PORTS_BY_PROVINCE'],
+    derived: (name, iface) =>
+`// Derived: ports grouped by province code (foreign / no-province ports excluded).
+export const PORTS_BY_PROVINCE: Record<number, ${iface}[]> = (() => {
+  const m: Record<number, ${iface}[]> = {};
+  for (const p of ${name}) {
+    if (p.provCodeId == null) continue;
+    if (!m[p.provCodeId]) m[p.provCodeId] = [];
+    m[p.provCodeId].push(p);
+  }
+  return m;
+})();`,
+  },
   // Form 234 pickers
   { csv: 'MV_CATCH_USAGE_rel1.csv', module: 'mvCatchUsage', exportName: 'MV_CATCH_USAGE', iface: 'DfoCatchUsage' },
   { csv: 'MV_SPECIMENS_CONDITION_rel1.csv', module: 'mvSpecimensCondition', exportName: 'MV_SPECIMENS_CONDITION', iface: 'DfoSpecimensCondition' },
@@ -72,25 +98,34 @@ function tsString(s) {
   return "'" + s.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
 }
 
-function generateTable({ csv, module: moduleName, exportName, iface }) {
+const tsType = t => (t === 'number?' ? 'number | null' : t);
+
+function generateTable({ csv, module: moduleName, exportName, iface, columns, extraExports, derived }) {
   const raw = fs.readFileSync(path.join(CSV_DIR, csv));
   // DFO ships Windows-1252; decode properly so French accents survive (Standard §3.11).
   const text = new TextDecoder('windows-1252').decode(raw).replace(/^﻿/, '');
   const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
 
   const headers = parseCsvLine(lines[0]).map(h => h.trim().replace(/^"|"$/g, ''));
+  const map = columns || COLUMN_MAP; // per-table override (e.g. MV_PORT) else the shared map
   const cols = headers.map(h => {
+    if (h in map) return map[h]; // an explicit `null` means "parse the cell but don't emit it"
     const m = COLUMN_MAP[h];
-    if (!m) throw new Error(`${csv}: unmapped column "${h}" — add it to COLUMN_MAP`);
+    if (!m) throw new Error(`${csv}: unmapped column "${h}" — add it to COLUMN_MAP or the table's columns`);
     return m;
   });
+  const emit = cols.map((c, i) => ({ c, i })).filter(x => x.c); // dropped (null) columns excluded
 
   const rows = lines.slice(1).map(line => {
     const cells = parseCsvLine(line);
     if (cells.length !== cols.length) throw new Error(`${csv}: row has ${cells.length} cells, expected ${cols.length}: ${line}`);
-    return cells.map((c, i) => {
-      const v = c.trim();
-      if (cols[i].type === 'number') {
+    return emit.map(({ c, i }) => {
+      const v = cells[i].trim();
+      if (c.type === 'number' || c.type === 'number?') {
+        if (v === '') {
+          if (c.type === 'number?') return 'null';
+          throw new Error(`${csv}: empty ${headers[i]} but column is non-nullable number`);
+        }
         const n = Number(v);
         if (!Number.isFinite(n)) throw new Error(`${csv}: non-numeric ${headers[i]}: "${v}"`);
         return String(n);
@@ -100,9 +135,9 @@ function generateTable({ csv, module: moduleName, exportName, iface }) {
   });
 
   const genDate = new Date().toISOString().slice(0, 10);
-  const fields = cols.map(c => `  ${c.field}: ${c.type};`).join('\n');
+  const fields = emit.map(({ c }) => `  ${c.field}: ${tsType(c.type)};`).join('\n');
   const body = rows
-    .map(cells => '  { ' + cells.map((v, i) => `${cols[i].field}: ${v}`).join(', ') + ' },')
+    .map(cells => '  { ' + cells.map((v, k) => `${emit[k].c.field}: ${v}`).join(', ') + ' },')
     .join('\n');
 
   const out =
@@ -110,10 +145,11 @@ function generateTable({ csv, module: moduleName, exportName, iface }) {
     `// Source: data/dfo-reftables/${csv} (${rows.length} rows, generated ${genDate})\n` +
     `// Regenerate with: node scripts/generateReftables.js\n\n` +
     `export interface ${iface} {\n${fields}\n}\n\n` +
-    `export const ${exportName}: ${iface}[] = [\n${body}\n];\n`;
+    `export const ${exportName}: ${iface}[] = [\n${body}\n];\n` +
+    (derived ? '\n' + derived(exportName, iface) + '\n' : '');
 
   fs.writeFileSync(path.join(OUT_DIR, `${moduleName}.ts`), out, 'utf8');
-  return { moduleName, exportName, iface, rowCount: rows.length };
+  return { moduleName, exportName, iface, rowCount: rows.length, extraExports: extraExports || [] };
 }
 
 fs.mkdirSync(OUT_DIR, { recursive: true });
@@ -121,7 +157,10 @@ const results = TABLES.map(generateTable);
 
 const index =
   `// GENERATED FILE — DO NOT EDIT BY HAND. Regenerate: node scripts/generateReftables.js\n\n` +
-  results.map(r => `export { ${r.exportName}, type ${r.iface} } from './${r.moduleName}';`).join('\n') + '\n';
+  results.map(r => {
+    const names = [r.exportName, ...r.extraExports];
+    return `export { ${names.join(', ')}, type ${r.iface} } from './${r.moduleName}';`;
+  }).join('\n') + '\n';
 fs.writeFileSync(path.join(OUT_DIR, 'index.ts'), index, 'utf8');
 
 for (const r of results) console.log(`  ${r.exportName.padEnd(28)} ${String(r.rowCount).padStart(4)} rows -> src/data/reftables/${r.moduleName}.ts`);

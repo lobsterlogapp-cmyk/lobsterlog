@@ -55,9 +55,8 @@ import {
 import { loadCaptainProfile } from '../utils/captainStorage';
 import { useTranslation } from 'react-i18next';
 import CrewSelector from './CrewSelector';
-import PortSelector from './PortSelector';
+import DfoPortSelector from './DfoPortSelector';
 import { CrewMember } from '../utils/crewStorage';
-import { Port, loadPorts } from '../utils/portStorage';
 import { MV_CATCH_USAGE, MV_PARTNERSHIP_TYPE } from '../data/reftables';
 
 export interface FullDfoFormHandle {
@@ -138,7 +137,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const [firstEntryDt, setFirstEntryDt] = useState('');
   const [crewMembers, setCrewMembers] = useState<CrewMember[]>([]);
   const [departurePort, setDeparturePort] = useState('');
-  const [savedPorts, setSavedPorts] = useState<Port[]>([]);
+  const [departurePortCodeId, setDeparturePortCodeId] = useState<number | null>(null);
+  const [portLandedCodeId, setPortLandedCodeId] = useState<number | null>(null);
 
   const [timeSailed, setTimeSailed] = useState('');
   const [timeStartedHauling, setTimeStartedHauling] = useState('');
@@ -277,11 +277,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           setCatchWeight(d.catchWeight || '');
           setTrapHauls(d.trapHauls || '');
           setPortLanded(d.portLanded || '');
+          setPortLandedCodeId(d.portLandedCodeId ? Number(d.portLandedCodeId) : null);
           try {
                       const cm = JSON.parse(d.crewRegistry || '[]');
                       setCrewMembers(Array.isArray(cm) ? cm : []);
                     } catch { setCrewMembers([]); }
                     setDeparturePort(d.departurePort || '');
+          setDeparturePortCodeId(d.departurePortCodeId ? Number(d.departurePortCodeId) : null);
           setTimeSailed(d.timeSailed || '');
           setTimeStartedHauling(d.timeStartedHauling || '');
           setTimeStoppedHauling(d.timeStoppedHauling || '');
@@ -392,7 +394,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             if (Array.isArray(cm) && cm.length > 0) setCrewMembers(cm);
           } catch {}
           if (last.data.departurePort) setDeparturePort(last.data.departurePort);
+          if (last.data.departurePortCodeId) setDeparturePortCodeId(Number(last.data.departurePortCodeId));
           if (last.data.portLanded) setPortLanded(last.data.portLanded);
+          if (last.data.portLandedCodeId) setPortLandedCodeId(Number(last.data.portLandedCodeId));
         }
         // LFA priority: (1) most recent log fmaId, (2) profile fmaId
         const lastFmaId = last?.data?.fmaId ? Number(last.data.fmaId) : null;
@@ -401,7 +405,6 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       }
       setIsLoaded(true);
           };
-          loadPorts().then(setSavedPorts);
           loadExisting();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingLogId]);
@@ -439,7 +442,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         lgridCodeId: String(lgridCodeId ?? ''),
         lgridDisplay,
         catchWeight, trapHauls,
-    portLanded, crewRegistry: JSON.stringify(crewMembers), departurePort,
+    portLanded, portLandedCodeId: String(portLandedCodeId ?? ''),
+    crewRegistry: JSON.stringify(crewMembers),
+    departurePort, departurePortCodeId: String(departurePortCodeId ?? ''),
     timeSailed, timeStartedHauling, timeStoppedHauling,
     timeOfLanding, soakDuration,
     baitEntries: JSON.stringify(baitEntries),
@@ -1055,31 +1060,25 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           )}
           <View style={styles.fieldRow}>
                                 <Text style={styles.label}>{t('form234.departurePortLabel')}</Text>
-                                <PortSelector
+                                <DfoPortSelector
                                   value={departurePort}
-                                  onChange={setDeparturePort}
+                                  codeId={departurePortCodeId}
+                                  subformId={subformId}
                                   placeholder={t('form234.selectDeparturePort')}
-                                  savedPorts={savedPorts}
-                                  onPortAdded={(port) => setSavedPorts(prev => [...prev, port])}
-                                  onPortDeleted={(id, name) => {
-                                    setSavedPorts(prev => prev.filter(p => p.id !== id));
-                                    if (departurePort === name) setDeparturePort('');
-                                  }}
+                                  disabled={readOnly}
+                                  onChange={(sel) => { setDeparturePort(sel.name); setDeparturePortCodeId(sel.codeId); }}
                                 />
                               </View>
                               {isVisible('portId') && (
                               <View style={styles.fieldRow}>
                                 <Text style={styles.label}>{t('form234.portLandedLabel')}{isRequired('portId') && <Text style={{ color: '#EF4444' }}> *</Text>}</Text>
-                                <PortSelector
+                                <DfoPortSelector
                                   value={portLanded}
-                                  onChange={setPortLanded}
+                                  codeId={portLandedCodeId}
+                                  subformId={subformId}
                                   placeholder={t('form234.selectPortLanded')}
-                                  savedPorts={savedPorts}
-                                  onPortAdded={(port) => setSavedPorts(prev => [...prev, port])}
-                                  onPortDeleted={(id, name) => {
-                                    setSavedPorts(prev => prev.filter(p => p.id !== id));
-                                    if (portLanded === name) setPortLanded('');
-                                  }}
+                                  disabled={readOnly}
+                                  onChange={(sel) => { setPortLanded(sel.name); setPortLandedCodeId(sel.codeId); }}
                                 />
                               </View>
                               )}

@@ -1,6 +1,6 @@
 # LobsterLog — CLAUDE.md
 App version: 1.8.6 (versionCode 76)
-Last updated: June 12, 2026 (Session 51 complete)
+Last updated: June 13, 2026 (Session 53 complete; Session 54 active)
 
 ## What this app is
 React Native / Expo mobile app. DFO-qualified electronic logbook for lobster harvesters.
@@ -278,23 +278,30 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 - TransmissionRecord gains fileName + confNumber (Session 50) — optional fields (old records still parse); closes part of the Standard §13.3.1 register gap (file name + confirmation number now recorded on both success and failure)
 - ValidateElogKey UAT integration (Session 50) — buildValidateElogKeyEnvelope() (trims + UPPERCASES key before base64 per guide §3.2.1 warning) + parseValidateElogKeyResponse() (valid iff ERR=WS1000; WS1001/WS1003/WS1031/WS1036 mapped to spec messages) in dfoXmlGenerator.ts; "Validate ELOG Key (UAT)" card added to DfoTestHarnessScreen (DEV-only) hitting the live UAT .asmx directly — key from EXPO_PUBLIC_DFO_TEST_ELOG_KEY with captainProfile.elogKey fallback; success/failure/error (timeout/network) paths all surfaced in the result box; UAT endpoint reachability verified HTTP 200 from dev machine
 - dfoXmlGenerator.ts header bumped v6.0 → v6.1 (Session 50) — v6.1 delta review confirmed only Lost Gear removal (matches existing resolution; required forms now exactly 222 + 233)
+- MV_PORT ingestion (Session 53) — MV_PORT_rel7 ingested (3,970 ports) via the extended scripts/generateReftables.js (nullable PROV_CODE_ID, MV_PORT-specific DESC_*→nameEn/nameFr mapping, derived PORTS_BY_PROVINCE); vendored data/dfo-reftables/MV_PORT_rel7.csv (cp1252) → src/data/reftables/mvPort.ts. DFO_MAR_PORT_LIST rebuilt as a FILTERED VIEW of MV_PORT (NS 180 + NB 176 + PEI 188), proven row-for-row identical to the old hand-typed 2,229-row literal three ways (static parse, independent line diff, runtime exec) → ~11k lines removed from dfoConstants.ts; shape { codeId, name, province } preserved (zero behavior change for MAR). MV_PROVINCE left as-is (already ingested Session 51)
+- DfoPortSelector (Session 53) — new src/components/DfoPortSelector.tsx: typeahead over generated MV_PORT, province-defaulted per subform (QC→QC, MAR/GLF→NS/NB/PEI, NL→NL) with a search-all fallback, stores { name, codeId }. Shared PortSelector.tsx + LobsterLogProposalForm.tsx (legacy user-facing, 175 live users) left byte-untouched — change scoped to FullDfoForm only. No draft migration (no existing DFO ports to convert)
+- PORT_ID integer emission (Session 53) — FullDfoForm carries departurePortCodeId / portLandedCodeId; dfoXmlGenerator emits TRIP.PORT_ID (QC/NL) + LANDING.PORT_ID (all 4 subforms) as integer MV_PORT codeIds. DFO_SUBFORM_FIELD_CONFIG: portId added to visible+required for GLF(89) & MAR(90) (LANDING.PORT_ID XSD-mandatory for all). ALL FOUR subforms now validate against the XSD with real PORT_IDs (no dummy) — Open Question 4 CLOSED. tsc = 33 (baseline, zero new); jest 3/3
+- First real UAT transmission (Session 53) — MAR-90, reserved test triplet FIN 100400460 / VRN 1004460 / LIC_NO 1004460, ELOG key WPPBBCKEWTXZSFQBCWRSQVNX, SaveIncomingFile envelope POSTed to the UAT .asmx → HTTP 200, ERR=WS0000, CONF=162836, LGBK_UID ABCDEF. First DFO-accepted logbook. Payload built by the real app functions (generateElogXml→validateElogXml→generateDfoXmlFileName→generateSoapEnvelope); file name 1004-1004460-…​.XML; PORT_ID 20913 (Abbott's Harbour, NS)
+- Known follow-ups (Session 54):
+  - Harness subform Fire path posts to the empty DFO_ELOG_ENDPOINT by design (so subform logbooks can't reach UAT by accident) — wire it to the UAT .asmx (DFO_UAT_ENDPOINT) to enable in-app transmission
+  - DfoTestHarnessScreen makeFixtureLog(90) is stale: it sets no landing port, but LANDING.PORT_ID is now mandatory for MAR (Phase 2) — sync the fixture (add portLandedCodeId) or an in-app MAR Fire will fail validation
 
 ---
 
 ## Not yet built
-- Real DFO HTTP endpoint — DFO_ELOG_ENDPOINT stub in DfoLogsListScreen still empty
-  (production URL pending); SOAP envelope + response parsing DONE (Session 50, real
-  SaveIncomingFile contract); UAT endpoint confirmed live and wired into the DEV harness
-  ValidateElogKey card only — deliberate, so subform Fire buttons can't post logbooks to
-  UAT by accident
-- Reftable ingestion — INFRA BUILT (Session 51): scripts/generateReftables.js +
-  data/dfo-reftables/ (11 vendored CSVs) + src/data/reftables/ (typed generated
-  modules): MV_CATCH_USAGE, MV_SPECIMENS_CONDITION, MV_BAIT_CONDITION,
-  MV_PARTNERSHIP_TYPE, MV_PROVINCE + full F222 cluster (MV_NOAA_MM_SPECIES,
-  MV_INCIDENT_TYPE, MV_MM_LENGTH_CATEGORY, MV_MM_SPECIMENS_CONDITION,
-  MV_CONFIDENCE_LEVEL, MV_GEAR_DESCRIPTION). STILL TO INGEST: MV_PORT_rel7 (open Q4 —
-  now the ONLY remaining transmission blocker for all four subforms; needs the
-  PortSelector typeahead storing codeId per plan §4) — Session 52 priority
+- Real DFO HTTP endpoint — DFO_ELOG_ENDPOINT stub in DfoLogsListScreen / DfoTestHarnessScreen
+  still empty (production URL pending); SOAP envelope + response parsing DONE (Session 50, real
+  SaveIncomingFile contract). FIRST REAL UAT SaveIncomingFile TRANSMISSION SUCCEEDED (Session 53,
+  MAR-90, reserved test triplet) → ERR=WS0000, CONF=162836, HTTP 200 — posted to the UAT .asmx
+  directly. In-app subform Fire path still points at the empty DFO_ELOG_ENDPOINT by design — see
+  Known follow-ups (Session 54)
+- Reftable ingestion — DONE (Session 53): MV_PORT_rel7 ingested (3,970 ports) closes the last
+  table. Earlier infra (Session 51): scripts/generateReftables.js + data/dfo-reftables/ vendored
+  CSVs + src/data/reftables/ typed modules: MV_CATCH_USAGE, MV_SPECIMENS_CONDITION,
+  MV_BAIT_CONDITION, MV_PARTNERSHIP_TYPE, MV_PROVINCE + full F222 cluster (MV_NOAA_MM_SPECIES,
+  MV_INCIDENT_TYPE, MV_MM_LENGTH_CATEGORY, MV_MM_SPECIMENS_CONDITION, MV_CONFIDENCE_LEVEL,
+  MV_GEAR_DESCRIPTION). MV_PORT details + PortSelector codeId wiring → see What's built (Session 53).
+  Open Question 4 CLOSED
 - EFFORT_DETAIL LAT/LONG MODE emission — DONE (Session 51, MAR-90 FMA 38b per Rule
   3059; gpsSrc source flag in FullDfoForm). SAR node emission still held on missing
   SAR UI fields (NB_SPCMN, SPCMN_COND_ID — reftable now generated, UI not built)
@@ -321,7 +328,7 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 ---
 
 ## DFO qualification gates remaining
-- [ ] XSD validation passing on test XML
+- [x] XSD validation passing on test XML — all four subforms validate with real PORT_IDs (Session 53); first UAT SaveIncomingFile returned WS0000 (CONF 162836)
 - [ ] All prerequisite forms built (222 ✅, 233 ✅, Lost Gear confirmed ✅ — FGRS external, no Form 223)
 - [ ] Confirmation of qualification from DFO
 - [ ] Authorization to deploy from DFO
@@ -343,36 +350,11 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 | Session 49 | June 11 2026 | (Logged retroactively, Session 50) Refactor steps S1–S4 completed (nested tree emission + validator rewrite; MAR-90 validates fully with dummy PORT_ID); full DFO folder inventory (docs/archive/DFO_FOLDER_INVENTORY.md + docs/archive/DFO_REFTABLES_INVENTORY.md); discovered real web service contract is SaveIncomingFile (envelope was invented), UAT URL on disk, Form 222 element-set mismatch, F233 REPORT_UID legitimacy. |
 | Session 51 | June 11-12 2026 | ALL 5 PLANNED PHASES COMPLETE. P1 Reftables: scripts/generateReftables.js (cp1252→UTF-8 codegen), 11 CSVs vendored to data/dfo-reftables/, 11 typed modules in src/data/reftables/; BYCATCH_USAGE_OPTIONS rebased on MV_CATCH_USAGE. P2 Form 233: generator+validator rewritten flat→nested ELOG/GENERAL_INFO/REPORT/REPORT_DTL (REASON is free text, not W/M/P/O; REPORT_UID kept), button un-hidden, xmllint VALIDATES; jest AsyncStorage mock added to jest.config.js. P3 Rules: 48 (DfoLog.tripNum sequential), 181 (validator), 165+286 (SOAKED_DUR wire unit = MINUTES per dictionary — days→min conversion added), 29/30/32/45/46 date cross-checks, 33 (findEffortOverlap wired into send), 980 warning, 3059 (MAR-38b LAT/LONG emission WITH MODE=G/M via gpsSrc flag — Q3 implementation done), 623-626 (NB_VNTCH/_YOU QC FMA sets + UI), 653/654/655 (NB_SPCMN_BRD 38b-only), 985 (REG_ID↔subform). P4 Form 222: restructured to ELOG/GENERAL_INFO(FIN+VRN mandatory)/MM_INTER/MM_INTER_INCDNT; NOAA_SPECIE_COD from MV_NOAA_MM_SPECIES (invented 10001-10099 codes gone); INCDNT_TYP_ID from MV_INCIDENT_TYPE (E/V/O gone; legacy Y/N indicators map to incident nodes 39609/39610/39615); LGBK_NUM_REF field added (prefill from last log lgbkUid); LAT/LON bounds 40-70/-165--35; xmllint VALIDATES (Y and N). P5 QC-88: USE_CR_IND (Rule 639 default N) + carrier VRN → LANDING.VRN (641/642), PRTNSHP_ID picker (MV_PARTNERSHIP_TYPE), structured TRANSFER/TRANSFER_DTL (248-252), validator overlays; xmllint VALIDATES. Test key confirmed in .env (Test_values PDF p.4 has key + reserved test FIN/VRN/LIC triplets). F234 xmllint: all four subforms validate with dummy PORT_ID — Q4 (MV_PORT) is now the SOLE transmission blocker. |
 | Session 50 | June 11 2026 | Q3 RESOLVED (LAT/LONG MODE = per-coordinate provenance G/M, Standard v6.1 §11.3); v6.1 delta review (Lost Gear removal only — corroborates existing resolution); SOAP envelope rewrite to real SaveIncomingFile contract across all 3 generators (shared builder, base64 params, fake auth header removed); generateDfoXmlFileName() per §3.10; parseDfoSoapResponse() rewritten for WS_RESP contract (7/7 spec-sample tests); TransmissionRecord +fileName/confNumber; ValidateElogKey UAT card in test harness (endpoint verified live HTTP 200); docs/REFTABLE_INGESTION_PLAN.md written (plan only). OUTSTANDING: Jonny to add EXPO_PUBLIC_DFO_TEST_ELOG_KEY to .env before firing the UAT key test. |
+| Session 53 | June 13 2026 | MV_PORT_rel7 ingested (3,970 ports; generateReftables.js extended: nullable PROV_CODE_ID, MV_PORT-specific DESC_*→name mapping, derived PORTS_BY_PROVINCE); DFO_MAR_PORT_LIST rebuilt as a filtered MV_PORT view (NS+NB+PEI), proven identical to the old 2,229-row literal 3 ways, ~11k lines removed. New DfoPortSelector ({name,codeId}); shared PortSelector + LobsterLogProposalForm left untouched (175 users safe). TRIP.PORT_ID (QC/NL) + LANDING.PORT_ID (all 4) emit integer codeIds; field config portId added to GLF/MAR. ALL FOUR subforms XSD-valid with real PORT_IDs — Open Question 4 CLOSED. First real UAT SaveIncomingFile transmission (MAR-90, reserved test triplet) → HTTP 200, ERR=WS0000, CONF=162836 — first DFO-accepted logbook. tsc=33 baseline, jest 3/3. |
 
 ---
 
 ## Current session goals
 > Update this section at the start of each session.
 
-SESSION 52 — PRIORITY: MV_PORT ingestion (open Q4 — the SOLE remaining transmission
-blocker; everything else xmllint-validates on all four subforms + F222 + F233).
-Q4 priority finding from the Session 51 detour: the detour RAISED Q4's urgency —
-with Phases 1-5 done there is no other blocker left, and GLF-89's XSD demands
-LANDING.PORT_ID structurally ("Expected is ( PORT_ID )"), so Kane's
-blocked-vs-mandatory answer only affects the GLF picker filter, not the schema.
-
-1. MV_PORT_rel7 ingestion per docs/REFTABLE_INGESTION_PLAN.md §4 (extend
-   scripts/generateReftables.js with provCodeId column + PORTS_BY_PROVINCE;
-   DFO_MAR_PORT_LIST re-export swap; PortSelector typeahead storing codeId;
-   TRIP/LANDING PORT_ID integer emission) → expect FULL xmllint validation, then
-   first UAT transmission with the reserved test FIN/VRN/LIC triplets
-2. SAR detail node — reftable ready (MV_SPECIMENS_CONDITION); build SAR UI fields
-   (NB_SPCMN, SPCMN_COND_ID) + LAT/LONG MODE on SAR coords (reuse gpsSrc pattern)
-3. BAIT_USED BT_COND_ID — reftable ready (MV_BAIT_CONDITION); bait-condition picker
-   per Rules 984 (QC/GLF herring/mackerel) and 3060 (MAR non-waste/electronic/synthetic)
-4. Cleanup: delete oneoff fixture tests after restructure stabilizes; consider Rule
-   286 integer-days input enforcement; courtesy-confirm SOAKED_DUR minutes unit with Kane
-5. French docs (all three French Form 234 instruction PDFs on disk)
-6. §13.3.1 register fields (trip number + vessel number + XSD-result) and §20.1
-   password-gate verification — pre-qualification compliance flags from Session 50
-
-REMAINING GENUINE KANE ASKS:
-- GLF LANDING.PORT_ID blocked-vs-mandatory clarification
-- UAT URL/key confirmation (courtesy, we have the URL — and Session 50 verified it live)
-- Submission strategy (all-four vs MAR-first)
-- SAR detail scope (may answer from Standard v6.1 on disk)
+SESSION 54 — TBD
