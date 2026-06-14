@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { Plus, FileText, Send, Edit3, Eye, Play, Trash2, CheckCircle, User, Shield, RotateCcw } from 'lucide-react-native';
 import { loadAllLogs, deleteLog, markSentToDfo, DfoLog, saveTransmissionRecord, TransmissionRecord, saveXmlArchiveEntry } from '../utils/dfoLogStorage';
-import { generateElogXml, generateSoapEnvelope, generateReportUid, validateElogXml, generateDfoXmlFileName, findEffortOverlap, DFO_SOAP_ACTION_SAVE } from '../utils/dfoXmlGenerator';
+import { generateElogXml, generateSoapEnvelope, generateReportUid, validateElogXml, generateDfoXmlFileName, findEffortOverlap, DFO_SOAP_ACTION_SAVE, DFO_UAT_ENDPOINT } from '../utils/dfoXmlGenerator';
 import { loadCaptainProfile, loadPrivacyAccepted, savePrivacyAccepted } from '../utils/captainStorage';
 import CaptainProfileScreen from './CaptainProfileScreen';
 import InspectionModeScreen from './InspectionModeScreen';
@@ -24,6 +24,7 @@ import Form222Screen from './Form222Screen';
 import Form233Screen from './Form233Screen';
 import PrivacyNoticeModal from './PrivacyNoticeModal';
 import AttestationModal from './AttestationModal';
+import DfoTestHarnessScreen from './DfoTestHarnessScreen';
 
 let attestationShownThisSession = false;
 
@@ -102,7 +103,6 @@ const getCountdownLabel = (log: DfoLog, now: number): { label: string; urgent: b
 
 // --- DFO submission constants and response parser ---
 
-const DFO_ELOG_ENDPOINT = ''; // Replace with URL from Jennifer Mooney — Ticket #2126
 const SEND_TIMEOUT_MS = 30000;
 
 // Response contract — ELOG_Web_Service_3_6_Eng.pdf §3.1.3: the SaveIncomingFile result is
@@ -180,6 +180,7 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
   const [now, setNow] = useState(Date.now());
   const [captainProfileVisible, setCaptainProfileVisible] = useState(false);
   const [inspectionModeVisible, setInspectionModeVisible] = useState(false);
+  const [harnessVisible, setHarnessVisible] = useState(false);
   const [form222Visible, setForm222Visible] = useState(false);
   const [form233Visible, setForm233Visible] = useState(false);
   const [failedSends, setFailedSends] = useState<Record<string, string>>({});
@@ -264,19 +265,13 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
       fileName = generateDfoXmlFileName(log.regId ?? 1004, captainProfile.dfoLicenceNo);
       soap = generateSoapEnvelope(xml, captainProfile.elogKey, fileName);
 
-      if (!DFO_ELOG_ENDPOINT) {
-        throw Object.assign(
-          new Error('DFO endpoint URL not yet configured. Awaiting credentials from Jennifer Mooney (Ticket #2126).'),
-          { code: 'NO_ENDPOINT' }
-        );
-      }
-
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), SEND_TIMEOUT_MS);
       let httpStatus = 0;
       let responseBody = '';
       try {
-        const response = await fetch(DFO_ELOG_ENDPOINT, {
+        // ⚠️ LIVE UAT TRANSMISSION — this really POSTs the logbook to DFO's UAT server.
+        const response = await fetch(DFO_UAT_ENDPOINT, {
           method: 'POST',
           headers: {
             'Content-Type': 'text/xml; charset=utf-8',
@@ -525,13 +520,28 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
 
         <Text style={styles.headerTitle}>{t('logs.headerTitle')}</Text>
 
-        <TouchableOpacity
-          style={styles.pillButtonShield}
-          onPress={() => setInspectionModeVisible(true)}
-        >
-          <Shield size={14} color="#FFFFFF" />
-          <Text style={styles.pillButtonShieldText}>{t('logs.inspectButton')}</Text>
-        </TouchableOpacity>
+        {/* Inspection Mode (QR) — hidden for now: demoed to DFO, not currently wanted.
+            NOT deleted — flip false→true to re-enable. Screen + modal + state left intact. */}
+        {false && (
+          <TouchableOpacity
+            style={styles.pillButtonShield}
+            onPress={() => setInspectionModeVisible(true)}
+          >
+            <Shield size={14} color="#FFFFFF" />
+            <Text style={styles.pillButtonShieldText}>{t('logs.inspectButton')}</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* XML Test Harness — DEV-only entry point (relocated from DfoSetupScreen) */}
+        {__DEV__ && (
+          <TouchableOpacity
+            style={styles.pillButton}
+            onPress={() => setHarnessVisible(true)}
+          >
+            <Play size={14} color="#1E3A8A" />
+            <Text style={styles.pillButtonText}>XML Test Harness</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <ScrollView
@@ -601,6 +611,16 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
         onRequestClose={() => setInspectionModeVisible(false)}
       >
         <InspectionModeScreen onClose={() => setInspectionModeVisible(false)} />
+      </Modal>
+
+      {/* ── XML Test Harness Modal (DEV) ── */}
+      <Modal
+        visible={harnessVisible}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setHarnessVisible(false)}
+      >
+        <DfoTestHarnessScreen onClose={() => setHarnessVisible(false)} />
       </Modal>
 
       {/* ── Form 222 · Marine Mammal Modal ── */}

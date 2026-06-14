@@ -13,12 +13,8 @@ import {
 import { X } from 'lucide-react-native';
 import { loadCaptainProfile, CaptainProfile } from '../utils/captainStorage';
 import { DfoLog } from '../utils/dfoLogStorage';
-import { generateElogXml, validateElogXml, generateSoapEnvelope, generateDfoXmlFileName, DFO_SOAP_ACTION_SAVE, buildValidateElogKeyEnvelope, parseValidateElogKeyResponse, DFO_SOAP_ACTION_VALIDATE } from '../utils/dfoXmlGenerator';
+import { generateElogXml, validateElogXml, generateSoapEnvelope, generateDfoXmlFileName, DFO_SOAP_ACTION_SAVE, buildValidateElogKeyEnvelope, parseValidateElogKeyResponse, DFO_SOAP_ACTION_VALIDATE, DFO_UAT_ENDPOINT } from '../utils/dfoXmlGenerator';
 
-// Stub — swap in URL from Jennifer Mooney (Ticket #2126)
-const DFO_ELOG_ENDPOINT = '';
-// UAT endpoint confirmed on disk in ELOG_WebService spec (Session 49 inventory)
-const DFO_UAT_ENDPOINT = 'https://inter-w01-uat.dfo-mpo.gc.ca/ws/ElogXMLFileTransfer/ElogXMLFileTransfer.asmx';
 const SEND_TIMEOUT_MS = 30000;
 
 interface Props {
@@ -40,11 +36,21 @@ const FIXTURE_FMA: Record<number, string> = {
   91: '1652',  // LFA 02
 };
 
+// Landing port codeIds (MV_PORT) — LANDING.PORT_ID is XSD-mandatory for ALL subforms.
+// Verified against src/data/reftables/mvPort.ts; match the Session 53 genSampleAllSubforms fixtures.
+const FIXTURE_LANDING_PORT: Record<number, number> = {
+  88: 22648, // Rimouski (QC)
+  89: 19322, // Aboiteau (GLF)
+  90: 20913, // Abbott's Harbour (MAR)
+  91: 21331, // Port aux Basques (NL)
+};
+
 function makeFixtureLog(subformId: number, regId: number): DfoLog {
   const today = new Date().toISOString().slice(0, 10);
   const now = new Date().toISOString();
   const data: Record<string, string> = {
     fmaId: FIXTURE_FMA[subformId],
+    portLandedCodeId: String(FIXTURE_LANDING_PORT[subformId]), // LANDING.PORT_ID (all subforms)
     trapHauls: '50',
     catchWeight: '500',
     timeSailed: '06:00',
@@ -62,6 +68,7 @@ function makeFixtureLog(subformId: number, regId: number): DfoLog {
   if (subformId === 88 || subformId === 91) {
     data.portLanded = 'TEST PORT';
     data.departurePort = 'TEST PORT';
+    data.departurePortCodeId = String(FIXTURE_LANDING_PORT[subformId]); // TRIP.PORT_ID (QC/NL); same-port trip for fixture
   }
   if (subformId === 90) {
     data.obsTripNum = 'OBS-TEST-001';
@@ -174,21 +181,11 @@ export default function DfoTestHarnessScreen({ onClose }: Props) {
       const fileName = generateDfoXmlFileName(regId, profile.dfoLicenceNo);
       const soap = generateSoapEnvelope(xml, profile.elogKey, fileName);
 
-      if (!DFO_ELOG_ENDPOINT) {
-        setResults(prev => ({
-          ...prev,
-          [subformId]: `✓ Validation passed\n✓ XML generated\n✓ SOAP envelope built\n` +
-            `✓ File name: ${fileName}\n\n` +
-            `[No endpoint configured — swap in URL from Jennifer Mooney (Ticket #2126)]\n\n` +
-            `--- SOAP ENVELOPE ---\n${soap}`,
-        }));
-        return;
-      }
-
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), SEND_TIMEOUT_MS);
       try {
-        const response = await fetch(DFO_ELOG_ENDPOINT, {
+        // Harness Fire now transmits live to DFO's UAT server (same path as Send to DFO).
+        const response = await fetch(DFO_UAT_ENDPOINT, {
           method: 'POST',
           headers: {
             'Content-Type': 'text/xml; charset=utf-8',

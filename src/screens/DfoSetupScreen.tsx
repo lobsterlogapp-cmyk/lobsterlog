@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   Alert,
-  Modal,
   Platform,
   ScrollView,
   StatusBar,
@@ -16,7 +15,6 @@ import { X } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { loadCaptainProfile, saveCaptainProfile } from '../utils/captainStorage';
 import { DFO_SUBFORM_REGISTRY } from '../utils/dfoConstants';
-import DfoTestHarnessScreen from './DfoTestHarnessScreen';
 
 interface Props {
   onActivated: () => void;
@@ -42,7 +40,6 @@ export default function DfoSetupScreen({ onActivated, onClose, isAdmin }: Props)
   const [fin, setFin] = useState('');
   const [loading, setLoading] = useState(false);
   const [devMode, setDevMode] = useState(false);
-  const [harnessVisible, setHarnessVisible] = useState(false);
   const [finError, setFinError] = useState('');
 
   const selectedRegionLabel = REGIONS.find(r => r.subformId === selectedSubformId)?.label ?? 'Region';
@@ -259,22 +256,7 @@ export default function DfoSetupScreen({ onActivated, onClose, isAdmin }: Props)
             <Text style={styles.restoreText}>{t('setup.restoreButton')}</Text>
           </TouchableOpacity>
         )}
-
-        {/* Test Harness — DEV only, shown when DEV pill is active */}
-        {devMode && isAdmin && (
-          <TouchableOpacity
-            style={styles.harnessButton}
-            onPress={() => setHarnessVisible(true)}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.harnessText}>{t('setup.harnessButton')}</Text>
-          </TouchableOpacity>
-        )}
       </ScrollView>
-
-      <Modal visible={harnessVisible} animationType="slide" presentationStyle="fullScreen">
-        <DfoTestHarnessScreen onClose={() => setHarnessVisible(false)} />
-      </Modal>
     </View>
   );
 }
@@ -451,19 +433,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#94A3B8',
     fontWeight: '500',
-  },
-  harnessButton: {
-    alignItems: 'center',
-    paddingVertical: 10,
-    marginTop: 4,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#EA580C',
-  },
-  harnessText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#EA580C',
   },
   fieldError: {
     fontSize: 11,

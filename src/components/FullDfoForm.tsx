@@ -894,7 +894,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       Alert.alert(t('form234.missingFieldsTitle'), t('form234.missingBycatchEntries'), [{ text: tc('nav.ok') }]);
       return;
     }
-    if (transferYes === null) {
+    if (subformId === 88 && transferYes === null) {
       Alert.alert(t('form234.missingFieldsTitle'), t('form234.missingTransferAnswer'), [{ text: tc('nav.ok') }]);
       return;
     }

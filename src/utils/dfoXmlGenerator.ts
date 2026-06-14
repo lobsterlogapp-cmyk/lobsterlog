@@ -837,6 +837,11 @@ function toBase64(s: string): string {
 // SOAP 1.1 — HTTP POST, Content-Type: text/xml; charset=utf-8, plus this SOAPAction header
 export const DFO_SOAP_ACTION_SAVE = 'http://www.dfo-mpo.gc.ca/SaveIncomingFile';
 
+// DFO UAT (test) web-service endpoint — the live .asmx hit successfully in Session 53
+// (SaveIncomingFile → WS0000, CONF 162836). Production URL still pending from DFO.
+// Single source of truth; imported by DfoLogsListScreen + DfoTestHarnessScreen.
+export const DFO_UAT_ENDPOINT = 'https://inter-w01-uat.dfo-mpo.gc.ca/ws/ElogXMLFileTransfer/ElogXMLFileTransfer.asmx';
+
 // XML file name per Standard v6.1 §3.10: [RegionalID]-[LicenceNumber]-[YYYYMMDDHHMMSS].XML
 // Timestamp is generation time, UTC, 14 digits, no separators. Uncompressed .XML (no 7z).
 export function generateDfoXmlFileName(regId: number, licenceNo: string, when: Date = new Date()): string {

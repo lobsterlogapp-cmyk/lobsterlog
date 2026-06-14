@@ -1,6 +1,6 @@
 # LobsterLog — CLAUDE.md
 App version: 1.8.6 (versionCode 76)
-Last updated: June 13, 2026 (Session 53 complete; Session 54 active)
+Last updated: June 14, 2026 (Session 54 complete; Session 55 active)
 
 ## What this app is
 React Native / Expo mobile app. DFO-qualified electronic logbook for lobster harvesters.
@@ -282,19 +282,47 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 - DfoPortSelector (Session 53) — new src/components/DfoPortSelector.tsx: typeahead over generated MV_PORT, province-defaulted per subform (QC→QC, MAR/GLF→NS/NB/PEI, NL→NL) with a search-all fallback, stores { name, codeId }. Shared PortSelector.tsx + LobsterLogProposalForm.tsx (legacy user-facing, 175 live users) left byte-untouched — change scoped to FullDfoForm only. No draft migration (no existing DFO ports to convert)
 - PORT_ID integer emission (Session 53) — FullDfoForm carries departurePortCodeId / portLandedCodeId; dfoXmlGenerator emits TRIP.PORT_ID (QC/NL) + LANDING.PORT_ID (all 4 subforms) as integer MV_PORT codeIds. DFO_SUBFORM_FIELD_CONFIG: portId added to visible+required for GLF(89) & MAR(90) (LANDING.PORT_ID XSD-mandatory for all). ALL FOUR subforms now validate against the XSD with real PORT_IDs (no dummy) — Open Question 4 CLOSED. tsc = 33 (baseline, zero new); jest 3/3
 - First real UAT transmission (Session 53) — MAR-90, reserved test triplet FIN 100400460 / VRN 1004460 / LIC_NO 1004460, ELOG key WPPBBCKEWTXZSFQBCWRSQVNX, SaveIncomingFile envelope POSTed to the UAT .asmx → HTTP 200, ERR=WS0000, CONF=162836, LGBK_UID ABCDEF. First DFO-accepted logbook. Payload built by the real app functions (generateElogXml→validateElogXml→generateDfoXmlFileName→generateSoapEnvelope); file name 1004-1004460-…​.XML; PORT_ID 20913 (Abbott's Harbour, NS)
-- Known follow-ups (Session 54):
-  - Harness subform Fire path posts to the empty DFO_ELOG_ENDPOINT by design (so subform logbooks can't reach UAT by accident) — wire it to the UAT .asmx (DFO_UAT_ENDPOINT) to enable in-app transmission
-  - DfoTestHarnessScreen makeFixtureLog(90) is stale: it sets no landing port, but LANDING.PORT_ID is now mandatory for MAR (Phase 2) — sync the fixture (add portLandedCodeId) or an in-app MAR Fire will fail validation
+- In-app DFO transmission LIVE (Session 54) — both send paths now POST to DFO's UAT server.
+  DFO_UAT_ENDPOINT added to dfoXmlGenerator.ts as the SINGLE SOURCE OF TRUTH (beside
+  DFO_SOAP_ACTION_SAVE); imported by DfoLogsListScreen (per-log doSubmit) and
+  DfoTestHarnessScreen (harness handleFire). Both empty DFO_ELOG_ENDPOINT='' guards removed
+  + the harness "no endpoint configured" dry-run branch deleted. FIRST IN-APP TRANSMISSIONS:
+  harness MAR-90 → WS0000 / CONF 162838 & 162839; real per-log "Send to DFO" on a fresh
+  MAR-90 log (LL-20260614-001) → Submitted. Both the harness path AND the real user-facing
+  form path now confirmed end-to-end against UAT. (Resolves both Session 54 known follow-ups:
+  harness Fire wiring + stale makeFixtureLog port.) Production endpoint URL still pending — see Not yet built
+- XML Test Harness button relocated (Session 54) — moved from DfoSetupScreen to the
+  DfoLogsListScreen header (blue pillButton styling, Play icon, __DEV__-gated, opened via a
+  harnessVisible state + <DfoTestHarnessScreen onClose> modal, mirroring the old setup-screen
+  pattern). Removed the harness button + its now-dead modal/state/import/styles from
+  DfoSetupScreen (incl. the newly-unused Modal RN import). setup.harnessButton i18n key left
+  in place (now orphaned)
+- Inspect / QR inspection button PARKED (Session 54) — hidden behind {false && (…)} in
+  DfoLogsListScreen, NOT deleted. InspectionModeScreen + its import, modal JSX, and state
+  wiring left fully intact; flip false→true to re-enable. CORRECTION to a prior recon
+  assumption: this is a deliberately-built feature (demoed to DFO, no current interest), NOT
+  a side-project leftover to remove
+- Harness fixtures synced to real ports (Session 54) — makeFixtureLog in DfoTestHarnessScreen
+  now sets portLandedCodeId (LANDING.PORT_ID) for ALL four subforms via FIXTURE_LANDING_PORT
+  (88 Rimouski 22648 / 89 Aboiteau 19322 / 90 Abbott's Harbour 20913 / 91 Port aux Basques
+  21331) + departurePortCodeId (TRIP.PORT_ID) for 88/91; all four xmllint-valid vs the on-disk XSD
+- Transfers validation bug fixed (Session 54) — FullDfoForm.tsx:897 transferYes null-check
+  gated to subformId===88 (was unconditional, blocking MAR/GLF/NL save/send with "answer Yes
+  or No for Transfers" though the UI gate at 1394 + generator at dfoXmlGenerator.ts:310 are
+  QC-88-only). Audit confirmed Transfers was the ONLY render-gated-but-validation-ungated
+  question; the getRequiredFields(subformId) loop + isRequired('baitEntries') check are
+  already subform-aware. tsc=33 baseline, jest 3/3
 
 ---
 
 ## Not yet built
-- Real DFO HTTP endpoint — DFO_ELOG_ENDPOINT stub in DfoLogsListScreen / DfoTestHarnessScreen
-  still empty (production URL pending); SOAP envelope + response parsing DONE (Session 50, real
-  SaveIncomingFile contract). FIRST REAL UAT SaveIncomingFile TRANSMISSION SUCCEEDED (Session 53,
-  MAR-90, reserved test triplet) → ERR=WS0000, CONF=162836, HTTP 200 — posted to the UAT .asmx
-  directly. In-app subform Fire path still points at the empty DFO_ELOG_ENDPOINT by design — see
-  Known follow-ups (Session 54)
+- Real DFO PRODUCTION endpoint URL — still pending from DFO. In-app transmission to the UAT
+  .asmx is now LIVE on BOTH paths (Session 54): DFO_UAT_ENDPOINT in dfoXmlGenerator.ts (single
+  source of truth), wired into per-log doSubmit + harness handleFire; both empty
+  DFO_ELOG_ENDPOINT='' guards removed. Real per-log "Send to DFO" + harness Fire both returned
+  WS0000 vs UAT (Session 54; harness CONF 162838/162839, per-log LL-20260614-001 Submitted).
+  SOAP envelope + response parsing DONE (Session 50); first UAT transmission Session 53
+  (CONF 162836). REMAINING: swap UAT→production endpoint URL once DFO issues it
 - Reftable ingestion — DONE (Session 53): MV_PORT_rel7 ingested (3,970 ports) closes the last
   table. Earlier infra (Session 51): scripts/generateReftables.js + data/dfo-reftables/ vendored
   CSVs + src/data/reftables/ typed modules: MV_CATCH_USAGE, MV_SPECIMENS_CONDITION,
@@ -324,6 +352,13 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 - AttestationModal + PrivacyNoticeModal — DONE (Session 39/40); i18n wired; moved from app launch to DFO entry
 - First-launch language picker screen — DONE (Session 39/40); LanguagePickerScreen.tsx created and wired into App.tsx
 - ProDashboard.tsx — DONE (Session 39/40); all ~38 strings wired to pro.* namespace in common.json
+- mmYes/sarYes/lostGearYes under-validation — SESSION 55 INVESTIGATE: all three default to
+  null with NO handleSave null-check, yet MM_INTER_IND/SAR_IND/LOST_GEAR_IND are mandatory
+  Y/N on EFFORT per the XSD. Transfers was OVER-validated (fixed Session 54); these may be the
+  inverse (under-validated). Trace exactly what the generator emits when they're left null
+- Old pre-Session-53 logs (e.g. LL-20260605-001) have no portLandedCodeId and fail
+  LANDING.PORT_ID validation — expected old-data artifacts (harmless dev throwaways), NOT a
+  code bug; no migration planned
 
 ---
 
@@ -351,10 +386,11 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 | Session 51 | June 11-12 2026 | ALL 5 PLANNED PHASES COMPLETE. P1 Reftables: scripts/generateReftables.js (cp1252→UTF-8 codegen), 11 CSVs vendored to data/dfo-reftables/, 11 typed modules in src/data/reftables/; BYCATCH_USAGE_OPTIONS rebased on MV_CATCH_USAGE. P2 Form 233: generator+validator rewritten flat→nested ELOG/GENERAL_INFO/REPORT/REPORT_DTL (REASON is free text, not W/M/P/O; REPORT_UID kept), button un-hidden, xmllint VALIDATES; jest AsyncStorage mock added to jest.config.js. P3 Rules: 48 (DfoLog.tripNum sequential), 181 (validator), 165+286 (SOAKED_DUR wire unit = MINUTES per dictionary — days→min conversion added), 29/30/32/45/46 date cross-checks, 33 (findEffortOverlap wired into send), 980 warning, 3059 (MAR-38b LAT/LONG emission WITH MODE=G/M via gpsSrc flag — Q3 implementation done), 623-626 (NB_VNTCH/_YOU QC FMA sets + UI), 653/654/655 (NB_SPCMN_BRD 38b-only), 985 (REG_ID↔subform). P4 Form 222: restructured to ELOG/GENERAL_INFO(FIN+VRN mandatory)/MM_INTER/MM_INTER_INCDNT; NOAA_SPECIE_COD from MV_NOAA_MM_SPECIES (invented 10001-10099 codes gone); INCDNT_TYP_ID from MV_INCIDENT_TYPE (E/V/O gone; legacy Y/N indicators map to incident nodes 39609/39610/39615); LGBK_NUM_REF field added (prefill from last log lgbkUid); LAT/LON bounds 40-70/-165--35; xmllint VALIDATES (Y and N). P5 QC-88: USE_CR_IND (Rule 639 default N) + carrier VRN → LANDING.VRN (641/642), PRTNSHP_ID picker (MV_PARTNERSHIP_TYPE), structured TRANSFER/TRANSFER_DTL (248-252), validator overlays; xmllint VALIDATES. Test key confirmed in .env (Test_values PDF p.4 has key + reserved test FIN/VRN/LIC triplets). F234 xmllint: all four subforms validate with dummy PORT_ID — Q4 (MV_PORT) is now the SOLE transmission blocker. |
 | Session 50 | June 11 2026 | Q3 RESOLVED (LAT/LONG MODE = per-coordinate provenance G/M, Standard v6.1 §11.3); v6.1 delta review (Lost Gear removal only — corroborates existing resolution); SOAP envelope rewrite to real SaveIncomingFile contract across all 3 generators (shared builder, base64 params, fake auth header removed); generateDfoXmlFileName() per §3.10; parseDfoSoapResponse() rewritten for WS_RESP contract (7/7 spec-sample tests); TransmissionRecord +fileName/confNumber; ValidateElogKey UAT card in test harness (endpoint verified live HTTP 200); docs/REFTABLE_INGESTION_PLAN.md written (plan only). OUTSTANDING: Jonny to add EXPO_PUBLIC_DFO_TEST_ELOG_KEY to .env before firing the UAT key test. |
 | Session 53 | June 13 2026 | MV_PORT_rel7 ingested (3,970 ports; generateReftables.js extended: nullable PROV_CODE_ID, MV_PORT-specific DESC_*→name mapping, derived PORTS_BY_PROVINCE); DFO_MAR_PORT_LIST rebuilt as a filtered MV_PORT view (NS+NB+PEI), proven identical to the old 2,229-row literal 3 ways, ~11k lines removed. New DfoPortSelector ({name,codeId}); shared PortSelector + LobsterLogProposalForm left untouched (175 users safe). TRIP.PORT_ID (QC/NL) + LANDING.PORT_ID (all 4) emit integer codeIds; field config portId added to GLF/MAR. ALL FOUR subforms XSD-valid with real PORT_IDs — Open Question 4 CLOSED. First real UAT SaveIncomingFile transmission (MAR-90, reserved test triplet) → HTTP 200, ERR=WS0000, CONF=162836 — first DFO-accepted logbook. tsc=33 baseline, jest 3/3. |
+| Session 54 | June 14 2026 | IN-APP DFO TRANSMISSION LIVE: DFO_UAT_ENDPOINT added to dfoXmlGenerator.ts (single source of truth), wired into BOTH send paths (per-log doSubmit + harness handleFire); both empty DFO_ELOG_ENDPOINT='' guards + the harness dry-run branch removed. First in-app transmissions → WS0000 (harness MAR-90 CONF 162838/162839; real per-log "Send to DFO" on fresh MAR-90 LL-20260614-001 → Submitted) — both the harness AND the real user-facing form paths confirmed end-to-end vs UAT. XML Test Harness button relocated DfoSetupScreen → DfoLogsListScreen header (__DEV__-gated, blue, modal pattern); harness button/modal/state/styles removed from setup. Inspect/QR button parked behind {false &&} (NOT deleted — deliberate feature, demoed to DFO). All four harness fixtures synced with real MV_PORT codeIds (xmllint-valid). Transfers validation bug fixed (FullDfoForm.tsx:897 gated to subformId===88 — was blocking MAR/GLF/NL save). tsc=33 baseline, jest 3/3. |
 
 ---
 
 ## Current session goals
 > Update this section at the start of each session.
 
-SESSION 54 — TBD
+SESSION 55 — TBD
