@@ -126,12 +126,15 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
       const wt = kgStr(e.lbs, inLbs);
       if (!wt) continue;
       const szId = specieId === '1312' ? '826' : String(DFO_PCONS_OTHER_SIZE_ID);
+      // SPECIE_SZ_ID: blocked for MAR (subform 90) per subforms requirements v234.11
+      // (Kane, Session 56). Optional in the XSD, so omitting it for MAR still validates.
+      const szLine = subformId !== 90 ? `      <SPECIE_SZ_ID>${szId}</SPECIE_SZ_ID>\n` : '';
       const usgLine = subformId === 90 && e.usage ? `      <USG_ID>${xmlEscape(e.usage)}</USG_ID>\n` : '';
       parts.push(
         `    <PCONS>\n` +
         `      <SPECIE_ID>${xmlEscape(specieId)}</SPECIE_ID>\n` +
         `      <SPECIE_FRM_ID>${DFO_SPECIE_FRM_ID}</SPECIE_FRM_ID>\n` +
-        `      <SPECIE_SZ_ID>${szId}</SPECIE_SZ_ID>\n` +
+        szLine +
         `      <WT>${wt}</WT>\n` +
         usgLine +
         `      <DG_CLOSE_DT>${closeDt}</DG_CLOSE_DT>\n` +
@@ -141,11 +144,13 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
 
     const personalUseWt = kgStr(d.personalUse ?? '', inLbs);
     if (personalUseWt) {
+      // SPECIE_SZ_ID blocked for MAR (subform 90) — same as the bycatch node above.
+      const szLine = subformId !== 90 ? `      <SPECIE_SZ_ID>826</SPECIE_SZ_ID>\n` : '';
       parts.push(
         `    <PCONS>\n` +
         `      <SPECIE_ID>1312</SPECIE_ID>\n` +
         `      <SPECIE_FRM_ID>${DFO_SPECIE_FRM_ID}</SPECIE_FRM_ID>\n` +
-        `      <SPECIE_SZ_ID>826</SPECIE_SZ_ID>\n` +
+        szLine +
         `      <WT>${personalUseWt}</WT>\n` +
         `      <USG_ID>37822</USG_ID>\n` +
         `      <DG_CLOSE_DT>${closeDt}</DG_CLOSE_DT>\n` +
@@ -748,6 +753,14 @@ export function validateElogXml(xml: string, subformId: number): { valid: boolea
             if (!brdAllowed && brd) {
               errors.push(`${dp}.CATCH[${ci + 1}]: NB_SPCMN_BRD is blocked outside lobster/MAR FMA 38b (Rules 653/655)`);
             }
+            // NB_SPCMN_KEPT / NB_SPCMN_DISC: blocked for MAR(90) per subforms
+            // requirements v234.11 (Kane, Session 56); the generator never emits them.
+            if (subformId === 90 && get(c, 'NB_SPCMN_KEPT').length > 0) {
+              errors.push(`${dp}.CATCH[${ci + 1}]: NB_SPCMN_KEPT is blocked for MAR(90)`);
+            }
+            if (subformId === 90 && get(c, 'NB_SPCMN_DISC').length > 0) {
+              errors.push(`${dp}.CATCH[${ci + 1}]: NB_SPCMN_DISC is blocked for MAR(90)`);
+            }
           });
         });
       });
@@ -791,6 +804,16 @@ export function validateElogXml(xml: string, subformId: number): { valid: boolea
         if (frm !== '4691') errors.push(`${tp}.TRANSFER_DTL[${di + 1}]: SPECIE_FRM_ID must be 4691 (Rule 250)`);
       });
     });
+
+    // PCONS.SPECIE_SZ_ID: blocked for MAR(90) per subforms requirements v234.11
+    // (Kane, Session 56). Optional in the XSD; the generator omits it for MAR.
+    if (subformId === 90) {
+      get(trip, 'PCONS').forEach((pc, pci) => {
+        if (get(pc, 'SPECIE_SZ_ID').length > 0) {
+          errors.push(`${p}.PCONS[${pci + 1}]: SPECIE_SZ_ID is blocked for MAR(90)`);
+        }
+      });
+    }
 
     // LANDING.PORT_ID is XSD-mandatory for ALL subforms — the DFO endpoint will reject
     // a LANDING without it, so the validator must block the send rather than green-light

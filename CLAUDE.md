@@ -1,6 +1,6 @@
 # LobsterLog — CLAUDE.md
 App version: 1.8.6 (versionCode 76)
-Last updated: June 14, 2026 (Session 55 complete; Session 56 next)
+Last updated: June 15, 2026 (Session 56 complete; Session 57 next)
 
 ## What this app is
 React Native / Expo mobile app. DFO-qualified electronic logbook for lobster harvesters.
@@ -312,6 +312,8 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
   QC-88-only). Audit confirmed Transfers was the ONLY render-gated-but-validation-ungated
   question; the getRequiredFields(subformId) loop + isRequired('baitEntries') check are
   already subform-aware. tsc=33 baseline, jest 3/3
+- Block PCONS SPECIE_SZ_ID for MAR-90 (generator gate at both PCONS sites; value logic untouched; defensive validator guard).
+- Block CATCH NB_SPCMN_KEPT + NB_SPCMN_DISC for MAR-90 (defensive validator guards; generator never emitted them).
 
 ---
 
@@ -367,6 +369,10 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 - Old pre-Session-53 logs (e.g. LL-20260605-001) have no portLandedCodeId and fail
   LANDING.PORT_ID validation — expected old-data artifacts (harmless dev throwaways), NOT a
   code bug; no migration planned
+- PCONS SPECIE_SZ_ID large/market gap — generator only ever emits 826 (Small/Canner)
+  for lobster; 828 (Large/Market) in DFO_PCONS_LOBSTER_SIZE_LIST is never produced.
+  Affects subforms 88/89/91 (MAR-90 now blocks the field entirely). Needs a size
+  source or picker.
 
 ---
 
@@ -396,13 +402,11 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 | Session 53 | June 13 2026 | MV_PORT_rel7 ingested (3,970 ports; generateReftables.js extended: nullable PROV_CODE_ID, MV_PORT-specific DESC_*→name mapping, derived PORTS_BY_PROVINCE); DFO_MAR_PORT_LIST rebuilt as a filtered MV_PORT view (NS+NB+PEI), proven identical to the old 2,229-row literal 3 ways, ~11k lines removed. New DfoPortSelector ({name,codeId}); shared PortSelector + LobsterLogProposalForm left untouched (175 users safe). TRIP.PORT_ID (QC/NL) + LANDING.PORT_ID (all 4) emit integer codeIds; field config portId added to GLF/MAR. ALL FOUR subforms XSD-valid with real PORT_IDs — Open Question 4 CLOSED. First real UAT SaveIncomingFile transmission (MAR-90, reserved test triplet) → HTTP 200, ERR=WS0000, CONF=162836 — first DFO-accepted logbook. tsc=33 baseline, jest 3/3. |
 | Session 54 | June 14 2026 | IN-APP DFO TRANSMISSION LIVE: DFO_UAT_ENDPOINT added to dfoXmlGenerator.ts (single source of truth), wired into BOTH send paths (per-log doSubmit + harness handleFire); both empty DFO_ELOG_ENDPOINT='' guards + the harness dry-run branch removed. First in-app transmissions → WS0000 (harness MAR-90 CONF 162838/162839; real per-log "Send to DFO" on fresh MAR-90 LL-20260614-001 → Submitted) — both the harness AND the real user-facing form paths confirmed end-to-end vs UAT. XML Test Harness button relocated DfoSetupScreen → DfoLogsListScreen header (__DEV__-gated, blue, modal pattern); harness button/modal/state/styles removed from setup. Inspect/QR button parked behind {false &&} (NOT deleted — deliberate feature, demoed to DFO). All four harness fixtures synced with real MV_PORT codeIds (xmllint-valid). Transfers validation bug fixed (FullDfoForm.tsx:897 gated to subformId===88 — was blocking MAR/GLF/NL save). tsc=33 baseline, jest 3/3. |
 | Session 55 | June 14 2026 | P1 Harness terminal step-log: 7 logging-only [HARNESS] breadcrumbs added to DfoTestHarnessScreen handleFire (fixture→XML→validate PASS/FAIL→filename→SOAP→POSTing→HTTP response w/ status+elapsed ms+bodyLen); validation logs PASS strictly before POST, FAIL logs+halts at existing return; raw-response-only (harness path has no WS_RESP parse — doSubmit untouched). P2 mmYes/sarYes/lostGearYes under-validation RESOLVED: recon showed generator OMITS the 3 indicators when null + handleSave had no check, but validateElogXml already blocks the SEND at doSubmit:254 before POST (early-validation gap, not a transmission hole); added unconditional handleSave null-check (all 4 subforms, XSD effort_type minOccurs=1) + form234.missingIndicatorsAnswer in en/fr dfo.json. Generator output unchanged. P3 not started (no go given). tsc=33 baseline, jest 3/3. |
+| Session 56 | June 15 2026 | Block SPECIE_SZ_ID + NB_SPCMN_KEPT/DISC for MAR-90 (generator gate + validator guards + guard test); gate green tsc 33 / jest 5/5 / xmllint all four valid. |
 
 ---
 
 ## Current session goals
 > Update this section at the start of each session.
 
-SESSION 56 — TBD. Carried from Session 55 (Phase 3 not started, no go given): pick ONE
-subform-field item as a recon-first mini-phase — PCONS SPECIE_SZ_ID block/hide for MAR-90
-(UI+XML), CATCH NB_SPCMN_KEPT+NB_SPCMN_DISC block for MAR-90, or EFFORT_DETAIL.TRP_SZ_ID wire
-for NL-91 (mandatory).
+SESSION 57 — TBD.
