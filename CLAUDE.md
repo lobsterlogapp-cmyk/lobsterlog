@@ -1,6 +1,6 @@
 # LobsterLog — CLAUDE.md
 App version: 1.8.6 (versionCode 76)
-Last updated: June 15, 2026 (Session 57 complete; Session 58 next)
+Last updated: June 15, 2026 (Session 59 complete; Session 60 next)
 
 ## What this app is
 React Native / Expo mobile app. DFO-qualified electronic logbook for lobster harvesters.
@@ -139,6 +139,8 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 | File | Purpose |
 |---|---|
 | `dfoXmlGenerator.ts` | generateElogXml(), generateSoapEnvelope() (SaveIncomingFile), buildSaveIncomingFileEnvelope(), generateDfoXmlFileName(), buildValidateElogKeyEnvelope(), parseValidateElogKeyResponse(), generateReportUid(), validateElogXml(), LGBK_UID |
+| `__tests__/validateSpecieSzId.oneoff.test.ts` | S59 guard: 89-missing→mandatory, 89-with-value→emits, 88/90/91-injected→blocked (PCONS.SPECIE_SZ_ID, row 56) |
+| `__tests__/validateLgridId.oneoff.test.ts` | S59 guard: 90-populated→emits, 88/89/91-injected→blocked (EFFORT_DETAIL.LGRID_ID, row 85) |
 | `dfoForm222Generator.ts` | Form222Entry, generateForm222Xml(), validateForm222Xml(), generateSoap222Envelope(), save/load, constants |
 | `dfoForm233Generator.ts` | Form233Entry, generateForm233Xml(), validateForm233Xml(), generateSoap233Envelope(), save/load, constants |
 | `dfoConstants.ts` | DFO_SUBFORM_REGISTRY, DFO_SUBFORM_FIELD_CONFIG, all region data (FMA, bait, catch, PCONS lists), DFO_FMA_38B, DFO_FMA_NB_VNTCH(_YOU) rule sets |
@@ -199,7 +201,7 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 - HLOUT section — rendered in FullDfoForm: company (req), confirmation no. (req), MAR only via isVisible()
 - DG_CLOSE_DT section-close flow — Close/Unlock buttons on LANDING, EFFORT, BAIT_USED, SAR, PCONS, HLIN, HLOUT sections; stamps UTC ISO 8601 on close; locked sections use pointerEvents="none" + opacity: 0.45; timestamps persisted in buildLogData and restored on edit
 - KEPT_WT mandatory for MAR — in field config
-- LGRID_ID optional for MAR — in field config
+- LGRID_ID optional for MAR(90) ONLY — in field config; (S59 I1 CLOSED) generator now subform-gated to emit only on 90 (value-gate AND-ed in) + validator rejects present-for-88/89/91 ("blocked") per Subforms_requirements_234.xlsx row 85
 - OBS_TRIP_NUM optional for MAR — in TRIP section
 - Form 222 generator — dfoForm222Generator.ts: Form222Entry (full field set per FS-NAT-222-1-EN), saveForm222Entry, loadForm222Entries (3-yr retention), generateForm222Xml (INTERACT_IND Y/N — when N only outputs indicator; when Y outputs all 15 fields in YYYYMMDD/HHMM format), validateForm222Xml (structural + date cross-validation Rules 566/589/590/591/592 + LAT/LON bounds + Y/N flag checks + RELEASE_IND conditional on ENTANGLE_IND=Y), generateSoap222Envelope; MARINE_MAMMAL_SPECIES (label+codeId pairs, TODO: confirm DFO code IDs), INTERACTION_TYPES (label+codeId pairs E/V/O); DISPOSITION_OPTIONS removed (replaced by individual Y/N indicator fields)
 - Form 222 UI — Form222Screen.tsx: INTERACT_IND master Y/N toggle collapses/expands all fields; REP_DATE + INTERACT_DT + INTERACT_TM date/time inputs; LAT/LON numeric inputs with real-time bounds validation (Rules 172/173); species dropdown (MARINE_MAMMAL_SPECIES_LABELS → SPECIE_ID code); NB_ANIMAL; INTERACT_TYPE_ID dropdown; INJURY_IND/DEATH_IND/ENTANGLE_IND/RELEASE_IND(conditional)/GEAR_DAMAGE_IND Y/N toggles; OBSERVER_NM + CONTACT_INFO text inputs; REMARKS multiline; all strings through i18n dfo.form222.*; FR stubs as _todo; validates + simulated submit + saves to AsyncStorage + XmlArchive; accessible via modal from DfoLogsListScreen
@@ -222,7 +224,7 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 - Google Play service account JSON — eas.json submit.production.android block added with serviceAccountKeyPath ./google-services-account.json and track "internal"; google-services-account.json added to .gitignore; GOOGLE_PLAY_SETUP.md created with step-by-step Google Play Console → API access → service account → JSON key → eas submit instructions; EAS secret alternative documented
 - Form 234 XML audit v234.11 — audited generateElogXml() and validateElogXml() against DFO Subforms_requirements_234.xlsx and FS-NAT-234-11-EN fact sheet; fixed: SOFT_VER added (APP_VERSION constant, mandatory all subforms), LIC_NO added as separate EFFORT element (mandatory all subforms), SOAK_DUR blocked for MAR (subform 90) with generator guard + validator check, CREW_NB guarded to 88/90 only (blocked for 89/91), PORT_ID (DEPART_PORT/LAND_PORT) guarded to 88/91 only (blocked for 89/90), OBS_TRIP_NUM wired for MAR(90) only, GEAR_SBTYP_ID wired for NL(91) only; TODO comments added for PCONS/USG_ID, USE_CR_IND/PRTNSHP_ID, TRANSFER (all pending UI build); DfoTestHarnessScreen fixture updated with soakDuration, departurePort, obsTripNum, gearSubtypeId
 - Form 222 and Form 233 confirmed active DFO qualification requirements (Kane Patterson, Ticket #2126, June 2); deprecation TODO comments removed from both generator files
-- PCONS XML section implemented in generateElogXml() — repeating <PCONS> nodes (no wrapper), child-element style per XSD sequence: SPECIE_ID (label→codeId via getDfoPconsSpeciesList), SPECIE_FRM_ID (4691, hardcoded), SPECIE_SZ_ID (826 for lobster, 10670 unsized for all others), WT (kg), USG_ID (37822 personal consumption, personalUse entry only), DG_CLOSE_DT (YYYYMMDDHH24MISS from d.dgClosePcons or current UTC); toCloseTimestamp() helper added; DFO_SPECIE_FRM_ID and DFO_PCONS_OTHER_SIZE_ID imported from dfoConstants
+- PCONS XML section implemented in generateElogXml() — repeating <PCONS> nodes (no wrapper), child-element style per XSD sequence: SPECIE_ID (label→codeId via getDfoPconsSpeciesList), SPECIE_FRM_ID (4691, hardcoded), SPECIE_SZ_ID (826 for lobster, 10670 unsized for all others — **CORRECTED S59 I2: emitted for GLF-89 ONLY; blocked for QC-88/MAR-90/NL-91 per Subforms_requirements_234.xlsx row 56; the original "emit for all subforms" behavior is obsolete**), WT (kg), USG_ID (37822 personal consumption, personalUse entry only), DG_CLOSE_DT (YYYYMMDDHH24MISS from d.dgClosePcons or current UTC); toCloseTimestamp() helper added; DFO_SPECIE_FRM_ID and DFO_PCONS_OTHER_SIZE_ID imported from dfoConstants
 - react-i18next bilingual infrastructure — installed react-i18next, i18next, @os-team/i18next-react-native-language-detector (uses react-native-localize, already present); created src/i18n/ with en/fr locale files across common/dfo/map namespaces; seeded all English strings; fr locale files stubbed with _todo marker; i18n init with device language detection + AsyncStorage persistence (key: user_language); wired into App.tsx before screens render; EN/FR language toggle card added to CaptainProfileScreen; smoke tested with t('profile.vesselDetails') and t('profile.dfoSettings') on two card titles
 - App.tsx TypeScript cleanup — fixed all pre-existing errors in App.tsx and root-cause hook files; changes: useAuth (useState<any> for user, catch :any annotations, currentUser! non-null assertion); useProfile (useState<any> for profile, Record<string,any> for logs, Record<string,any> for newLogs, (d:any) forEach annotation, snap.data()! non-null assertion, (prev:any) callbacks, (e as any).message catch casts); useLogForm (weather: [] as string[] ×2); usePurchases ((e as any).message ×3); App.tsx (Record<number,number> seasonHaulCounts, Record<string,number> haulByDateId, any[] historyMatches, : Date / : number / : any parameter annotations, (p:any)/(prev:any) setProfile callbacks); zero App.tsx errors after all fixes
 - TypeScript error baseline (Session 52) — full-tree `tsc --noEmit` = 33 errors,
@@ -312,7 +314,7 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
   QC-88-only). Audit confirmed Transfers was the ONLY render-gated-but-validation-ungated
   question; the getRequiredFields(subformId) loop + isRequired('baitEntries') check are
   already subform-aware. tsc=33 baseline, jest 3/3
-- Block PCONS SPECIE_SZ_ID for MAR-90 (generator gate at both PCONS sites; value logic untouched; defensive validator guard).
+- Block PCONS SPECIE_SZ_ID for MAR-90 (generator gate at both PCONS sites; value logic untouched; defensive validator guard). **SUPERSEDED by S59 I2:** the field is now emit-89-ONLY / blocked-88-90-91 (row 56), not merely MAR-90-blocked — the S56 MAR-90 block remains in place and is now joined by the 88/91 block + 89-mandatory check (see What's built S59).
 - Block CATCH NB_SPCMN_KEPT + NB_SPCMN_DISC for MAR-90 (defensive validator guards; generator never emitted them).
 - EFFORT_DETAIL.TRP_SZ_ID for NL-91 (Session 57) — Mandatory for NL(91), Blocked for 88/89/90
   (Subforms_requirements_234.xlsx row 79; values 39682=Standard / 39683=Large, Rule 611, the
@@ -326,6 +328,22 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
   other form field (NO top-level DfoLog field — approved). Gate green: tsc=33 baseline (0 new),
   jest 5 suites / 10 tests (new validateTrpSzId guard test 5/5), xmllint all four valid,
   TRP_SZ_ID present NL-91 / absent 88/89/90.
+- Confirm + close I1/I2 subform-gating leaks (Session 59) — Phase-1 recon GATE PASSED:
+  read Subforms_requirements_234.xlsx (stdlib zipfile+xml.etree) and confirmed both fields
+  verbatim. **I2 SPECIE_SZ_ID (row 56): Mandatory GLF-89 ONLY; Blocked QC-88/MAR-90/NL-91**
+  (the sheet is STRICTER than the XSD, which lists it optional — overturns the earlier
+  88/89/91-emit ruling). **I1 LGRID_ID (row 85): Optional MAR-90 ONLY; Blocked 88/89/91.**
+  Generator: I2 both PCONS sites changed `subformId!==90` → `subformId===89` (826/10670 value
+  logic for 89 unchanged); I1 LGRID_ID emit wrapped in `if (subformId===90)` (value-gate
+  AND-ed in via tag()). Validator: existing S56 MAR-90 SPECIE_SZ_ID block left untouched
+  (keeps its "blocked for MAR(90)" message → no S56 regression) + new complementary overlay
+  rejects 88/91-present ("blocked for subform N") and 89-missing ("mandatory for GLF(89)");
+  new LGRID_ID guard rejects 88/89/91-present ("blocked for subform N"). Two new guard tests
+  (validateSpecieSzId, validateLgridId) mirroring the S56/S57 pattern. Full oneoff suite
+  7 suites / 19 tests green — S56 (validateMar90Blocks) + S57 (validateTrpSzId) still pass,
+  NO regression. Four-subform harness: validateElogXml all four VALID + xmllint all four
+  valid. Grep across the four emitted samples: SPECIE_SZ_ID present ONLY in 89; LGRID_ID
+  present ONLY in 90 (its fixture sets lgridCodeId=101). tsc=33 baseline (0 new).
 
 ---
 
@@ -383,8 +401,9 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
   code bug; no migration planned
 - PCONS SPECIE_SZ_ID large/market gap — generator only ever emits 826 (Small/Canner)
   for lobster; 828 (Large/Market) in DFO_PCONS_LOBSTER_SIZE_LIST is never produced.
-  Affects subforms 88/89/91 (MAR-90 now blocks the field entirely). Needs a size
-  source or picker.
+  **REWORDED S59:** now affects GLF-89 ONLY — 89 is the lone subform still emitting
+  SPECIE_SZ_ID (I2 closed: 88/90/91 no longer emit it at all, so the gap is moot for
+  them). Needs a size source or picker for the 89 case.
 
 ---
 
@@ -416,10 +435,13 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 | Session 55 | June 14 2026 | P1 Harness terminal step-log: 7 logging-only [HARNESS] breadcrumbs added to DfoTestHarnessScreen handleFire (fixture→XML→validate PASS/FAIL→filename→SOAP→POSTing→HTTP response w/ status+elapsed ms+bodyLen); validation logs PASS strictly before POST, FAIL logs+halts at existing return; raw-response-only (harness path has no WS_RESP parse — doSubmit untouched). P2 mmYes/sarYes/lostGearYes under-validation RESOLVED: recon showed generator OMITS the 3 indicators when null + handleSave had no check, but validateElogXml already blocks the SEND at doSubmit:254 before POST (early-validation gap, not a transmission hole); added unconditional handleSave null-check (all 4 subforms, XSD effort_type minOccurs=1) + form234.missingIndicatorsAnswer in en/fr dfo.json. Generator output unchanged. P3 not started (no go given). tsc=33 baseline, jest 3/3. |
 | Session 56 | June 15 2026 | Block SPECIE_SZ_ID + NB_SPCMN_KEPT/DISC for MAR-90 (generator gate + validator guards + guard test); gate green tsc 33 / jest 5/5 / xmllint all four valid. |
 | Session 57 | June 15 2026 | Wire EFFORT_DETAIL.TRP_SZ_ID for NL-91: generator emit gated subformId===91 (after LAT/LONG, before CATCH) + validator guards (NL mandatory / 88-89-90 blocked) + FMA-style Standard/Large picker (DFO_TRAP_SIZE_LIST, Rule 611, no reftable ingestion) gated isVisible('trapSize') + handleSave block + config/required wiring + i18n en/fr + new validateTrpSzId guard test. Value persists via data map (no top-level DfoLog field — approved). Gate green tsc 33 baseline / jest 5 suites 10 tests / xmllint all four valid / TRP_SZ_ID present NL-91 absent 88-89-90. |
+| Session 59 | June 15 2026 | Confirmed + closed I1/I2 subform-gating leaks — SPECIE_SZ_ID emit-89-only (overturns 88/89/91 ruling), LGRID_ID emit-90-only; generator gates + validator guards + 2 guard tests; harness + xmllint clean, no regression. |
 
 ---
 
 ## Current session goals
 > Update this section at the start of each session.
 
-SESSION 58 — TBD.
+SESSION 60 — TBD. (I1/I2 subform-gating leaks both CLOSED in S59 — no longer open
+candidates.) Standout open candidates: REM emission (G1 area — needs a design chat
+first); transmission register / history screen.

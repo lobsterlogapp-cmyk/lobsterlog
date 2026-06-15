@@ -126,9 +126,11 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
       const wt = kgStr(e.lbs, inLbs);
       if (!wt) continue;
       const szId = specieId === '1312' ? '826' : String(DFO_PCONS_OTHER_SIZE_ID);
-      // SPECIE_SZ_ID: blocked for MAR (subform 90) per subforms requirements v234.11
-      // (Kane, Session 56). Optional in the XSD, so omitting it for MAR still validates.
-      const szLine = subformId !== 90 ? `      <SPECIE_SZ_ID>${szId}</SPECIE_SZ_ID>\n` : '';
+      // SPECIE_SZ_ID: Mandatory for GLF(89) ONLY; Blocked for QC(88)/MAR(90)/NL(91) per
+      // Subforms_requirements_234.xlsx row 56 (Session 59 recon — the sheet is stricter
+      // than the XSD, which lists it optional). Overturns the earlier 88/89/91-emit
+      // resolution. Lobster 826 / non-lobster 10670 value logic unchanged for the 89 case.
+      const szLine = subformId === 89 ? `      <SPECIE_SZ_ID>${szId}</SPECIE_SZ_ID>\n` : '';
       const usgLine = subformId === 90 && e.usage ? `      <USG_ID>${xmlEscape(e.usage)}</USG_ID>\n` : '';
       parts.push(
         `    <PCONS>\n` +
@@ -144,8 +146,8 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
 
     const personalUseWt = kgStr(d.personalUse ?? '', inLbs);
     if (personalUseWt) {
-      // SPECIE_SZ_ID blocked for MAR (subform 90) — same as the bycatch node above.
-      const szLine = subformId !== 90 ? `      <SPECIE_SZ_ID>826</SPECIE_SZ_ID>\n` : '';
+      // SPECIE_SZ_ID: GLF(89) ONLY; blocked for 88/90/91 — same as the bycatch node above.
+      const szLine = subformId === 89 ? `      <SPECIE_SZ_ID>826</SPECIE_SZ_ID>\n` : '';
       parts.push(
         `    <PCONS>\n` +
         `      <SPECIE_ID>1312</SPECIE_ID>\n` +
@@ -241,7 +243,11 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
     effort += tag('NB_VNTCH_YOU', d.nbVntchYou ?? '', '          ');
   }
   effort += tag('NB_GEAR_HLD',  d.trapHauls, '          ');
-  effort += tag('LGRID_ID',     d.lgridCodeId, '          ');
+  // LGRID_ID: Optional for MAR(90) ONLY; Blocked for QC(88)/GLF(89)/NL(91) per
+  // Subforms_requirements_234.xlsx row 85 (Session 59 recon). Subform-gated to 90 with
+  // the value-gate AND-ed in — tag() emits nothing when d.lgridCodeId is empty, so it
+  // only appears on 90 when populated.
+  if (subformId === 90) effort += tag('LGRID_ID', d.lgridCodeId, '          ');
   // GEAR_GRP_NUM: sequential from 1 per EFFORT node (Rule 609x); always 1 for single-effort log
   effort += tag('GEAR_GRP_NUM', '1', '          ');
   // LAT/LONG: Rule 3059 — MAR(90) FMA 38b only (mandatory there, blocked in all other
@@ -737,6 +743,12 @@ export function validateElogXml(xml: string, subformId: number): { valid: boolea
           if (subformId !== 91 && hasTrpSz) {
             errors.push(`${dp}: TRP_SZ_ID is blocked for subform ${subformId}`);
           }
+          // LGRID_ID: Optional for MAR(90) ONLY; Blocked for QC(88)/GLF(89)/NL(91) per
+          // Subforms_requirements_234.xlsx row 85 (Session 59). The generator emits it
+          // only for 90 when populated; optional there, so no mandatory check.
+          if (subformId !== 90 && get(ed, 'LGRID_ID').length > 0) {
+            errors.push(`${dp}: LGRID_ID is blocked for subform ${subformId}`);
+          }
           // Rules 623-626: NB_VNTCH / NB_VNTCH_YOU — QC FMA-conditional
           const vntch = get(ed, 'NB_VNTCH').length > 0;
           const vntchYou = get(ed, 'NB_VNTCH_YOU').length > 0;
@@ -827,6 +839,20 @@ export function validateElogXml(xml: string, subformId: number): { valid: boolea
         }
       });
     }
+    // PCONS.SPECIE_SZ_ID, remaining subforms: Mandatory for GLF(89) ONLY; Blocked for
+    // QC(88)/NL(91) per Subforms_requirements_234.xlsx row 56 (Session 59 recon — the
+    // sheet is stricter than the XSD, which lists it optional; overturns the earlier
+    // 88/89/91-emit ruling). Completes the per-subform overlay alongside the MAR(90)
+    // block above; the generator now emits SPECIE_SZ_ID only for 89.
+    get(trip, 'PCONS').forEach((pc, pci) => {
+      const hasSz = get(pc, 'SPECIE_SZ_ID').length > 0;
+      if (subformId === 89 && !hasSz) {
+        errors.push(`${p}.PCONS[${pci + 1}]: SPECIE_SZ_ID is mandatory for GLF(89)`);
+      }
+      if ((subformId === 88 || subformId === 91) && hasSz) {
+        errors.push(`${p}.PCONS[${pci + 1}]: SPECIE_SZ_ID is blocked for subform ${subformId}`);
+      }
+    });
 
     // LANDING.PORT_ID is XSD-mandatory for ALL subforms — the DFO endpoint will reject
     // a LANDING without it, so the validator must block the send rather than green-light
