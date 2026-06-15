@@ -112,6 +112,8 @@
     "nbVntchLabel": "NB. LOBSTERS CAUGHT ALREADY V-NOTCHED",
     "nbVntchYouLabel": "NB. LOBSTERS V-NOTCHED BY YOU",
     "nbSpcmnBrdLabel": "NB. SPECIMENS BROODSTOCK (NB_SPCMN_BRD)",
+    "trapSizeLabel": "TRAP SIZE",
+    "selectTrapSize": "Select trap size...",
     "landing24hWarningTitle": "Check landing time",
     "landing24hWarningBody": "The landing date and time is later than 24 hours in the future, which could be an error. Please verify and correct if there is an error.",
     "baitReportingSection": "Bait Reporting",

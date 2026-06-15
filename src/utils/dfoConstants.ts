@@ -1454,9 +1454,11 @@ export const DFO_SUBFORM_FIELD_CONFIG: Record<number, SubformFieldConfig> = {
     required: ['fmaId', 'catchWeight', 'trapHauls', 'crewNb', 'baitEntries', 'portId', 'hlinCompany', 'hlinConfirmNo', 'hloutCompany', 'hloutConfirmNo'],
   },
   // ── NL (subform 91) ─────────────────────────────────────
+  // trapSize (EFFORT_DETAIL.TRP_SZ_ID) mandatory for NL only — Subforms_requirements_234.xlsx
+  // row 79; blocked for 88/89/90 (absent from their config = not rendered, not required).
   91: {
-    visible:  ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'lgridCodeId', 'mammalIncident', 'sarIncident', 'lostGear', 'catchWeight', 'trapHauls', 'fmaId', 'departurePort', 'portId'],
-    required: ['fmaId', 'catchWeight', 'trapHauls', 'portId'],
+    visible:  ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'lgridCodeId', 'mammalIncident', 'sarIncident', 'lostGear', 'catchWeight', 'trapHauls', 'fmaId', 'departurePort', 'portId', 'trapSize'],
+    required: ['fmaId', 'catchWeight', 'trapHauls', 'portId', 'trapSize'],
   },
 };
 

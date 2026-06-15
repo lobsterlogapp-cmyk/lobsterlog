@@ -113,6 +113,8 @@
     "nbVntchLabel": "NB. HOMARDS CAPTURÉS DÉJÀ ENCOCHÉS EN V",
     "nbVntchYouLabel": "NB. HOMARDS ENCOCHÉS EN V PAR VOUS",
     "nbSpcmnBrdLabel": "NB. SPÉCIMENS GÉNITEURS (NB_SPCMN_BRD)",
+    "trapSizeLabel": "TAILLE DU CASIER",
+    "selectTrapSize": "Sélectionner la taille du casier...",
     "landing24hWarningTitle": "Vérifiez l'heure de débarquement",
     "landing24hWarningBody": "La date et l'heure du débarquement dépassent de plus de 24 heures la date et l'heure actuelles, ce qui pourrait être une erreur. Veuillez vérifier et corriger s'il y a lieu.",
     "baitReportingSection": "Déclaration d'appât",

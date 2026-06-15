@@ -51,6 +51,7 @@ import {
   DFO_FMA_38B,
   DFO_FMA_NB_VNTCH,
   DFO_FMA_NB_VNTCH_YOU,
+  DFO_TRAP_SIZE_LIST,
 } from '../utils/dfoConstants';
 import { loadCaptainProfile } from '../utils/captainStorage';
 import { useTranslation } from 'react-i18next';
@@ -171,6 +172,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const [carrierVrn, setCarrierVrn] = useState('');
   // QC(88) only — TRIP.PRTNSHP_ID from MV_PARTNERSHIP_TYPE (39468 None / 39469 Buddy-up)
   const [prtnshpId, setPrtnshpId] = useState<number>(39468);
+  // NL(91) only — EFFORT_DETAIL.TRP_SZ_ID from DFO_TRAP_SIZE_LIST (39682 Standard / 39683 Large)
+  const [trapSize, setTrapSize] = useState('');
+  const [trapSizePickerOpen, setTrapSizePickerOpen] = useState(false);
 
   // Track whether we're editing an already-completed log (don't downgrade on back)
   const [editingCompleted, setEditingCompleted] = useState(false);
@@ -303,6 +307,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           setUseCrInd(d.useCrInd === 'Y' ? 'Y' : 'N');
           setCarrierVrn(d.carrierVrn || '');
           setPrtnshpId(d.prtnshpId ? Number(d.prtnshpId) : 39468);
+          setTrapSize(d.trapSize || '');
           try {
             const bc = JSON.parse(d.baitEntries || '[]');
             setBaitEntries(bc);
@@ -455,6 +460,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     transfers, personalUse,
     transferTime, transferWt, transferToVrn, transferToPndNum,
     useCrInd, carrierVrn, prtnshpId: String(prtnshpId),
+    trapSize,
     mmYes: String(mmYes),
     mmSpecies, mmSpeciesOther, mmWhat, mmLat, mmLng, mmDate, mmTime,
     sarYes: String(sarYes),
@@ -916,6 +922,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       firstEntryDt,
       crewNb:      crewMembers.length > 0 ? 'ok' : '',
       portId:      portLanded,
+      trapSize,
       operName:    'ok',
     };
     const fieldLabels: Record<string, string> = {
@@ -928,6 +935,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       firstEntryDt:'First Entry Date',
       crewNb:      'Crew Registry',
       portId:      'Port Landed',
+      trapSize:    'Trap Size',
       operName:    'Operator Name (Captain Profile)',
     };
     const required = getRequiredFields(subformId);
@@ -1209,6 +1217,40 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           {/* NB_SPCMN_BRD: MAR(90) FMA 38b only — mandatory there (Rule 654), blocked elsewhere (Rule 655) */}
           {isVisible('nbSpcmnBrd') && fmaId === DFO_FMA_38B &&
             renderField(t('form234.nbSpcmnBrdLabel'), nbSpcmnBrd, setNbSpcmnBrd, '0', false, false, 'numeric', true)}
+          {/* TRP_SZ_ID: NL(91) only — mandatory (Subforms_requirements row 79), blocked for 88/89/90.
+              Values from DFO_TRAP_SIZE_LIST (39682 Standard / 39683 Large; Rule 611). */}
+          {isVisible('trapSize') && (
+            <View style={styles.fieldRow}>
+              <Text style={styles.label}>{t('form234.trapSizeLabel')}{isRequired('trapSize') && <Text style={{ color: '#EF4444' }}> *</Text>}</Text>
+              <TouchableOpacity
+                style={styles.timeButton}
+                onPress={() => { if (readOnly) return; setTrapSizePickerOpen(o => !o); }}
+              >
+                <Text style={[styles.timeButtonText, !trapSize && styles.timeButtonPlaceholder]}>
+                  {trapSize ? DFO_TRAP_SIZE_LIST.find(s => String(s.codeId) === trapSize)?.label ?? t('form234.selectTrapSize') : t('form234.selectTrapSize')}
+                </Text>
+                <ChevronDown size={16} color="#64748B" />
+              </TouchableOpacity>
+              {trapSizePickerOpen && (
+                <View style={styles.dropdownList}>
+                  {DFO_TRAP_SIZE_LIST.map(s => (
+                    <TouchableOpacity
+                      key={s.codeId}
+                      style={[styles.dropdownItem, trapSize === String(s.codeId) && styles.dropdownItemActive]}
+                      onPress={() => {
+                        setTrapSize(String(s.codeId));
+                        setTrapSizePickerOpen(false);
+                      }}
+                    >
+                      <Text style={[styles.dropdownItemText, trapSize === String(s.codeId) && styles.dropdownItemTextActive]}>
+                        {s.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
           </View>
         </View>
 

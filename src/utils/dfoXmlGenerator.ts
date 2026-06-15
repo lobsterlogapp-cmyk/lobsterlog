@@ -252,6 +252,10 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
     effort += `          <LAT MODE="${coordMode}">${xmlEscape(d.gpsLat)}</LAT>\n`;
     effort += `          <LONG MODE="${coordMode}">${xmlEscape(d.gpsLng)}</LONG>\n`;
   }
+  // TRP_SZ_ID: Mandatory for NL(91), Blocked for QC/GLF/MAR (88/89/90) per
+  // Subforms_requirements_234.xlsx row 79. Values constrained to 39682=Standard /
+  // 39683=Large (Rule 611, DFO_TRAP_SIZE_LIST). XSD sequence: after LONG, before CATCH.
+  if (subformId === 91) effort += tag('TRP_SZ_ID', d.trapSize ?? '', '          ');
   effort += `          <CATCH>\n`;
   effort += tag('SPECIE_ID',     '1312', '            ');
   effort += tag('KEPT_WT',       catchWtKg, '            ');
@@ -723,6 +727,15 @@ export function validateElogXml(xml: string, subformId: number): { valid: boolea
           // Rule 165: soaked duration ≤ 216 hours (wire unit is minutes → 12960)
           if (soakedNode && Number(soakedNode.text) > 12960) {
             errors.push(`${dp}: SOAKED_DUR exceeds 216 hours / 12960 minutes (Rule 165), got ${soakedNode.text}`);
+          }
+          // TRP_SZ_ID: Mandatory for NL(91), Blocked for 88/89/90 per subforms
+          // requirements v234.11 row 79 (matches the generator gate above).
+          const hasTrpSz = get(ed, 'TRP_SZ_ID').length > 0;
+          if (subformId === 91 && !hasTrpSz) {
+            errors.push(`${dp}: TRP_SZ_ID is mandatory for NL(91)`);
+          }
+          if (subformId !== 91 && hasTrpSz) {
+            errors.push(`${dp}: TRP_SZ_ID is blocked for subform ${subformId}`);
           }
           // Rules 623-626: NB_VNTCH / NB_VNTCH_YOU — QC FMA-conditional
           const vntch = get(ed, 'NB_VNTCH').length > 0;

@@ -1,6 +1,6 @@
 # LobsterLog — CLAUDE.md
 App version: 1.8.6 (versionCode 76)
-Last updated: June 15, 2026 (Session 56 complete; Session 57 next)
+Last updated: June 15, 2026 (Session 57 complete; Session 58 next)
 
 ## What this app is
 React Native / Expo mobile app. DFO-qualified electronic logbook for lobster harvesters.
@@ -314,6 +314,18 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
   already subform-aware. tsc=33 baseline, jest 3/3
 - Block PCONS SPECIE_SZ_ID for MAR-90 (generator gate at both PCONS sites; value logic untouched; defensive validator guard).
 - Block CATCH NB_SPCMN_KEPT + NB_SPCMN_DISC for MAR-90 (defensive validator guards; generator never emitted them).
+- EFFORT_DETAIL.TRP_SZ_ID for NL-91 (Session 57) — Mandatory for NL(91), Blocked for 88/89/90
+  (Subforms_requirements_234.xlsx row 79; values 39682=Standard / 39683=Large, Rule 611, the
+  existing DFO_TRAP_SIZE_LIST — no reftable ingestion). Generator emits TRP_SZ_ID gated to
+  subformId===91, placed after LAT/LONG before CATCH per XSD sequence (mirrors GEAR_SBTYP_ID);
+  validator overlay rejects absent-for-91 ("mandatory for NL(91)") and present-for-88/89/90
+  ("blocked"). FullDfoForm: trapSize state + load/buildLogData wiring + FMA-style Standard/Large
+  dropdown gated isVisible('trapSize') + handleSave block when empty on NL-91; config
+  trapSize added to DFO_SUBFORM_FIELD_CONFIG[91] visible+required and FULL_DFO_REQUIRED_FIELDS[91];
+  i18n form234.trapSizeLabel/selectTrapSize (en+fr). Value persists via the data map like every
+  other form field (NO top-level DfoLog field — approved). Gate green: tsc=33 baseline (0 new),
+  jest 5 suites / 10 tests (new validateTrpSzId guard test 5/5), xmllint all four valid,
+  TRP_SZ_ID present NL-91 / absent 88/89/90.
 
 ---
 
@@ -403,10 +415,11 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 | Session 54 | June 14 2026 | IN-APP DFO TRANSMISSION LIVE: DFO_UAT_ENDPOINT added to dfoXmlGenerator.ts (single source of truth), wired into BOTH send paths (per-log doSubmit + harness handleFire); both empty DFO_ELOG_ENDPOINT='' guards + the harness dry-run branch removed. First in-app transmissions → WS0000 (harness MAR-90 CONF 162838/162839; real per-log "Send to DFO" on fresh MAR-90 LL-20260614-001 → Submitted) — both the harness AND the real user-facing form paths confirmed end-to-end vs UAT. XML Test Harness button relocated DfoSetupScreen → DfoLogsListScreen header (__DEV__-gated, blue, modal pattern); harness button/modal/state/styles removed from setup. Inspect/QR button parked behind {false &&} (NOT deleted — deliberate feature, demoed to DFO). All four harness fixtures synced with real MV_PORT codeIds (xmllint-valid). Transfers validation bug fixed (FullDfoForm.tsx:897 gated to subformId===88 — was blocking MAR/GLF/NL save). tsc=33 baseline, jest 3/3. |
 | Session 55 | June 14 2026 | P1 Harness terminal step-log: 7 logging-only [HARNESS] breadcrumbs added to DfoTestHarnessScreen handleFire (fixture→XML→validate PASS/FAIL→filename→SOAP→POSTing→HTTP response w/ status+elapsed ms+bodyLen); validation logs PASS strictly before POST, FAIL logs+halts at existing return; raw-response-only (harness path has no WS_RESP parse — doSubmit untouched). P2 mmYes/sarYes/lostGearYes under-validation RESOLVED: recon showed generator OMITS the 3 indicators when null + handleSave had no check, but validateElogXml already blocks the SEND at doSubmit:254 before POST (early-validation gap, not a transmission hole); added unconditional handleSave null-check (all 4 subforms, XSD effort_type minOccurs=1) + form234.missingIndicatorsAnswer in en/fr dfo.json. Generator output unchanged. P3 not started (no go given). tsc=33 baseline, jest 3/3. |
 | Session 56 | June 15 2026 | Block SPECIE_SZ_ID + NB_SPCMN_KEPT/DISC for MAR-90 (generator gate + validator guards + guard test); gate green tsc 33 / jest 5/5 / xmllint all four valid. |
+| Session 57 | June 15 2026 | Wire EFFORT_DETAIL.TRP_SZ_ID for NL-91: generator emit gated subformId===91 (after LAT/LONG, before CATCH) + validator guards (NL mandatory / 88-89-90 blocked) + FMA-style Standard/Large picker (DFO_TRAP_SIZE_LIST, Rule 611, no reftable ingestion) gated isVisible('trapSize') + handleSave block + config/required wiring + i18n en/fr + new validateTrpSzId guard test. Value persists via data map (no top-level DfoLog field — approved). Gate green tsc 33 baseline / jest 5 suites 10 tests / xmllint all four valid / TRP_SZ_ID present NL-91 absent 88-89-90. |
 
 ---
 
 ## Current session goals
 > Update this section at the start of each session.
 
-SESSION 57 — TBD.
+SESSION 58 — TBD.

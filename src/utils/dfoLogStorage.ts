@@ -139,7 +139,7 @@ export const FULL_DFO_REQUIRED_FIELDS: Record<number, string[]> = {
   88: ['operName', 'startDt', 'fmaId', 'catchWeight', 'trapHauls', 'lgbkUid', 'firstEntryDt', 'crewNb', 'portId'],
   89: ['operName', 'startDt', 'fmaId', 'catchWeight', 'trapHauls', 'lgbkUid', 'firstEntryDt'],
   90: ['operName', 'startDt', 'fmaId', 'lgridCodeId', 'catchWeight', 'trapHauls', 'lgbkUid', 'firstEntryDt', 'crewNb'],
-  91: ['operName', 'startDt', 'fmaId', 'catchWeight', 'trapHauls', 'lgbkUid', 'firstEntryDt', 'portId'],
+  91: ['operName', 'startDt', 'fmaId', 'catchWeight', 'trapHauls', 'lgbkUid', 'firstEntryDt', 'portId', 'trapSize'],
 };
 
 export function getRequiredFields(subformId: number): string[] {
