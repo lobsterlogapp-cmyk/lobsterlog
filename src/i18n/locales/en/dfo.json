@@ -58,6 +58,7 @@
     "missingBycatchAnswer": "Please answer Yes or No for Bycatch.",
     "missingBycatchEntries": "You selected Yes for bycatch — please add at least one entry.",
     "missingTransferAnswer": "Please answer Yes or No for Transfers.",
+    "missingIndicatorsAnswer": "Please answer Yes or No for Marine Mammal Interaction, Species at Risk, and Lost Gear.",
     "missingFieldsBody": "Please fill out every field before saving.\n\nMissing:\n• ",
     "saveError": "Could not save the log. Please try again.",
     "infoBannerPrefix": "Fields shown are based on your region. Fields marked ",

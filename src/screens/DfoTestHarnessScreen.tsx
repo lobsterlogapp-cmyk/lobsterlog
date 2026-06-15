@@ -166,25 +166,35 @@ export default function DfoTestHarnessScreen({ onClose }: Props) {
       const rawProfile = await loadCaptainProfile();
       const profile = withFallbacks(rawProfile);
       const log = makeFixtureLog(subformId, regId);
+      console.log(`[HARNESS] fixture built — subformId=${subformId}`);
 
       const xml = generateElogXml(log, profile);
+      console.log('[HARNESS] XML generated');
+
       const validation = validateElogXml(xml, subformId);
 
       if (!validation.valid) {
+        console.log(`[HARNESS] schema validation FAIL — halting, not POSTing:\n${validation.errors.join('\n')}`);
         setResults(prev => ({
           ...prev,
           [subformId]: `VALIDATION FAILED:\n${validation.errors.join('\n')}`,
         }));
         return;
       }
+      console.log('[HARNESS] schema validation PASS');
 
       const fileName = generateDfoXmlFileName(regId, profile.dfoLicenceNo);
+      console.log(`[HARNESS] filename generated — ${fileName}`);
+
       const soap = generateSoapEnvelope(xml, profile.elogKey, fileName);
+      console.log('[HARNESS] SOAP envelope built');
 
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), SEND_TIMEOUT_MS);
       try {
         // Harness Fire now transmits live to DFO's UAT server (same path as Send to DFO).
+        console.log(`[HARNESS] POSTing to UAT — ${DFO_UAT_ENDPOINT}`);
+        const t0 = Date.now();
         const response = await fetch(DFO_UAT_ENDPOINT, {
           method: 'POST',
           headers: {
@@ -196,6 +206,7 @@ export default function DfoTestHarnessScreen({ onClose }: Props) {
         });
         clearTimeout(timer);
         const text = await response.text();
+        console.log(`[HARNESS] HTTP response — status=${response.status}, elapsed=${Date.now() - t0}ms, bodyLen=${text.length}`);
         setResults(prev => ({
           ...prev,
           [subformId]: `HTTP ${response.status}\n\n${text}`,

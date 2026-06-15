@@ -898,6 +898,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       Alert.alert(t('form234.missingFieldsTitle'), t('form234.missingTransferAnswer'), [{ text: tc('nav.ok') }]);
       return;
     }
+    // SAR_IND / LOST_GEAR_IND / MM_INTER_IND are mandatory Y/N on EFFORT for ALL four
+    // subforms (XSD effort_type, minOccurs=1) — no subform condition. validateElogXml is the
+    // send-time backstop; this catches it early with a clear message instead of a cryptic one.
+    if (mmYes === null || sarYes === null || lostGearYes === null) {
+      Alert.alert(t('form234.missingFieldsTitle'), t('form234.missingIndicatorsAnswer'), [{ text: tc('nav.ok') }]);
+      return;
+    }
 
     const fieldCheckMap: Record<string, string> = {
       startDt:     dateFished,

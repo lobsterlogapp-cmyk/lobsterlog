@@ -1,6 +1,6 @@
 # LobsterLog — CLAUDE.md
 App version: 1.8.6 (versionCode 76)
-Last updated: June 14, 2026 (Session 54 complete; Session 55 active)
+Last updated: June 14, 2026 (Session 55 complete; Session 56 next)
 
 ## What this app is
 React Native / Expo mobile app. DFO-qualified electronic logbook for lobster harvesters.
@@ -352,10 +352,18 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 - AttestationModal + PrivacyNoticeModal — DONE (Session 39/40); i18n wired; moved from app launch to DFO entry
 - First-launch language picker screen — DONE (Session 39/40); LanguagePickerScreen.tsx created and wired into App.tsx
 - ProDashboard.tsx — DONE (Session 39/40); all ~38 strings wired to pro.* namespace in common.json
-- mmYes/sarYes/lostGearYes under-validation — SESSION 55 INVESTIGATE: all three default to
-  null with NO handleSave null-check, yet MM_INTER_IND/SAR_IND/LOST_GEAR_IND are mandatory
-  Y/N on EFFORT per the XSD. Transfers was OVER-validated (fixed Session 54); these may be the
-  inverse (under-validated). Trace exactly what the generator emits when they're left null
+- mmYes/sarYes/lostGearYes under-validation — RESOLVED (Session 55). Recon corrected the
+  framing: when null the generator OMITS SAR_IND/LOST_GEAR_IND/MM_INTER_IND entirely (tag()
+  returns '' on empty; buildLogData passes String(null)='null' which matches neither 'true'
+  nor 'false') — not empty/coerced. All three are mandatory on ALL FOUR subforms (shared XSD
+  effort_type minOccurs=1; no validator overlay relaxes them — unlike TRANSFER which is QC-88
+  only). Crucially the SEND was already blocked: validateElogXml flags the missing elements at
+  DfoLogsListScreen doSubmit:254 BEFORE the POST, so no blank-indicator doc reaches DFO — this
+  was an early-validation/UX gap, not a transmission hole. FIX: unconditional handleSave gate
+  (FullDfoForm.tsx, all 4 subforms, no subform condition) mirroring the transfer Alert
+  signature + new form234.missingIndicatorsAnswer key in en/dfo.json + fr/dfo.json (FR informal
+  'tu'). Parity-polish: clear message at save instead of cryptic "missing required <SAR_IND>"
+  at send. Generator output UNCHANGED. tsc=33 baseline, jest 3/3
 - Old pre-Session-53 logs (e.g. LL-20260605-001) have no portLandedCodeId and fail
   LANDING.PORT_ID validation — expected old-data artifacts (harmless dev throwaways), NOT a
   code bug; no migration planned
@@ -387,10 +395,14 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 | Session 50 | June 11 2026 | Q3 RESOLVED (LAT/LONG MODE = per-coordinate provenance G/M, Standard v6.1 §11.3); v6.1 delta review (Lost Gear removal only — corroborates existing resolution); SOAP envelope rewrite to real SaveIncomingFile contract across all 3 generators (shared builder, base64 params, fake auth header removed); generateDfoXmlFileName() per §3.10; parseDfoSoapResponse() rewritten for WS_RESP contract (7/7 spec-sample tests); TransmissionRecord +fileName/confNumber; ValidateElogKey UAT card in test harness (endpoint verified live HTTP 200); docs/REFTABLE_INGESTION_PLAN.md written (plan only). OUTSTANDING: Jonny to add EXPO_PUBLIC_DFO_TEST_ELOG_KEY to .env before firing the UAT key test. |
 | Session 53 | June 13 2026 | MV_PORT_rel7 ingested (3,970 ports; generateReftables.js extended: nullable PROV_CODE_ID, MV_PORT-specific DESC_*→name mapping, derived PORTS_BY_PROVINCE); DFO_MAR_PORT_LIST rebuilt as a filtered MV_PORT view (NS+NB+PEI), proven identical to the old 2,229-row literal 3 ways, ~11k lines removed. New DfoPortSelector ({name,codeId}); shared PortSelector + LobsterLogProposalForm left untouched (175 users safe). TRIP.PORT_ID (QC/NL) + LANDING.PORT_ID (all 4) emit integer codeIds; field config portId added to GLF/MAR. ALL FOUR subforms XSD-valid with real PORT_IDs — Open Question 4 CLOSED. First real UAT SaveIncomingFile transmission (MAR-90, reserved test triplet) → HTTP 200, ERR=WS0000, CONF=162836 — first DFO-accepted logbook. tsc=33 baseline, jest 3/3. |
 | Session 54 | June 14 2026 | IN-APP DFO TRANSMISSION LIVE: DFO_UAT_ENDPOINT added to dfoXmlGenerator.ts (single source of truth), wired into BOTH send paths (per-log doSubmit + harness handleFire); both empty DFO_ELOG_ENDPOINT='' guards + the harness dry-run branch removed. First in-app transmissions → WS0000 (harness MAR-90 CONF 162838/162839; real per-log "Send to DFO" on fresh MAR-90 LL-20260614-001 → Submitted) — both the harness AND the real user-facing form paths confirmed end-to-end vs UAT. XML Test Harness button relocated DfoSetupScreen → DfoLogsListScreen header (__DEV__-gated, blue, modal pattern); harness button/modal/state/styles removed from setup. Inspect/QR button parked behind {false &&} (NOT deleted — deliberate feature, demoed to DFO). All four harness fixtures synced with real MV_PORT codeIds (xmllint-valid). Transfers validation bug fixed (FullDfoForm.tsx:897 gated to subformId===88 — was blocking MAR/GLF/NL save). tsc=33 baseline, jest 3/3. |
+| Session 55 | June 14 2026 | P1 Harness terminal step-log: 7 logging-only [HARNESS] breadcrumbs added to DfoTestHarnessScreen handleFire (fixture→XML→validate PASS/FAIL→filename→SOAP→POSTing→HTTP response w/ status+elapsed ms+bodyLen); validation logs PASS strictly before POST, FAIL logs+halts at existing return; raw-response-only (harness path has no WS_RESP parse — doSubmit untouched). P2 mmYes/sarYes/lostGearYes under-validation RESOLVED: recon showed generator OMITS the 3 indicators when null + handleSave had no check, but validateElogXml already blocks the SEND at doSubmit:254 before POST (early-validation gap, not a transmission hole); added unconditional handleSave null-check (all 4 subforms, XSD effort_type minOccurs=1) + form234.missingIndicatorsAnswer in en/fr dfo.json. Generator output unchanged. P3 not started (no go given). tsc=33 baseline, jest 3/3. |
 
 ---
 
 ## Current session goals
 > Update this section at the start of each session.
 
-SESSION 55 — TBD
+SESSION 56 — TBD. Carried from Session 55 (Phase 3 not started, no go given): pick ONE
+subform-field item as a recon-first mini-phase — PCONS SPECIE_SZ_ID block/hide for MAR-90
+(UI+XML), CATCH NB_SPCMN_KEPT+NB_SPCMN_DISC block for MAR-90, or EFFORT_DETAIL.TRP_SZ_ID wire
+for NL-91 (mandatory).
