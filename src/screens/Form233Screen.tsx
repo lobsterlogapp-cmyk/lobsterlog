@@ -77,8 +77,8 @@ export default function Form233Screen({ onClose }: Props) {
                 periodStartDate: form.periodStartDate,
                 periodEndDate: form.periodEndDate,
                 reason: form.reason,
-                licenceNo: profile.dfoLicenceNo,
-                fin: profile.dfoFin,
+                licenceNo: profile.fishingNumber,
+                fin: profile.licenceHolderFin,
                 sentToDfo: false,
               };
 
@@ -97,7 +97,7 @@ export default function Form233Screen({ onClose }: Props) {
               generateSoap233Envelope(
                 xml,
                 profile.elogKey,
-                generateDfoXmlFileName(profile.regId ?? 1004, profile.dfoLicenceNo)
+                generateDfoXmlFileName(profile.regId ?? 1004, profile.fishingNumber)
               );
 
               entry.sentToDfo = true;
@@ -146,8 +146,8 @@ export default function Form233Screen({ onClose }: Props) {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>{t('form233.licenceNoLabel')}</Text>
             <View style={styles.readOnlyField}>
-              <Text style={profile.dfoLicenceNo ? styles.readOnlyText : styles.readOnlyPlaceholder}>
-                {profile.dfoLicenceNo || t('form233.licenceNoPlaceholder')}
+              <Text style={profile.fishingNumber ? styles.readOnlyText : styles.readOnlyPlaceholder}>
+                {profile.fishingNumber || t('form233.licenceNoPlaceholder')}
               </Text>
             </View>
           </View>
@@ -155,8 +155,8 @@ export default function Form233Screen({ onClose }: Props) {
           <View style={[styles.inputGroup, styles.lastInputGroup]}>
             <Text style={styles.label}>{t('form233.finLabel')}</Text>
             <View style={styles.readOnlyField}>
-              <Text style={profile.dfoFin ? styles.readOnlyText : styles.readOnlyPlaceholder}>
-                {profile.dfoFin || t('form233.finPlaceholder')}
+              <Text style={profile.licenceHolderFin ? styles.readOnlyText : styles.readOnlyPlaceholder}>
+                {profile.licenceHolderFin || t('form233.finPlaceholder')}
               </Text>
             </View>
           </View>

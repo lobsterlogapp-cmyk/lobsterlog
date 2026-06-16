@@ -1,4 +1,9 @@
 {
+  "sendGate": {
+    "title": "Finish your Captain Profile",
+    "body": "Before you can send to DFO, please fill in the following on your Captain Profile:",
+    "openProfile": "Open Profile"
+  },
   "setup": {
     "title": "DFO Setup",
     "region": "DFO Region",

@@ -124,7 +124,7 @@ export function generateForm222Xml(entry: Form222Entry, profile: CaptainProfile)
   gi += tag('CIE_ID',      DFO_CIE_ID, '    ');
   gi += tag('SOFT_VER',    DFO_SOFT_VER, '    ');
   gi += tag('REG_ID',      String(regId), '    ');
-  gi += tag('FIN',         profile.dfoFin, '    ');     // mandatory in F222
+  gi += tag('FIN',         profile.licenceHolderFin, '    ');     // mandatory in F222
   gi += tag('VRN',         profile.vesselNumber, '    '); // mandatory in F222
   gi += tag('FORM_VER_ID', String(DFO_FORM_VER_ID_222), '    ');
   gi += '  </GENERAL_INFO>\n';
@@ -146,7 +146,7 @@ export function generateForm222Xml(entry: Form222Entry, profile: CaptainProfile)
     mm += tag('GEAR_ID', '925', '    ');
   }
 
-  mm += tag('LGBK_NUM_REF', entry.lgbkNumRef || profile.dfoLicenceNo, '    ');
+  mm += tag('LGBK_NUM_REF', entry.lgbkNumRef || profile.fishingNumber, '    ');
 
   if (entry.interactInd === 'Y') {
     const specie = MARINE_MAMMAL_SPECIES.find(s => s.label === entry.speciesLabel);

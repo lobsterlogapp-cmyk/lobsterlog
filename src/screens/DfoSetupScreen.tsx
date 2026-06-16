@@ -69,6 +69,8 @@ export default function DfoSetupScreen({ onActivated, onClose, isAdmin }: Props)
           regId,
           dfoLicenceNo: licenceNo.trim(),
           dfoFin: fin.trim(),
+          fishingNumber: licenceNo.trim(),
+          licenceHolderFin: fin.trim(),
         });
         onActivated();
       } catch (e: any) {
@@ -95,6 +97,8 @@ export default function DfoSetupScreen({ onActivated, onClose, isAdmin }: Props)
         regId,
         dfoLicenceNo: licenceNo.trim(),
         dfoFin: fin.trim(),
+        fishingNumber: licenceNo.trim(),
+        licenceHolderFin: fin.trim(),
         dfoActivated: true,
       });
       onActivated();
@@ -129,6 +133,8 @@ export default function DfoSetupScreen({ onActivated, onClose, isAdmin }: Props)
           regId,
           dfoLicenceNo: licenceNo.trim(),
           dfoFin: fin.trim(),
+          fishingNumber: licenceNo.trim(),
+          licenceHolderFin: fin.trim(),
           dfoActivated: true,
         });
         onActivated();

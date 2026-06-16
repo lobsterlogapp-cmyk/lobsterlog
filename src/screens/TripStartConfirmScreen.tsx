@@ -88,8 +88,8 @@ export default function TripStartConfirmScreen({ onConfirm, onBack }: Props) {
           <Text style={styles.cardTitle}>{t('tripConfirm.profileCard')}</Text>
           {renderRow(t('tripConfirm.operatorNameLabel'), profile.operatorName)}
           {renderRow(t('tripConfirm.vrnLabel'), profile.vesselNumber)}
-          {renderRow(t('tripConfirm.licenceNoLabel'), profile.dfoLicenceNo)}
-          {renderRow(t('tripConfirm.finLabel'), profile.dfoFin)}
+          {renderRow(t('tripConfirm.licenceNoLabel'), profile.fishingNumber)}
+          {renderRow(t('tripConfirm.finLabel'), profile.licenceHolderFin)}
           {renderRow(t('tripConfirm.regionLabel'), regionDisplay)}
         </View>
       </ScrollView>

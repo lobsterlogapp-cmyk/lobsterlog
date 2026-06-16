@@ -18,7 +18,7 @@ import { Plus, FileText, Send, Edit3, Eye, Play, Trash2, CheckCircle, User, Shie
 import { loadAllLogs, deleteLog, markSentToDfo, DfoLog, saveTransmissionRecord, TransmissionRecord, saveXmlArchiveEntry, loadTransmissionRegister } from '../utils/dfoLogStorage';
 import { SentLogCard, SentLogDetailModal, indexSuccessRecords } from '../components/SentLogCard';
 import { generateElogXml, generateSoapEnvelope, generateReportUid, validateElogXml, generateDfoXmlFileName, findEffortOverlap, DFO_SOAP_ACTION_SAVE, DFO_UAT_ENDPOINT } from '../utils/dfoXmlGenerator';
-import { loadCaptainProfile, loadPrivacyAccepted, savePrivacyAccepted } from '../utils/captainStorage';
+import { loadCaptainProfile, loadPrivacyAccepted, savePrivacyAccepted, isProfileComplete } from '../utils/captainStorage';
 import CaptainProfileScreen from './CaptainProfileScreen';
 import InspectionModeScreen from './InspectionModeScreen';
 import Form222Screen from './Form222Screen';
@@ -247,6 +247,21 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
 
     try {
       const captainProfile = await loadCaptainProfile();
+
+      // Captain Profile must be complete before anything can be sent to DFO.
+      const profileCheck = isProfileComplete(captainProfile);
+      if (!profileCheck.complete) {
+        const missingList = profileCheck.missing.map(k => `• ${tc(k)}`).join('\n');
+        Alert.alert(
+          t('sendGate.title'),
+          `${t('sendGate.body')}\n\n${missingList}`,
+          [
+            { text: tc('nav.cancel'), style: 'cancel' },
+            { text: t('sendGate.openProfile'), onPress: () => setCaptainProfileVisible(true) },
+          ]
+        );
+        return;
+      }
 
       // Rule 33: effort period must not overlap another previously entered effort
       const allLogs = await loadAllLogs();

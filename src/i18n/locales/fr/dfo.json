@@ -1,5 +1,10 @@
 {
   "_todo": "TRANSLATION PENDING",
+  "sendGate": {
+    "title": "Complétez votre profil de capitaine",
+    "body": "Avant de transmettre au MPO, veuillez remplir les éléments suivants dans votre profil de capitaine :",
+    "openProfile": "Ouvrir le profil"
+  },
   "setup": {
     "title": "Configuration DFO",
     "region": "Région DFO",

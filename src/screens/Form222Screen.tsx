@@ -192,7 +192,7 @@ export default function Form222Screen({ onClose }: Props) {
               generateSoap222Envelope(
                 xml,
                 profile.elogKey,
-                generateDfoXmlFileName(profile.regId ?? 1004, profile.dfoLicenceNo)
+                generateDfoXmlFileName(profile.regId ?? 1004, profile.fishingNumber)
               );
 
               entry.sentToDfo = true;

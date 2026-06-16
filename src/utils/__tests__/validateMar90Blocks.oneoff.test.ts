@@ -10,6 +10,8 @@ const profile: any = {
   vesselNumber: '123456',
   dfoLicenceNo: '300123',
   dfoFin: '123456789',
+  fishingNumber: '300123',
+  licenceHolderFin: '123456789',
   units: 'lbs',
   language: 'en',
 };

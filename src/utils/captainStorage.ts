@@ -55,6 +55,30 @@ export async function saveCaptainProfile(profile: CaptainProfile): Promise<void>
   } catch {}
 }
 
+// Profile fields the DFO send genuinely needs, paired with the i18n label key the
+// harvester already sees on the Captain Profile screen (common namespace — reused,
+// not duplicated). gearType / language / units are intentionally NOT here — they
+// don't block a send. Storage stays i18n-free: the caller translates these keys.
+const REQUIRED_PROFILE_FIELDS: { key: keyof CaptainProfile; labelKey: string }[] = [
+  { key: 'operatorName',     labelKey: 'profile.operatorNameLabel' },
+  { key: 'licenceHolderFin', labelKey: 'profile.finLabel' },
+  { key: 'fishingNumber',    labelKey: 'profile.fishingLicenceLabel' },
+  { key: 'vesselNumber',     labelKey: 'profile.vesselNumberLabel' },
+  { key: 'elogKey',          labelKey: 'profile.elogKeyLabel' },
+  { key: 'fishingArea',      labelKey: 'profile.fishingAreaLabel' },
+  { key: 'totalGearCount',   labelKey: 'profile.totalGearLabel' },
+];
+
+// Returns whether the profile has everything a DFO submission requires, plus the
+// i18n label keys of anything still blank — for a plain-language pre-send prompt.
+// Returns keys (not text) so the storage layer never imports t().
+export function isProfileComplete(profile: CaptainProfile): { complete: boolean; missing: string[] } {
+  const missing = REQUIRED_PROFILE_FIELDS
+    .filter(f => !String(profile[f.key] ?? '').trim())
+    .map(f => f.labelKey);
+  return { complete: missing.length === 0, missing };
+}
+
 // --- Privacy acceptance flag (persisted once, never reset) ---
 
 const PRIVACY_KEY = '@lobsterlog:privacy_accepted';

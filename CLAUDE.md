@@ -1,6 +1,6 @@
 # LobsterLog — CLAUDE.md
 App version: 1.8.6 (versionCode 76)
-Last updated: June 15, 2026 (Session 59 complete; Session 60 next)
+Last updated: June 16, 2026 (Session 61 complete; Session 62 next)
 
 ## What this app is
 React Native / Expo mobile app. DFO-qualified electronic logbook for lobster harvesters.
@@ -344,6 +344,28 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
   NO regression. Four-subform harness: validateElogXml all four VALID + xmllint all four
   valid. Grep across the four emitted samples: SPECIE_SZ_ID present ONLY in 89; LGRID_ID
   present ONLY in 90 (its fixture sets lgridCodeId=101). tsc=33 baseline (0 new).
+- Captain Profile as send source-of-truth + setup→profile seed + pre-send completeness
+  gate (Session 61) — **SEED:** DfoSetupScreen's three activate handlers (dev/purchase/restore)
+  now also write the profile's real fields on activation — `fishingNumber` ← Licence,
+  `licenceHolderFin` ← FIN (one-way, one-time; profile stays freely editable after). The
+  `dfo*` copies (dfoLicenceNo/dfoFin) are STILL written too — not retired this session (see
+  Not yet built). **REWIRE:** every PRODUCTION reader repointed off the stale `dfo*` copies
+  onto the profile — generateElogXml FIN→`licenceHolderFin` / LIC_NO→`fishingNumber`
+  (dfoXmlGenerator.ts), DfoLogsListScreen filename arg→`fishingNumber` (XML LIC_NO + filename
+  now read the SAME field, closing the 1004460/1004461 filename-vs-XML drift), Form 222
+  generator FIN + LGBK_NUM_REF fallback, Form222Screen filename, Form233Screen payload +
+  filename + read-only display, TripStartConfirmScreen display rows. VRN untouched (already
+  read `vesselNumber`). **GATE:** new `isProfileComplete(profile)` in captainStorage.ts returns
+  `{ complete, missing: string[] }` over operatorName/licenceHolderFin/fishingNumber/
+  vesselNumber/elogKey/fishingArea/totalGearCount (gearType/language/units do NOT block);
+  returns i18n LABEL KEYS (reusing existing common `profile.*` labels — storage stays
+  i18n-free). doSubmit calls it right after loadCaptainProfile, before generateElogXml — on
+  incomplete: bilingual Alert (new `sendGate.*` keys en+fr dfo.json) listing the missing
+  fields, Cancel + "Open Profile" (routes via setCaptainProfileVisible), then return — no POST.
+  **VERIFIED:** tsc 33/0-new, jest 7 suites/19 green (7 oneoff fixtures backfilled with
+  fishingNumber/licenceHolderFin so they emit real FIN/LIC_NO), xmllint all four logbooks +
+  F222(Y/N) + F233 validate with populated identifiers; live GLF-89 UAT send → WS0000, filename
+  middle segment = VRN, drift closed; gate blocks an incomplete profile and releases when filled.
 
 ---
 
@@ -404,6 +426,16 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
   **REWORDED S59:** now affects GLF-89 ONLY — 89 is the lone subform still emitting
   SPECIE_SZ_ID (I2 closed: 88/90/91 no longer emit it at all, so the gap is moot for
   them). Needs a size source or picker for the 89 case.
+- Cross-region live UAT sends for QC-88 + NL-91 (carried open from S61) — only MAR-90
+  (S53/54) and GLF-89 (S61) have been sent live to UAT. Send QC-88 and NL-91 using the
+  reserved per-region test triplets (FIN/VRN/LIC_NO) on Test_values_LobsterLog.pdf p.4 to
+  confirm WS0000 + correct filename across all four subforms end-to-end.
+- (P2) Retire the dfo* profile fields — repoint DfoTestHarnessScreen (DEV-only; reads
+  profile.dfoLicenceNo/dfoFin at :99/:100/:186) to the profile fields
+  (fishingNumber/licenceHolderFin), THEN delete dfoLicenceNo/dfoFin from CaptainProfile +
+  EMPTY_PROFILE (captainStorage.ts) and the three DfoSetupScreen seed writes. Deferred from
+  S61 by decision — all PRODUCTION paths already read the profile as source of truth; only the
+  dev harness still reads dfo*, so retiring is safe cleanup, not behavior change.
 
 ---
 
@@ -435,13 +467,13 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 | Session 55 | June 14 2026 | P1 Harness terminal step-log: 7 logging-only [HARNESS] breadcrumbs added to DfoTestHarnessScreen handleFire (fixture→XML→validate PASS/FAIL→filename→SOAP→POSTing→HTTP response w/ status+elapsed ms+bodyLen); validation logs PASS strictly before POST, FAIL logs+halts at existing return; raw-response-only (harness path has no WS_RESP parse — doSubmit untouched). P2 mmYes/sarYes/lostGearYes under-validation RESOLVED: recon showed generator OMITS the 3 indicators when null + handleSave had no check, but validateElogXml already blocks the SEND at doSubmit:254 before POST (early-validation gap, not a transmission hole); added unconditional handleSave null-check (all 4 subforms, XSD effort_type minOccurs=1) + form234.missingIndicatorsAnswer in en/fr dfo.json. Generator output unchanged. P3 not started (no go given). tsc=33 baseline, jest 3/3. |
 | Session 56 | June 15 2026 | Block SPECIE_SZ_ID + NB_SPCMN_KEPT/DISC for MAR-90 (generator gate + validator guards + guard test); gate green tsc 33 / jest 5/5 / xmllint all four valid. |
 | Session 57 | June 15 2026 | Wire EFFORT_DETAIL.TRP_SZ_ID for NL-91: generator emit gated subformId===91 (after LAT/LONG, before CATCH) + validator guards (NL mandatory / 88-89-90 blocked) + FMA-style Standard/Large picker (DFO_TRAP_SIZE_LIST, Rule 611, no reftable ingestion) gated isVisible('trapSize') + handleSave block + config/required wiring + i18n en/fr + new validateTrpSzId guard test. Value persists via data map (no top-level DfoLog field — approved). Gate green tsc 33 baseline / jest 5 suites 10 tests / xmllint all four valid / TRP_SZ_ID present NL-91 absent 88-89-90. |
+| Session 58 | June 15 2026 | Generator verification pass (recon) — T1 AT-RISK (REM unbuilt) / T2 PASS all four / T3 PASS 88+91, AT-RISK 89+90; flagged I1 LGRID_ID + I2 SPECIE_SZ_ID subform-gating leaks (both closed in S59). |
 | Session 59 | June 15 2026 | Confirmed + closed I1/I2 subform-gating leaks — SPECIE_SZ_ID emit-89-only (overturns 88/89/91 ruling), LGRID_ID emit-90-only; generator gates + validator guards + 2 guard tests; harness + xmllint clean, no regression. |
+| Session 61 | June 16 2026 | Captain Profile as send source-of-truth. SEED: DfoSetupScreen's 3 activate handlers now also write fishingNumber←Licence / licenceHolderFin←FIN on activation (dfo* kept). REWIRE: all production readers repointed off dfo* onto the profile — generateElogXml FIN/LIC_NO, DfoLogsListScreen + Form222Screen + Form233Screen filenames (XML LIC_NO + filename now read the SAME fishingNumber → 1004460/1004461 drift closed), Form222 generator FIN+fallback, Form233 payload+display, TripStartConfirm rows (VRN untouched). GATE: new isProfileComplete() in captainStorage (returns i18n label keys, storage stays t()-free) wired into doSubmit before generateElogXml — bilingual sendGate popup blocks an incomplete profile, routes to Open Profile, no POST. 7 oneoff fixtures backfilled with the new fields. VERIFIED: tsc 33/0-new, jest 7/19 green, xmllint all four logbooks + 222 + 233 valid, live GLF-89 UAT → WS0000 (filename middle = VRN). dfo* NOT retired (P2 carried open: harness repoint then delete). |
 
 ---
 
 ## Current session goals
 > Update this section at the start of each session.
 
-SESSION 60 — TBD. (I1/I2 subform-gating leaks both CLOSED in S59 — no longer open
-candidates.) Standout open candidates: REM emission (G1 area — needs a design chat
-first); transmission register / history screen.
+SESSION 62 — TBD.
