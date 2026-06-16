@@ -173,7 +173,7 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   generalInfo += tag('CIE_ID',      DFO_CIE_ID, '    ');
   generalInfo += tag('SOFT_VER',    DFO_SOFT_VER, '    ');
   generalInfo += tag('REG_ID',      String(regId), '    ');
-  generalInfo += tag('FIN',         captainProfile.dfoFin, '    ');
+  generalInfo += tag('FIN',         captainProfile.licenceHolderFin, '    ');
   generalInfo += tag('VRN',         captainProfile.vesselNumber, '    ');
   generalInfo += tag('FORM_VER_ID', String(DFO_FORM_VER_ID), '    ');
   generalInfo += tag('SUBFORM_ID',  String(subformId), '    ');
@@ -210,7 +210,7 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   effort += tag('START_DT',      toDate12(haulStartDt), '      ');
   effort += tag('END_DT',        toDate12(haulEndDt), '      ');
   // LIC_NO: the XSD's only licence element (string_18, mandatory) — LICENCE_NO dropped
-  effort += tag('LIC_NO',        captainProfile.dfoLicenceNo, '      ');
+  effort += tag('LIC_NO',        captainProfile.fishingNumber, '      ');
   effort += tag('FMA_ID',        d.fmaId, '      ');
   // SAR_IND/LOST_GEAR_IND/MM_INTER_IND are mandatory Y/N — empty means unanswered, the
   // element is simply omitted here and the send must be blocked upstream (S4 validator)

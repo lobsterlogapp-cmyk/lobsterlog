@@ -83,6 +83,7 @@ import Garminmapbox from './src/screens/Garminmapbox';
 import DfoSetupScreen from './src/screens/DfoSetupScreen';
 import FullDfoForm from './src/components/FullDfoForm';
 import DfoLogsListScreen from './src/screens/DfoLogsListScreen';
+import LogHistoryScreen from './src/screens/LogHistoryScreen';
 import TripStartConfirmScreen from './src/screens/TripStartConfirmScreen';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loadCaptainProfile, saveCaptainProfile } from './src/utils/captainStorage';
@@ -424,16 +425,16 @@ const isAdmin = useMemo(() => {
 
                       <TouchableOpacity
                         onPress={() => {
-                          const isInDfoArea = view === 'dfo-list' || view === 'dfo-demo' || view === 'dfo-setup' || view === 'dfo-trip';
+                          const isInDfoArea = view === 'dfo-list' || view === 'dfo-demo' || view === 'dfo-setup' || view === 'dfo-trip' || view === 'dfo-history';
                           if (isInDfoArea) { setView('log'); return; }
                           setView(dfoActivated ? 'dfo-list' : 'dfo-setup');
                         }}
                         style={[
                           styles.navButton,
-                          (view === 'dfo-list' || view === 'dfo-demo' || view === 'dfo-setup' || view === 'dfo-trip') && styles.navButtonActive,
+                          (view === 'dfo-list' || view === 'dfo-demo' || view === 'dfo-setup' || view === 'dfo-trip' || view === 'dfo-history') && styles.navButtonActive,
                         ]}
                       >
-                        {view === 'dfo-list' || view === 'dfo-demo' || view === 'dfo-setup' || view === 'dfo-trip' ? (
+                        {view === 'dfo-list' || view === 'dfo-demo' || view === 'dfo-setup' || view === 'dfo-trip' || view === 'dfo-history' ? (
                           <X size={24} color="#F87171" />
                         ) : (
                           <ClipboardList size={24} color="#F87171" />
@@ -508,7 +509,10 @@ const isAdmin = useMemo(() => {
                                       setReadOnlyLog(true);
                                       setView('dfo-demo');
                                     }}
+                                    onOpenHistory={() => setView('dfo-history')}
                                   />
+                                ) : view === 'dfo-history' ? (
+                                  <LogHistoryScreen onBack={() => setView('dfo-list')} />
                                 ) : view === 'dfo-trip' ? (
                                   <TripStartConfirmScreen
                                     onConfirm={(ts) => {
@@ -1092,7 +1096,7 @@ const isAdmin = useMemo(() => {
             </ScrollView>
           )}
         </KeyboardAvoidingView>
-        {isAdmin && (view === 'dfo-list' || view === 'dfo-demo' || view === 'dfo-trip') && (
+        {isAdmin && (view === 'dfo-list' || view === 'dfo-demo' || view === 'dfo-trip' || view === 'dfo-history') && (
           <View
             style={{ position: 'absolute', bottom: 16, left: 0, right: 0, alignItems: 'center', zIndex: 100, elevation: 10 }}
             pointerEvents="box-none"

@@ -219,7 +219,24 @@
     "form233Button": "Formulaire 233\nInactivité",
     "emptySubtitle": "Appuie sur «Remplir un nouveau journal ELOG» ci-dessus pour créer ton premier journal de sortie.",
     "incompleteLogs": "JOURNAUX INCOMPLETS",
-    "completedLogs": "JOURNAUX COMPLÉTÉS"
+    "completedLogs": "JOURNAUX COMPLÉTÉS",
+    "sentLogs": "ENVOYÉS AU MPO",
+    "logHistoryButton": "Historique des journaux",
+    "sentCapNote": "Affichage des {{shown}} plus récents sur {{total}} · voir l'Historique pour tous",
+    "regSuccess": "Accepté ✓",
+    "regTripLabel": "Sortie",
+    "regVesselLabel": "Navire",
+    "regConfLabel": "N° de confirmation",
+    "regSentLabel": "Envoyé",
+    "detailTitle": "Résultat de la transmission",
+    "detailXsd": "Validation XSD",
+    "detailXsdPass": "Réussie",
+    "detailXsdFail": "Échouée",
+    "detailXsdUnknown": "Non enregistrée",
+    "detailWsCode": "Code de réponse du MPO",
+    "detailFileName": "Nom du fichier",
+    "detailHttp": "Statut HTTP",
+    "detailNoRecord": "Aucun enregistrement de transmission trouvé pour ce journal."
   },
   "form233": {
     "headerTitle": "Formulaire 233 · Inactivité",
@@ -329,5 +346,28 @@
     "declineButton": "Refuser",
     "acceptButton": "Accepter",
     "agree": "J'ai compris"
+  },
+  "history": {
+    "title": "Historique des journaux",
+    "subtitle": "ENVOYÉS AU MPO · ARCHIVE DE 3 ANS",
+    "back": "Retour",
+    "month": "Mois",
+    "year": "Année",
+    "all": "Tous",
+    "noLogsForSelection": "Aucun journal pour {{selection}}",
+    "months": [
+      "janvier",
+      "février",
+      "mars",
+      "avril",
+      "mai",
+      "juin",
+      "juillet",
+      "août",
+      "septembre",
+      "octobre",
+      "novembre",
+      "décembre"
+    ]
   }
 }

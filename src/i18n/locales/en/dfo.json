@@ -218,7 +218,24 @@
     "form233Button": "Form 233\nInactivity",
     "emptySubtitle": "Tap \"Fill Out New ELOG\" above to create your first trip log.",
     "incompleteLogs": "INCOMPLETE LOGS",
-    "completedLogs": "COMPLETED LOGS"
+    "completedLogs": "COMPLETED LOGS",
+    "sentLogs": "SENT TO DFO",
+    "logHistoryButton": "Log History",
+    "sentCapNote": "Showing {{shown}} most recent of {{total}} · see Log History for all",
+    "regSuccess": "Accepted ✓",
+    "regTripLabel": "Trip",
+    "regVesselLabel": "Vessel",
+    "regConfLabel": "Confirmation #",
+    "regSentLabel": "Sent",
+    "detailTitle": "Transmission Result",
+    "detailXsd": "XSD validation",
+    "detailXsdPass": "Passed",
+    "detailXsdFail": "Failed",
+    "detailXsdUnknown": "Not recorded",
+    "detailWsCode": "DFO response code",
+    "detailFileName": "File name",
+    "detailHttp": "HTTP status",
+    "detailNoRecord": "No transmission record found for this log."
   },
   "form233": {
     "headerTitle": "Form 233 · Inactivity",
@@ -328,5 +345,28 @@
     "declineButton": "Decline",
     "acceptButton": "Accept",
     "agree": "I Understand"
+  },
+  "history": {
+    "title": "Log History",
+    "subtitle": "SENT TO DFO · 3-YEAR ARCHIVE",
+    "back": "Back",
+    "month": "Month",
+    "year": "Year",
+    "all": "All",
+    "noLogsForSelection": "No logs for {{selection}}",
+    "months": [
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December"
+    ]
   }
 }

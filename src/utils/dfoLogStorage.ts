@@ -215,6 +215,12 @@ export interface TransmissionRecord {
   confNumber?: string;  // <CONF> from WS_RESP, when the service returned one
   xmlSnapshot: string;  // the full XML string that was sent
   soapSnapshot: string; // the full SOAP envelope that was sent
+  // §13.3.1 register snapshot — point-in-time values captured at send (Session 60).
+  // These are NOT re-derived at display time: they record what was true when sent.
+  vrn?: string;         // vessel registration number (captainProfile.vesselNumber at send)
+  tripNum?: number;     // DfoLog.tripNum at send (Rule 48 sequential trip number)
+  xsdValid?: boolean;   // result of validateElogXml() run before the POST
+  wsErrCode?: string;   // parsed WS_RESP <ERR> (e.g. 'WS0000' on success)
 }
 
 export async function saveTransmissionRecord(record: TransmissionRecord): Promise<void> {

@@ -14,8 +14,9 @@ import {
   Platform,
   BackHandler,
 } from 'react-native';
-import { Plus, FileText, Send, Edit3, Eye, Play, Trash2, CheckCircle, User, Shield, RotateCcw } from 'lucide-react-native';
-import { loadAllLogs, deleteLog, markSentToDfo, DfoLog, saveTransmissionRecord, TransmissionRecord, saveXmlArchiveEntry } from '../utils/dfoLogStorage';
+import { Plus, FileText, Send, Edit3, Eye, Play, Trash2, CheckCircle, User, Shield, RotateCcw, Archive } from 'lucide-react-native';
+import { loadAllLogs, deleteLog, markSentToDfo, DfoLog, saveTransmissionRecord, TransmissionRecord, saveXmlArchiveEntry, loadTransmissionRegister } from '../utils/dfoLogStorage';
+import { SentLogCard, SentLogDetailModal, indexSuccessRecords } from '../components/SentLogCard';
 import { generateElogXml, generateSoapEnvelope, generateReportUid, validateElogXml, generateDfoXmlFileName, findEffortOverlap, DFO_SOAP_ACTION_SAVE, DFO_UAT_ENDPOINT } from '../utils/dfoXmlGenerator';
 import { loadCaptainProfile, loadPrivacyAccepted, savePrivacyAccepted } from '../utils/captainStorage';
 import CaptainProfileScreen from './CaptainProfileScreen';
@@ -113,6 +114,7 @@ const SEND_TIMEOUT_MS = 30000;
 export function parseDfoSoapResponse(text: string): {
   success: boolean;
   conf?: string;
+  errCode?: string;       // parsed WS_RESP <ERR> on success (e.g. 'WS0000') — register snapshot
   errorCode?: string;
   errorMessage?: string;
   lgbkUids?: string[];
@@ -149,7 +151,7 @@ export function parseDfoSoapResponse(text: string): {
     if (!conf || conf === '0') {
       return { success: false, conf, errorCode: 'NO_CONF', errorMessage: 'WS0000 but confirmation number missing — treat as failed and retry' };
     }
-    return { success: true, conf, lgbkUids: grabAll('LGBK_UID'), reportUids: grabAll('REPORT_UID') };
+    return { success: true, conf, errCode: err, lgbkUids: grabAll('LGBK_UID'), reportUids: grabAll('REPORT_UID') };
   }
   if (err) {
     return { success: false, conf, errorCode: err, errorMessage: `DFO Web Service error ${err}` };
@@ -162,13 +164,18 @@ interface DfoLogsListScreenProps {
   onNewLog: () => void;
   onEditLog: (logId: string) => void;
   onViewLog: (logId: string) => void;
+  onOpenHistory: () => void;
   refreshKey?: number;
 }
+
+// Cap the SENT logs shown on the main screen; the full archive lives in Log History.
+const SENT_DISPLAY_CAP = 30;
 
 const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
   onNewLog,
   onEditLog,
   onViewLog,
+  onOpenHistory,
   refreshKey = 0,
 }) => {
   const { t } = useTranslation('dfo');
@@ -176,6 +183,8 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
 
   const [drafts, setDrafts] = useState<DfoLog[]>([]);
   const [completed, setCompleted] = useState<DfoLog[]>([]);
+  const [successRecords, setSuccessRecords] = useState<Record<string, TransmissionRecord>>({});
+  const [detailLog, setDetailLog] = useState<DfoLog | null>(null);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
   const [captainProfileVisible, setCaptainProfileVisible] = useState(false);
@@ -194,6 +203,8 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
     const all = await loadAllLogs();
     setDrafts(all.filter(l => l.status === 'draft'));
     setCompleted(all.filter(l => l.status === 'complete' || !l.status));
+    const register = await loadTransmissionRegister();
+    setSuccessRecords(indexSuccessRecords(register));
     setLoading(false);
   }, []);
 
@@ -262,7 +273,7 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
       }
 
       // File name: [RegionalID]-[LicenceNumber]-[UTC timestamp].XML (Standard v6.1 §3.10)
-      fileName = generateDfoXmlFileName(log.regId ?? 1004, captainProfile.dfoLicenceNo);
+      fileName = generateDfoXmlFileName(log.regId ?? 1004, captainProfile.fishingNumber);
       soap = generateSoapEnvelope(xml, captainProfile.elogKey, fileName);
 
       const controller = new AbortController();
@@ -324,6 +335,11 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
         httpStatus,
         fileName,
         ...(result.conf && { confNumber: result.conf }),
+        // §13.3.1 register snapshot captured at send time (Session 60)
+        ...(captainProfile.vesselNumber && { vrn: captainProfile.vesselNumber }),
+        ...(log.tripNum !== undefined && { tripNum: log.tripNum }),
+        xsdValid: validation.valid,
+        ...(result.errCode && { wsErrCode: result.errCode }),
         xmlSnapshot: xml,
         soapSnapshot: soap,
       };
@@ -506,6 +522,13 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
 
   const isEmpty = !loading && drafts.length === 0 && completed.length === 0;
 
+  // Unsent completed logs (awaiting send / overdue) are shown in FULL, no cap.
+  // Sent logs are capped to the 30 most recent here; Log History holds the full archive.
+  // `completed` is already newest-first (loadAllLogs sorts by createdAt desc).
+  const completedUnsent = completed.filter(l => l.sentToDfo !== true);
+  const sentLogs = completed.filter(l => l.sentToDfo === true);
+  const sentCapped = sentLogs.slice(0, SENT_DISPLAY_CAP);
+
   return (
     <SafeAreaView style={styles.container}>
       {/* ── Header ── */}
@@ -585,13 +608,41 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
           </>
         )}
 
-        {completed.length > 0 && (
+        {completedUnsent.length > 0 && (
           <>
             <Text style={[styles.sectionHeader, drafts.length > 0 && { marginTop: 16 }]}>
               {t('logs.completedLogs')}
             </Text>
-            {completed.map(renderCompletedCard)}
+            {completedUnsent.map(renderCompletedCard)}
           </>
+        )}
+
+        {sentLogs.length > 0 && (
+          <>
+            <Text style={[styles.sectionHeader, (drafts.length > 0 || completedUnsent.length > 0) && { marginTop: 16 }]}>
+              {t('logs.sentLogs')}
+            </Text>
+            {sentCapped.map(log => (
+              <SentLogCard
+                key={log.id}
+                log={log}
+                record={successRecords[log.id]}
+                onPress={() => setDetailLog(log)}
+              />
+            ))}
+            {sentLogs.length > SENT_DISPLAY_CAP && (
+              <Text style={styles.sentCapNote}>
+                {t('logs.sentCapNote', { shown: SENT_DISPLAY_CAP, total: sentLogs.length })}
+              </Text>
+            )}
+          </>
+        )}
+
+        {!isEmpty && (
+          <TouchableOpacity style={styles.historyButton} onPress={onOpenHistory}>
+            <Archive size={18} color="#1E3A8A" />
+            <Text style={styles.historyButtonText}>{t('logs.logHistoryButton')}</Text>
+          </TouchableOpacity>
         )}
       </ScrollView>
 
@@ -681,6 +732,14 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
           }}
         />
       </Modal>
+
+      {/* ── Transmission Result detail (tap a sent card) ── */}
+      <SentLogDetailModal
+        visible={detailLog !== null}
+        log={detailLog}
+        record={detailLog ? successRecords[detailLog.id] : undefined}
+        onClose={() => setDetailLog(null)}
+      />
     </SafeAreaView>
   );
 };
@@ -1000,6 +1059,30 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 8,
     backgroundColor: '#B91C1C',
+  },
+  sentCapNote: {
+    fontSize: 12,
+    color: '#94A3B8',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  historyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 20,
+    paddingVertical: 13,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    backgroundColor: '#EFF6FF',
+  },
+  historyButtonText: {
+    color: '#1E3A8A',
+    fontSize: 14,
+    fontWeight: '700',
   },
   secondaryButtons: {
     flexDirection: 'row',
