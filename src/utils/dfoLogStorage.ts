@@ -10,6 +10,24 @@ import {
 export type DfoLogMode = 'full' | 'proposal';
 export type DfoLogStatus = 'draft' | 'complete';
 
+// Per-section REM (note) text, grouped at the human-section level. Each key fans out to
+// one or more XSD REM nodes in dfoXmlGenerator.ts (T1 Logbook test):
+//   trip -> TRIP | bait -> BAIT_USED | haul -> EFFORT + EFFORT_BY_GEAR + EFFORT_DETAIL |
+//   catch -> CATCH | landing -> LANDING | hlin -> HLIN | hlout -> HLOUT | pcons -> PCONS |
+//   transfer -> TRANSFER + TRANSFER_DTL (QC-88 only)
+// All optional, free text, type string_2000 (max 2000 chars) in the XSD.
+export interface LogRemarks {
+  trip?: string;
+  bait?: string;
+  haul?: string;
+  catch?: string;
+  landing?: string;
+  hlin?: string;
+  hlout?: string;
+  pcons?: string;
+  transfer?: string;
+}
+
 export interface DfoLog {
   id: string;                    // e.g. "LL-20260421-001"
   lgbkUid: string;               // Rule 181: 6 random uppercase letters, permanent per log
@@ -23,6 +41,7 @@ export interface DfoLog {
   subformId?: number;            // 88 | 89 | 90 | 91 — defaults to 90 (MAR) if missing
   regId?: number;                // 1006 | 1014 | 1004 | 1002
   tripNum?: number;              // Rule 48: sequential per vessel trip, allocated at creation
+  remarks?: LogRemarks;          // optional per-section REM notes (T1); rides along, no migration
 }
 
 const STORAGE_KEY = '@lobsterlog:dfo_logs';

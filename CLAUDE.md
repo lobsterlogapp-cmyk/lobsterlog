@@ -1,6 +1,6 @@
 # LobsterLog — CLAUDE.md
 App version: 1.8.6 (versionCode 76)
-Last updated: June 16, 2026 (Session 61 complete; Session 62 next)
+Last updated: June 16, 2026 (Session 62 complete; Session 63 next)
 
 ## What this app is
 React Native / Expo mobile app. DFO-qualified electronic logbook for lobster harvesters.
@@ -366,6 +366,23 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
   fishingNumber/licenceHolderFin so they emit real FIN/LIC_NO), xmllint all four logbooks +
   F222(Y/N) + F233 validate with populated identifiers; live GLF-89 UAT send → WS0000, filename
   middle segment = VRN, drift closed; gate blocks an incomplete profile and releases when filled.
+- REM (note) emission backend — TRG Logbook test T1 (Session 62). **BACKEND ONLY, no UI yet.**
+  STORAGE: new `LogRemarks` type + optional `remarks` field on `DfoLog` (dfoLogStorage.ts) —
+  9 human-section keys (trip/bait/haul/catch/landing/hlin/hlout/pcons/transfer), all optional,
+  rides along on the existing object (no save/load change, no migration; all 175 users' data +
+  existing drafts stay valid). GENERATOR: `generateElogXml` emits `<REM>` at all **13 buildable
+  emit sites** via the existing `tag()` (which drops empty/blank → absent note emits nothing),
+  grouped at the human-section level — `haul` fans across EFFORT/EFFORT_BY_GEAR/EFFORT_DETAIL,
+  `transfer` across TRANSFER/TRANSFER_DTL (QC-88 only), `pcons` into both PCONS nodes (bycatch +
+  personal-use). The 13th REM node, **SAR, is deferred — still not emitted** (blocked on open Q3 +
+  missing SAR UI fields; see Not yet built). EMPTY-NOTES PROOF: no-remarks XML is byte-identical
+  to pre-change output (modulo the pre-existing now()-fallback DG_CLOSE_DT), so the mandatory-only
+  T2 path is untouched. TEST: new `genSampleRemT1.oneoff.test.ts` — two fixtures (MAR-90 covers
+  11 sites incl. HLIN/HLOUT + both PCONS; QC-88 covers the leftover transfer×2), asserting exact
+  REM counts + per-parent-node placement; a French-accented note ("Relâché près de l'île — pêche
+  terminée") also exercises T4 (round-trips, `'`→`&apos;`, accents intact); both fixtures validate
+  vs the real DFO XSD (REM = string_2000, optional). VERIFIED: tsc 33/0-new; jest 8 suites/21
+  tests green; T2 (genSampleAllSubforms all four VALID) + S56/S57/S59 guards unregressed.
 
 ---
 
@@ -436,6 +453,14 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
   EMPTY_PROFILE (captainStorage.ts) and the three DfoSetupScreen seed writes. Deferred from
   S61 by decision — all PRODUCTION paths already read the profile as source of truth; only the
   dev harness still reads dfo*, so retiring is safe cleanup, not behavior change.
+- Per-section "add a note" UI (REM) — backend is DONE (Session 62; LogRemarks + generator emit
+  at 13 sites, see What's built). Next: the tap affordance in FullDfoForm that writes
+  `log.remarks[<sectionKey>]` for each human section (trip/bait/haul/catch/landing/hlin/hlout/
+  pcons/transfer), an early piece of the post-qualification UI overhaul, sitting on top of the
+  proven emit layer. SAR has no note UI and no REM emit yet (deferred with SAR node emission).
+- SAR REM emission — the 13th REM node; deferred with the SAR node itself (still not emitted,
+  blocked on open Q3 + missing SAR UI fields NB_SPCMN/SPCMN_COND_ID). Once SAR emits, wire a
+  `sar` key into LogRemarks + the generator + the T1 fixture to close the full 13/13.
 
 ---
 
@@ -471,10 +496,11 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 | Session 59 | June 15 2026 | Confirmed + closed I1/I2 subform-gating leaks — SPECIE_SZ_ID emit-89-only (overturns 88/89/91 ruling), LGRID_ID emit-90-only; generator gates + validator guards + 2 guard tests; harness + xmllint clean, no regression. |
 | Session 60 | June 15 2026 | Transmission register + Log History archive — TransmissionRecord snapshots vrn/tripNum/xsdValid/wsErrCode at send (frozen §13.3.1); DfoLogsListScreen splits unsent (full) vs sent (30-cap) with SentLogCard tap-to-detail; new LogHistoryScreen (full 3-yr archive, month+year filters); parseDfoSoapResponse returns ERR code on success; clears logbook T6 + mammals T9 register dependency. Committed 425ff28. |
 | Session 61 | June 16 2026 | Captain Profile as send source-of-truth. SEED: DfoSetupScreen's 3 activate handlers now also write fishingNumber←Licence / licenceHolderFin←FIN on activation (dfo* kept). REWIRE: all production readers repointed off dfo* onto the profile — generateElogXml FIN/LIC_NO, DfoLogsListScreen + Form222Screen + Form233Screen filenames (XML LIC_NO + filename now read the SAME fishingNumber → 1004460/1004461 drift closed), Form222 generator FIN+fallback, Form233 payload+display, TripStartConfirm rows (VRN untouched). GATE: new isProfileComplete() in captainStorage (returns i18n label keys, storage stays t()-free) wired into doSubmit before generateElogXml — bilingual sendGate popup blocks an incomplete profile, routes to Open Profile, no POST. 7 oneoff fixtures backfilled with the new fields. VERIFIED: tsc 33/0-new, jest 7/19 green, xmllint all four logbooks + 222 + 233 valid, live GLF-89 UAT → WS0000 (filename middle = VRN). dfo* NOT retired (P2 carried open: harness repoint then delete). |
+| Session 62 | June 16 2026 | REM (note) emission backend for TRG Logbook test T1 (BACKEND ONLY, no UI). Added optional LogRemarks type + remarks field on DfoLog (9 section keys, no migration); generator emits <REM> at all 13 buildable sites via tag() (drops empty), grouped at human-section level (haul fans ×3 across effort nodes, transfer ×2, pcons into both PCONS) — SAR (13th) deferred. Empty-notes XML byte-identical to pre-change (T2 untouched). New genSampleRemT1.oneoff.test.ts: MAR-90 ×11 sites + QC-88 ×2 transfer prove all 13; accented note exercises T4; both validate vs real XSD. tsc 33/0-new, jest 8 suites/21 tests green, S56/S57/S59 + T2 unregressed. |
 
 ---
 
 ## Current session goals
 > Update this section at the start of each session.
 
-SESSION 62 — TBD.
+SESSION 63 — TBD.

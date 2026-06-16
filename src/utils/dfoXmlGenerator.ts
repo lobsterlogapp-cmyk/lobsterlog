@@ -74,6 +74,11 @@ function toDate12(isoStr: string): string {
 
 export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): string {
   const d = log.data;
+  // Per-section REM notes (T1). Grouped at the human-section level; some keys fan out to
+  // several XSD nodes (haul → EFFORT/EFFORT_BY_GEAR/EFFORT_DETAIL; transfer → TRANSFER/
+  // TRANSFER_DTL). tag() drops empty/blank values, so an absent note emits NOTHING — this
+  // keeps the mandatory-only (T2) output byte-identical when no remarks are present.
+  const rem = log.remarks ?? {};
   const inLbs = captainProfile.units === 'lbs';
   const subformId = log.subformId ?? 90;
   const regId = log.regId ?? 1004;
@@ -109,6 +114,7 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
              tag('BT_TYP_ID',   typeCode, '      ') +
              tag('BT_WT',       wtKg, '      ') +
              tag('DG_CLOSE_DT', baitCloseDt, '      ') +
+             tag('REM',         rem.bait ?? '', '      ') +
              `    </BAIT_USED>\n`;
     }).join('');
   } catch { /* noop */ }
@@ -140,6 +146,7 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
         `      <WT>${wt}</WT>\n` +
         usgLine +
         `      <DG_CLOSE_DT>${closeDt}</DG_CLOSE_DT>\n` +
+        tag('REM', rem.pcons ?? '', '      ') +
         `    </PCONS>\n`
       );
     }
@@ -156,6 +163,7 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
         `      <WT>${personalUseWt}</WT>\n` +
         `      <USG_ID>37822</USG_ID>\n` +
         `      <DG_CLOSE_DT>${closeDt}</DG_CLOSE_DT>\n` +
+        tag('REM', rem.pcons ?? '', '      ') +
         `    </PCONS>\n`
       );
     }
@@ -201,6 +209,8 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
     trip += tag('PRTNSHP_ID', d.prtnshpId ?? '', '    ');
   }
   trip += tag('LGBK_UID', log.lgbkUid, '    ');
+  // REM: TRIP-level note (last child of trip_type scalar sequence, before sub-nodes)
+  trip += tag('REM', rem.trip ?? '', '    ');
 
   // EFFORT — XSD effort_type xs:sequence (single effort per log):
   //   START_DT, END_DT, LIC_NO, FMA_ID, SAR_IND, LOST_GEAR_IND, MM_INTER_IND,
@@ -218,6 +228,8 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   effort += tag('LOST_GEAR_IND', lostGear, '      ');
   effort += tag('MM_INTER_IND',  mammalInc, '      ');
   effort += tag('DG_CLOSE_DT',   toCloseTimestamp(d.dgCloseEffort), '      ');
+  // REM: 'haul' note fans across EFFORT, EFFORT_BY_GEAR and EFFORT_DETAIL (same text)
+  effort += tag('REM', rem.haul ?? '', '      ');
   // TGT_SPECIES: 1312 = lobster
   effort += `      <TGT_SPECIES>\n${tag('SPECIE_ID', '1312', '        ')}      </TGT_SPECIES>\n`;
   effort += `      <EFFORT_BY_GEAR>\n`;
@@ -225,6 +237,8 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   effort += tag('GEAR_ID', String(DFO_GEAR_ID), '        ');
   // GEAR_SBTYP_ID: Mandatory for NL(91), Blocked for QC/GLF/MAR (88/89/90)
   if (subformId === 91) effort += tag('GEAR_SBTYP_ID', d.gearSubtypeId ?? '', '        ');
+  // REM: EFFORT_BY_GEAR note (after GEAR_SBTYP_ID, before EFFORT_DETAIL) — same 'haul' text
+  effort += tag('REM', rem.haul ?? '', '        ');
   effort += `        <EFFORT_DETAIL>\n`;
   // SOAKED_DUR: blocked for MAR (subform 90) per subforms requirements v234.11.
   // UI captures DAYS (Rule 286); the wire unit is MINUTES (XML dictionary
@@ -262,6 +276,8 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   // Subforms_requirements_234.xlsx row 79. Values constrained to 39682=Standard /
   // 39683=Large (Rule 611, DFO_TRAP_SIZE_LIST). XSD sequence: after LONG, before CATCH.
   if (subformId === 91) effort += tag('TRP_SZ_ID', d.trapSize ?? '', '          ');
+  // REM: EFFORT_DETAIL note (last child before CATCH) — same 'haul' text
+  effort += tag('REM', rem.haul ?? '', '          ');
   effort += `          <CATCH>\n`;
   effort += tag('SPECIE_ID',     '1312', '            ');
   effort += tag('KEPT_WT',       catchWtKg, '            ');
@@ -271,6 +287,8 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   if (subformId === 90 && Number(d.fmaId) === DFO_FMA_38B) {
     effort += tag('NB_SPCMN_BRD', d.nbSpcmnBrd ?? '', '            ');
   }
+  // REM: CATCH note (last child of catch_type)
+  effort += tag('REM', rem.catch ?? '', '            ');
   effort += `          </CATCH>\n`;
   effort += `        </EFFORT_DETAIL>\n`;
   effort += `      </EFFORT_BY_GEAR>\n`;
@@ -296,6 +314,7 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
       body += tag('ETA_DT',       toDate12(d.hlinEta ?? ''), '      ');
       body += tag('TOT_WT_ONBRD', kgStr(d.hlinTotalWeight ?? '', inLbs), '      ');
       body += tag('DG_CLOSE_DT',  toCloseTimestamp(d.dgCloseHlin), '      ');
+      body += tag('REM',          rem.hlin ?? '', '      ');
       body += `    </HLIN>\n`;
     }
     if (d.hloutCompany || d.hloutConfirmNo) {
@@ -304,6 +323,7 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
       body += tag('HLOUT_CIE_ID', hloutCie ? String(hloutCie.codeId) : '0', '      ');
       body += tag('HLOUT_NUM',    d.hloutConfirmNo ?? '', '      ');
       body += tag('DG_CLOSE_DT',  toCloseTimestamp(d.dgCloseHlout), '      ');
+      body += tag('REM',          rem.hlout ?? '', '      ');
       body += `    </HLOUT>\n`;
     }
   }
@@ -320,6 +340,7 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
     // blocked otherwise (Rule 641)
     if (subformId === 88 && d.useCrInd === 'Y') body += tag('VRN', d.carrierVrn ?? '', '      ');
     body += tag('DG_CLOSE_DT', toCloseTimestamp(d.dgCloseLanding), '      ');
+    body += tag('REM', rem.landing ?? '', '      ');
     body += `    </LANDING>\n`;
   }
   // TRANSFER / TRANSFER_DTL: QC(88) only, Blocked for GLF/MAR/NL (89/90/91).
@@ -336,10 +357,14 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
       if (d.transferToPndNum) body += tag('TO_PND_NUM', d.transferToPndNum, '      ');
       else body += tag('TO_VRN', d.transferToVrn ?? '', '      ');
       body += tag('DG_CLOSE_DT', toCloseTimestamp(d.dgCloseTransfer), '      ');
+      // REM: 'transfer' note fans across TRANSFER and TRANSFER_DTL (same text). On TRANSFER
+      // it is the last child before TRANSFER_DTL per transfer_type sequence.
+      body += tag('REM', rem.transfer ?? '', '      ');
       body += `      <TRANSFER_DTL>\n`;
       body += tag('SPECIE_ID', '1312', '        ');
       body += tag('SPECIE_FRM_ID', String(DFO_SPECIE_FRM_ID), '        ');
       body += tag('WT', trnsfWtKg, '        ');
+      body += tag('REM', rem.transfer ?? '', '        ');
       body += `      </TRANSFER_DTL>\n`;
       body += `    </TRANSFER>\n`;
     }
