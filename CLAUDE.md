@@ -1,6 +1,6 @@
 # LobsterLog — CLAUDE.md
 App version: 1.8.6 (versionCode 76)
-Last updated: June 17, 2026 (Session 66b complete; Session 67 next)
+Last updated: June 17, 2026 (Session 67 complete; Session 68 next)
 
 ## What this app is
 React Native / Expo mobile app. DFO-qualified electronic logbook for lobster harvesters.
@@ -416,6 +416,20 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
   handleSave gate blocks SAR=Y with any missing mandatory SAR field (`missingSarFields` i18n). Validator SAR
   spec needed NO change. New genSampleSarS66b.oneoff.test.ts (present-when-Y / absent-when-N); /tmp/sample_sar.xml
   XMLLINT-VALID against the real logbook XSD (manual gate). tsc 33/0-new, jest 9 suites/23 tests. Committed f0d1142.
+- NL-91 GEAR_SBTYP_ID UI wiring — DONE (Session 67). Completes the mirror of the S57 TRP_SZ_ID pattern:
+  the backend was already built in the v234.11 audit (generator emit gated subformId===91 at
+  dfoXmlGenerator.ts:239 + NL-mandatory validator + DFO_GEAR_SUBTYPE_LIST), and the MISSING half was the UI.
+  Added a "Gear Subtype" picker in FullDfoForm.tsx gear/effort section gated isVisible('gearSubtypeId')
+  (→ NL-91 only; placed right after the trapSize picker), options from DFO_GEAR_SUBTYPE_LIST (39684 Wooden /
+  39685 Wire mesh / 39686 Both — confirmed correct vs the qualified Jobel app), displays DESC_ENG,
+  value=codeId, writes d.gearSubtypeId; gearSubtypeId state + load + buildLogData + fieldCheckMap wiring.
+  Registered in DFO_SUBFORM_FIELD_CONFIG[91] visible+required AND FULL_DFO_REQUIRED_FIELDS[91] (mirrors
+  trapSize) so handleSave shows the friendly in-form prompt instead of the raw "GEAR_SBTYP_ID is required for
+  NL(91)" validator string; EN+FR picker keys gearSubtypeLabel/selectGearSubtype. Validator: ADDED the
+  blocked-direction guard (present-on-88/89/90 → "blocked for subform N"), so GEAR_SBTYP_ID is now
+  two-direction like TRP_SZ_ID/LGRID_ID/SPECIE_SZ_ID (previously NL-mandatory direction only). No note
+  affordance / no new REM key (section-header note already exists; sibling trapSize has none). tsc 33/0-new,
+  jest 9 suites/23 tests.
 
 ---
 
@@ -476,10 +490,14 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
   **REWORDED S59:** now affects GLF-89 ONLY — 89 is the lone subform still emitting
   SPECIE_SZ_ID (I2 closed: 88/90/91 no longer emit it at all, so the gap is moot for
   them). Needs a size source or picker for the 89 case.
-- Cross-region live UAT sends for QC-88 + NL-91 (carried open from S61) — only MAR-90
-  (S53/54) and GLF-89 (S61) have been sent live to UAT. Send QC-88 and NL-91 using the
-  reserved per-region test triplets (FIN/VRN/LIC_NO) on Test_values_LobsterLog.pdf p.4 to
-  confirm WS0000 + correct filename across all four subforms end-to-end.
+- Cross-region live UAT sends — DONE (Session 67). All four regions now live-proven against UAT:
+  MAR-90 (S53/54), GLF-89 (S61), QC-88 (CONF 162849) and NL-91 (CONF 162850) — each sent via the
+  reserved per-region test triplet (FIN/VRN/LIC_NO, Test_values_LobsterLog.pdf p.4), all WS0000 with
+  correct filename. Closes the carried-open S61 item; all four subforms confirmed end-to-end.
+- (P2) Bilingualize the handleSave missing-field prompt in FullDfoForm.tsx — the fieldLabels map
+  (trapSize, gearSubtypeId, and ALL siblings: startDt/fmaId/lgridCodeId/catchWeight/trapHauls/crewNb/
+  portId/etc.) is hardcoded English today; the picker labels are i18n but the missing-field Alert is not.
+  Do as ONE locale-cleanup session (convert the whole map to i18n keys + FR stubs filled), not piecemeal.
 - (P2) Retire the dfo* profile fields — repoint DfoTestHarnessScreen (DEV-only; reads
   profile.dfoLicenceNo/dfoFin at :99/:100/:186) to the profile fields
   (fishingNumber/licenceHolderFin), THEN delete dfoLicenceNo/dfoFin from CaptainProfile +
@@ -541,10 +559,11 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 | Session 65 | June 17 2026 | Replace Close/Unlock with per-section note inputs. REMOVED the DG_CLOSE_DT close/unlock mechanism (button/state/lock/dgClose* form writes/styles/i18n keys) — DG_CLOSE_DT now relies on the generator's toCloseTimestamp(undefined) auto-stamp. ADDED header-right "Add a note" affordance to 8 sections (Catch&Effort writes haul+catch together) writing log.remarks[<key>], seeded on edit, threaded through all 3 save objects via buildRemarks(). tsc 33/0-new, jest 21/21. Committed f71bcd2. |
 | Session 66a | June 17 2026 | Ingest MV_SAR_LIST reftable (16 official species-at-risk codes) via generateReftables.js → mvSarList.ts (DfoSarList); repoint SAR species dropdown to MV_SAR_LIST (descEn/codeId → real SPECIE_ID); parameterized renderIncidentFields (string[] | coded {codeId,descEn}[]) keeping Marine Mammal byte-identical; retired demo SAR_OPTIONS + partial DFO_SAR_SPECIES_LIST (FullDfoForm/dfoConstants; the independent legacy LobsterLogProposalForm copy untouched). Codegen date-stamp refresh across generated modules (expected churn). tsc 33/0-new, jest 21/21. Committed c3353f7. |
 | Session 66b | June 17 2026 | Emit SAR detail node (sar_type): SAR_DT / LAT-LONG (MODE=G/M via new sarGpsSrc provenance flag) / SPECIE_ID / NB_SPCMN / SPCMN_COND_ID / DG_CLOSE_DT / REM, gated SAR_IND='Y' (absent when N/null), WT omitted. New NB_SPCMN (numeric) + SPCMN_COND_ID (MV_SPECIMENS_CONDITION dropdown) capture UI outside the shared renderIncidentFields (MM untouched); sar REM key added → LogRemarks 10 keys, 13/13 REM nodes closed; handleSave SAR-mandatory gate (missingSarFields); validator SAR spec unchanged. New genSampleSarS66b.oneoff.test.ts; /tmp/sample_sar.xml xmllint-valid against the real XSD. tsc 33/0-new, jest 9 suites/23 tests. Committed f0d1142. |
+| Session 67 | June 17 2026 | NL-91 gear-subtype UI wiring (mirror/completion of the S57 TRP_SZ_ID pattern — backend was already done in the v234.11 audit; the UI half was missing): "Gear Subtype" picker in FullDfoForm.tsx gated isVisible('gearSubtypeId') (NL-91 only, after the trapSize picker), DFO_GEAR_SUBTYPE_LIST options (39684/39685/39686, DESC_ENG → codeId, confirmed vs Jobel), writes d.gearSubtypeId; registered in DFO_SUBFORM_FIELD_CONFIG[91] + FULL_DFO_REQUIRED_FIELDS[91] for the friendly save-gate prompt; EN+FR picker keys; ADDED blocked-direction validator guard (now two-direction like TRP_SZ_ID/LGRID_ID/SPECIE_SZ_ID). All-four-region live UAT sends confirmed: MAR-90 / GLF-89 / QC-88 (CONF 162849) / NL-91 (CONF 162850), all WS0000 — closes the carried-open S61 cross-region item. tsc 33/0-new, jest 9 suites/23 tests. |
 
 ---
 
 ## Current session goals
 > Update this section at the start of each session.
 
-SESSION 67 — TBD.
+SESSION 68 — TBD.

@@ -758,6 +758,9 @@ export function validateElogXml(xml: string, subformId: number): { valid: boolea
         if (subformId === 91 && get(ebg, 'GEAR_SBTYP_ID').length === 0) {
           errors.push(`${gp}: GEAR_SBTYP_ID is required for NL(91)`);
         }
+        if (subformId !== 91 && get(ebg, 'GEAR_SBTYP_ID').length > 0) {
+          errors.push(`${gp}: GEAR_SBTYP_ID is blocked for subform ${subformId}`);
+        }
         get(ebg, 'EFFORT_DETAIL').forEach((ed, di) => {
           const dp = `${gp}.EFFORT_DETAIL[${di + 1}]`;
           const soakedNode = get(ed, 'SOAKED_DUR')[0];

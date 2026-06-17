@@ -123,6 +123,8 @@
     "nbSpcmnBrdLabel": "NB. SPECIMENS BROODSTOCK (NB_SPCMN_BRD)",
     "trapSizeLabel": "TRAP SIZE",
     "selectTrapSize": "Select trap size...",
+    "gearSubtypeLabel": "GEAR SUBTYPE",
+    "selectGearSubtype": "Select gear subtype...",
     "landing24hWarningTitle": "Check landing time",
     "landing24hWarningBody": "The landing date and time is later than 24 hours in the future, which could be an error. Please verify and correct if there is an error.",
     "baitReportingSection": "Bait Reporting",

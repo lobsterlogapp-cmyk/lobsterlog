@@ -54,6 +54,7 @@ import {
   DFO_FMA_NB_VNTCH,
   DFO_FMA_NB_VNTCH_YOU,
   DFO_TRAP_SIZE_LIST,
+  DFO_GEAR_SUBTYPE_LIST,
 } from '../utils/dfoConstants';
 import { loadCaptainProfile } from '../utils/captainStorage';
 import { useTranslation } from 'react-i18next';
@@ -176,6 +177,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // NL(91) only — EFFORT_DETAIL.TRP_SZ_ID from DFO_TRAP_SIZE_LIST (39682 Standard / 39683 Large)
   const [trapSize, setTrapSize] = useState('');
   const [trapSizePickerOpen, setTrapSizePickerOpen] = useState(false);
+  // NL(91) only — EFFORT_BY_GEAR.GEAR_SBTYP_ID from DFO_GEAR_SUBTYPE_LIST (39684 Wooden / 39685 Wire mesh / 39686 Both)
+  const [gearSubtypeId, setGearSubtypeId] = useState('');
+  const [gearSubtypePickerOpen, setGearSubtypePickerOpen] = useState(false);
 
   // Track whether we're editing an already-completed log (don't downgrade on back)
   const [editingCompleted, setEditingCompleted] = useState(false);
@@ -334,6 +338,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           setCarrierVrn(d.carrierVrn || '');
           setPrtnshpId(d.prtnshpId ? Number(d.prtnshpId) : 39468);
           setTrapSize(d.trapSize || '');
+          setGearSubtypeId(d.gearSubtypeId || '');
           try {
             const bc = JSON.parse(d.baitEntries || '[]');
             setBaitEntries(bc);
@@ -494,6 +499,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     transferTime, transferWt, transferToVrn, transferToPndNum,
     useCrInd, carrierVrn, prtnshpId: String(prtnshpId),
     trapSize,
+    gearSubtypeId,
     mmYes: String(mmYes),
     mmSpecies, mmSpeciesOther, mmWhat, mmLat, mmLng, mmDate, mmTime,
     sarYes: String(sarYes),
@@ -979,6 +985,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       crewNb:      crewMembers.length > 0 ? 'ok' : '',
       portId:      portLanded,
       trapSize,
+      gearSubtypeId,
       operName:    'ok',
     };
     const fieldLabels: Record<string, string> = {
@@ -992,6 +999,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       crewNb:      'Crew Registry',
       portId:      'Port Landed',
       trapSize:    'Trap Size',
+      gearSubtypeId: 'Gear Subtype',
       operName:    'Operator Name (Captain Profile)',
     };
     const required = getRequiredFields(subformId);
@@ -1285,6 +1293,41 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                       }}
                     >
                       <Text style={[styles.dropdownItemText, trapSize === String(s.codeId) && styles.dropdownItemTextActive]}>
+                        {s.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
+          {/* GEAR_SBTYP_ID: NL(91) only — mandatory (Subforms_requirements_234.xlsx row 75),
+              blocked for 88/89/90. Values from DFO_GEAR_SUBTYPE_LIST (39684 Wooden /
+              39685 Wire mesh / 39686 Both); display DESC_ENG (.label). */}
+          {isVisible('gearSubtypeId') && (
+            <View style={styles.fieldRow}>
+              <Text style={styles.label}>{t('form234.gearSubtypeLabel')}{isRequired('gearSubtypeId') && <Text style={{ color: '#EF4444' }}> *</Text>}</Text>
+              <TouchableOpacity
+                style={styles.timeButton}
+                onPress={() => { if (readOnly) return; setGearSubtypePickerOpen(o => !o); }}
+              >
+                <Text style={[styles.timeButtonText, !gearSubtypeId && styles.timeButtonPlaceholder]}>
+                  {gearSubtypeId ? DFO_GEAR_SUBTYPE_LIST.find(s => String(s.codeId) === gearSubtypeId)?.label ?? t('form234.selectGearSubtype') : t('form234.selectGearSubtype')}
+                </Text>
+                <ChevronDown size={16} color="#64748B" />
+              </TouchableOpacity>
+              {gearSubtypePickerOpen && (
+                <View style={styles.dropdownList}>
+                  {DFO_GEAR_SUBTYPE_LIST.map(s => (
+                    <TouchableOpacity
+                      key={s.codeId}
+                      style={[styles.dropdownItem, gearSubtypeId === String(s.codeId) && styles.dropdownItemActive]}
+                      onPress={() => {
+                        setGearSubtypeId(String(s.codeId));
+                        setGearSubtypePickerOpen(false);
+                      }}
+                    >
+                      <Text style={[styles.dropdownItemText, gearSubtypeId === String(s.codeId) && styles.dropdownItemTextActive]}>
                         {s.label}
                       </Text>
                     </TouchableOpacity>
