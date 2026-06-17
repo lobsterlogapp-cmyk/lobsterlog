@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { Plus, FileText, Send, Edit3, Eye, Play, Trash2, CheckCircle, User, Shield, RotateCcw, Archive } from 'lucide-react-native';
 import { loadAllLogs, deleteLog, markSentToDfo, DfoLog, saveTransmissionRecord, TransmissionRecord, saveXmlArchiveEntry, loadTransmissionRegister } from '../utils/dfoLogStorage';
-import { SentLogCard, SentLogDetailModal, indexSuccessRecords } from '../components/SentLogCard';
+import { SentLogCard, SentLogDetailModal, indexSuccessRecords, indexFailureRecords } from '../components/SentLogCard';
 import { generateElogXml, generateSoapEnvelope, generateReportUid, validateElogXml, generateDfoXmlFileName, findEffortOverlap, DFO_SOAP_ACTION_SAVE, DFO_UAT_ENDPOINT } from '../utils/dfoXmlGenerator';
 import { loadCaptainProfile, loadPrivacyAccepted, savePrivacyAccepted, isProfileComplete } from '../utils/captainStorage';
 import CaptainProfileScreen from './CaptainProfileScreen';
@@ -184,7 +184,9 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
   const [drafts, setDrafts] = useState<DfoLog[]>([]);
   const [completed, setCompleted] = useState<DfoLog[]>([]);
   const [successRecords, setSuccessRecords] = useState<Record<string, TransmissionRecord>>({});
+  const [failureRecords, setFailureRecords] = useState<TransmissionRecord[]>([]);
   const [detailLog, setDetailLog] = useState<DfoLog | null>(null);
+  const [detailRecord, setDetailRecord] = useState<TransmissionRecord | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
   const [captainProfileVisible, setCaptainProfileVisible] = useState(false);
@@ -205,6 +207,7 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
     setCompleted(all.filter(l => l.status === 'complete' || !l.status));
     const register = await loadTransmissionRegister();
     setSuccessRecords(indexSuccessRecords(register));
+    setFailureRecords(indexFailureRecords(register));
     setLoading(false);
   }, []);
 
@@ -544,6 +547,13 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
   const sentLogs = completed.filter(l => l.sentToDfo === true);
   const sentCapped = sentLogs.slice(0, SENT_DISPLAY_CAP);
 
+  // FAIL rows come straight from the persisted register (one per attempt), so failures
+  // survive an app restart — unlike the in-memory failedSends behind the retry cards.
+  const logById = new Map(completed.map(l => [l.id, l] as const));
+  const failureRows = failureRecords
+    .map(rec => ({ rec, log: logById.get(rec.logId) }))
+    .filter((x): x is { rec: TransmissionRecord; log: DfoLog } => !!x.log);
+
   return (
     <SafeAreaView style={styles.container}>
       {/* ── Header ── */}
@@ -653,6 +663,22 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
           </>
         )}
 
+        {failureRows.length > 0 && (
+          <>
+            <Text style={[styles.sectionHeader, { marginTop: 16 }]}>
+              {t('logs.failedLogs')}
+            </Text>
+            {failureRows.map(({ rec, log }) => (
+              <SentLogCard
+                key={`${rec.logId}-${rec.attemptedAt}`}
+                log={log}
+                record={rec}
+                onPress={() => { setDetailLog(log); setDetailRecord(rec); }}
+              />
+            ))}
+          </>
+        )}
+
         {!isEmpty && (
           <TouchableOpacity style={styles.historyButton} onPress={onOpenHistory}>
             <Archive size={18} color="#1E3A8A" />
@@ -752,8 +778,8 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
       <SentLogDetailModal
         visible={detailLog !== null}
         log={detailLog}
-        record={detailLog ? successRecords[detailLog.id] : undefined}
-        onClose={() => setDetailLog(null)}
+        record={detailRecord ?? (detailLog ? successRecords[detailLog.id] : undefined)}
+        onClose={() => { setDetailLog(null); setDetailRecord(undefined); }}
       />
     </SafeAreaView>
   );

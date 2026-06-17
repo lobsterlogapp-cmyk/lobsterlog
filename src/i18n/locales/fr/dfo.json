@@ -226,9 +226,11 @@
     "incompleteLogs": "JOURNAUX INCOMPLETS",
     "completedLogs": "JOURNAUX COMPLÉTÉS",
     "sentLogs": "ENVOYÉS AU MPO",
+    "failedLogs": "TRANSMISSIONS ÉCHOUÉES",
     "logHistoryButton": "Historique des journaux",
     "sentCapNote": "Affichage des {{shown}} plus récents sur {{total}} · voir l'Historique pour tous",
     "regSuccess": "Accepté ✓",
+    "regFail": "Échoué ✗",
     "regTripLabel": "Sortie",
     "regVesselLabel": "Navire",
     "regConfLabel": "N° de confirmation",
@@ -241,6 +243,7 @@
     "detailWsCode": "Code de réponse du MPO",
     "detailFileName": "Nom du fichier",
     "detailHttp": "Statut HTTP",
+    "detailErr": "Erreur",
     "detailNoRecord": "Aucun enregistrement de transmission trouvé pour ce journal."
   },
   "form233": {

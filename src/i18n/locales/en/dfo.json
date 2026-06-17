@@ -225,9 +225,11 @@
     "incompleteLogs": "INCOMPLETE LOGS",
     "completedLogs": "COMPLETED LOGS",
     "sentLogs": "SENT TO DFO",
+    "failedLogs": "FAILED TRANSMISSIONS",
     "logHistoryButton": "Log History",
     "sentCapNote": "Showing {{shown}} most recent of {{total}} · see Log History for all",
     "regSuccess": "Accepted ✓",
+    "regFail": "Failed ✗",
     "regTripLabel": "Trip",
     "regVesselLabel": "Vessel",
     "regConfLabel": "Confirmation #",
@@ -240,6 +242,7 @@
     "detailWsCode": "DFO response code",
     "detailFileName": "File name",
     "detailHttp": "HTTP status",
+    "detailErr": "Error",
     "detailNoRecord": "No transmission record found for this log."
   },
   "form233": {

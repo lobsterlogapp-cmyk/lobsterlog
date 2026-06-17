@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { ChevronDown, ChevronLeft, Archive } from 'lucide-react-native';
 import { loadAllLogs, loadTransmissionRegister, DfoLog, TransmissionRecord } from '../utils/dfoLogStorage';
-import { SentLogCard, SentLogDetailModal, indexSuccessRecords } from '../components/SentLogCard';
+import { SentLogCard, SentLogDetailModal, indexSuccessRecords, indexFailureRecords } from '../components/SentLogCard';
 
 interface LogHistoryScreenProps {
   onBack: () => void;
@@ -72,27 +72,39 @@ const LogHistoryScreen: React.FC<LogHistoryScreenProps> = ({ onBack, refreshKey 
   const { t } = useTranslation('dfo');
 
   const [sentLogs, setSentLogs] = useState<DfoLog[]>([]);
+  const [allLogs, setAllLogs] = useState<DfoLog[]>([]);
   const [successRecords, setSuccessRecords] = useState<Record<string, TransmissionRecord>>({});
+  const [failureRecords, setFailureRecords] = useState<TransmissionRecord[]>([]);
   const [monthSel, setMonthSel] = useState<string>('all'); // 'all' or '0'..'11'
   const [yearSel, setYearSel] = useState<string>('all');   // 'all' or 'YYYY'
   const [monthOpen, setMonthOpen] = useState(false);
   const [yearOpen, setYearOpen] = useState(false);
   const [detailLog, setDetailLog] = useState<DfoLog | null>(null);
+  const [detailRecord, setDetailRecord] = useState<TransmissionRecord | undefined>(undefined);
 
   const refresh = useCallback(async () => {
     const all = await loadAllLogs(); // already newest-first
+    setAllLogs(all);
     setSentLogs(all.filter(l => l.sentToDfo === true && (l.status === 'complete' || !l.status)));
     const register = await loadTransmissionRegister();
     setSuccessRecords(indexSuccessRecords(register));
+    setFailureRecords(indexFailureRecords(register));
   }, []);
 
   useEffect(() => { refresh(); }, [refresh, refreshKey]);
 
   const monthNames = t('history.months', { returnObjects: true }) as string[];
 
+  // Logs referenced by the register. Failures may be fail-only logs that never set
+  // sentToDfo, so resolve them from the full log set, not just sentLogs.
+  const logById = new Map(allLogs.map(l => [l.id, l] as const));
+  const failLogs = failureRecords
+    .map(rec => logById.get(rec.logId))
+    .filter((l): l is DfoLog => !!l);
+
   // YEAR options: only years that actually have sent logs (desc), plus "All".
   const yearsWithLogs = Array.from(
-    new Set(sentLogs.map(yearOf).filter((y): y is number => y !== null))
+    new Set([...sentLogs, ...failLogs].map(yearOf).filter((y): y is number => y !== null))
   ).sort((a, b) => b - a);
   const yearOptions = [
     { key: 'all', label: t('history.all') },
@@ -104,11 +116,25 @@ const LogHistoryScreen: React.FC<LogHistoryScreenProps> = ({ onBack, refreshKey 
     ...monthNames.map((name, i) => ({ key: String(i), label: name })),
   ];
 
-  const filtered = sentLogs.filter(l => {
+  const matchesSelection = (l: DfoLog): boolean => {
     if (monthSel !== 'all' && monthOf(l) !== Number(monthSel)) return false;
     if (yearSel !== 'all' && yearOf(l) !== Number(yearSel)) return false;
     return true;
-  });
+  };
+
+  // Unified archive list, newest-first: one collapsed SUCCESS row per sent log (unchanged
+  // source) plus one FAIL row per failed attempt straight off the register (§13.3.3).
+  type RegisterRow = { key: string; log: DfoLog; record?: TransmissionRecord };
+  const successRows: RegisterRow[] = sentLogs
+    .filter(matchesSelection)
+    .map(log => ({ key: `s-${log.id}`, log, record: successRecords[log.id] }));
+  const failRows: RegisterRow[] = failureRecords
+    .map(rec => ({ rec, log: logById.get(rec.logId) }))
+    .filter((x): x is { rec: TransmissionRecord; log: DfoLog } => !!x.log && matchesSelection(x.log))
+    .map(({ rec, log }) => ({ key: `f-${rec.logId}-${rec.attemptedAt}`, log, record: rec }));
+  const rows = [...successRows, ...failRows].sort(
+    (a, b) => (b.record?.attemptedAt ?? 0) - (a.record?.attemptedAt ?? 0)
+  );
 
   const monthLabel = monthSel === 'all' ? t('history.all') : monthNames[Number(monthSel)];
   const yearLabel = yearSel === 'all' ? t('history.all') : yearSel;
@@ -148,18 +174,18 @@ const LogHistoryScreen: React.FC<LogHistoryScreenProps> = ({ onBack, refreshKey 
 
       <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 40 }}>
         <Text style={styles.subtitle}>{t('history.subtitle')}</Text>
-        {filtered.length === 0 ? (
+        {rows.length === 0 ? (
           <View style={styles.emptyState}>
             <Archive size={32} color="#94A3B8" />
             <Text style={styles.emptyText}>{t('history.noLogsForSelection', { selection: selectionLabel })}</Text>
           </View>
         ) : (
-          filtered.map(log => (
+          rows.map(({ key, log, record }) => (
             <SentLogCard
-              key={log.id}
+              key={key}
               log={log}
-              record={successRecords[log.id]}
-              onPress={() => setDetailLog(log)}
+              record={record}
+              onPress={() => { setDetailLog(log); setDetailRecord(record); }}
             />
           ))
         )}
@@ -168,8 +194,8 @@ const LogHistoryScreen: React.FC<LogHistoryScreenProps> = ({ onBack, refreshKey 
       <SentLogDetailModal
         visible={detailLog !== null}
         log={detailLog}
-        record={detailLog ? successRecords[detailLog.id] : undefined}
-        onClose={() => setDetailLog(null)}
+        record={detailRecord}
+        onClose={() => { setDetailLog(null); setDetailRecord(undefined); }}
       />
     </SafeAreaView>
   );

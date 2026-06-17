@@ -3,7 +3,7 @@
 // so the sent-log layout and tap-to-detail live in exactly one place.
 import React from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, SafeAreaView, StyleSheet } from 'react-native';
-import { CheckCircle, X } from 'lucide-react-native';
+import { CheckCircle, XCircle, X } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { DfoLog, TransmissionRecord } from '../utils/dfoLogStorage';
 
@@ -19,6 +19,14 @@ export function indexSuccessRecords(records: TransmissionRecord[]): Record<strin
   return map;
 }
 
+// Every FAILED transmission attempt, newest-first — one entry per attempt (NOT collapsed
+// per logId the way successes are): §13.3.3 wants a FAIL row for each failed send.
+export function indexFailureRecords(records: TransmissionRecord[]): TransmissionRecord[] {
+  return records
+    .filter(r => r.outcome === 'failure')
+    .sort((a, b) => b.attemptedAt - a.attemptedAt);
+}
+
 const formatSentDate = (ts?: number): string => {
   if (!ts) return '—';
   const d = new Date(ts);
@@ -32,6 +40,26 @@ const Field: React.FC<{ label: string; value: string }> = ({ label, value }) => 
     <Text style={styles.fieldValue}>{value}</Text>
   </View>
 );
+
+// Success keeps the green "Accepted" badge; failure shows a red one. Driven by the record
+// outcome so the same card + modal render both register row types (§13.3.3).
+const OutcomeBadge: React.FC<{ outcome?: TransmissionRecord['outcome'] }> = ({ outcome }) => {
+  const { t } = useTranslation('dfo');
+  if (outcome === 'failure') {
+    return (
+      <View style={styles.failBadge}>
+        <XCircle size={13} color="#B91C1C" />
+        <Text style={styles.failBadgeText}>{t('logs.regFail')}</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.successBadge}>
+      <CheckCircle size={13} color="#15803D" />
+      <Text style={styles.successBadgeText}>{t('logs.regSuccess')}</Text>
+    </View>
+  );
+};
 
 interface SentLogCardProps {
   log: DfoLog;
@@ -50,10 +78,7 @@ export const SentLogCard: React.FC<SentLogCardProps> = ({ log, record, onPress }
           <Text style={styles.logId}>{log.id}</Text>
           <Text style={styles.logDate}>{log.dateFished}</Text>
         </View>
-        <View style={styles.successBadge}>
-          <CheckCircle size={13} color="#15803D" />
-          <Text style={styles.successBadgeText}>{t('logs.regSuccess')}</Text>
-        </View>
+        <OutcomeBadge outcome={record?.outcome} />
       </View>
 
       <View style={styles.fieldGrid}>
@@ -101,10 +126,7 @@ export const SentLogDetailModal: React.FC<SentLogDetailModalProps> = ({ visible,
                   <Text style={styles.logId}>{log.id}</Text>
                   <Text style={styles.logDate}>{log.dateFished}</Text>
                 </View>
-                <View style={styles.successBadge}>
-                  <CheckCircle size={13} color="#15803D" />
-                  <Text style={styles.successBadgeText}>{t('logs.regSuccess')}</Text>
-                </View>
+                <OutcomeBadge outcome={record.outcome} />
               </View>
 
               <View style={styles.detailCard}>
@@ -112,6 +134,9 @@ export const SentLogDetailModal: React.FC<SentLogDetailModalProps> = ({ visible,
                 <DetailRow label={t('logs.regVesselLabel')} value={record.vrn || '—'} />
                 <DetailRow label={t('logs.regConfLabel')} value={record.confNumber || '—'} />
                 <DetailRow label={t('logs.regSentLabel')} value={formatSentDate(record.attemptedAt)} />
+                {record.outcome === 'failure' && (
+                  <DetailRow label={t('logs.detailErr')} value={record.errorMessage || '—'} />
+                )}
                 <DetailRow label={t('logs.detailXsd')} value={xsdLabel} />
                 <DetailRow label={t('logs.detailWsCode')} value={record.wsErrCode || '—'} />
                 <DetailRow label={t('logs.detailFileName')} value={record.fileName || '—'} />
@@ -172,6 +197,22 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#15803D',
+  },
+  failBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FEF2F2',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  failBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#B91C1C',
   },
   fieldGrid: {
     flexDirection: 'row',
