@@ -30,6 +30,7 @@ import {
   ChevronLeft,
   AlertTriangle,
   LocateFixed,
+  StickyNote,
 } from 'lucide-react-native';
 import {
   saveLog,
@@ -39,6 +40,7 @@ import {
   loadLastLog,
   getRequiredFields,
   DfoLog,
+  LogRemarks,
 } from '../utils/dfoLogStorage';
 import {
   DFO_FMA_LIST,
@@ -198,13 +200,32 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const [hloutCompany, setHloutCompany] = useState('');
   const [hloutConfirmNo, setHloutConfirmNo] = useState('');
 
-  // DG_CLOSE_DT section locks (Task 3) — keyed by section name, value is UTC ISO string
-  const [sectionClosedAt, setSectionClosedAt] = useState<Record<string, string>>({});
-  const isClosed = (section: string) => !!sectionClosedAt[section];
-  const closeSection = (section: string) =>
-    setSectionClosedAt(prev => ({ ...prev, [section]: new Date().toISOString() }));
-  const unlockSection = (section: string) =>
-    setSectionClosedAt(prev => { const next = { ...prev }; delete next[section]; return next; });
+  // Per-section REM notes (T1). Mirrors LogRemarks; Catch & Effort writes haul+catch together.
+  const [remarks, setRemarks] = useState<LogRemarks>({});
+  const [noteOpen, setNoteOpen] = useState<Record<string, boolean>>({});
+  const setNote = (key: keyof LogRemarks, value: string) =>
+    setRemarks(prev => ({ ...prev, [key]: value }));
+  const toggleNote = (openKey: string) =>
+    setNoteOpen(prev => ({ ...prev, [openKey]: !prev[openKey] }));
+  const renderNoteButton = (openKey: string) => (
+    <TouchableOpacity style={styles.addNoteBtn} onPress={() => toggleNote(openKey)} activeOpacity={0.7}>
+      <StickyNote size={13} color="#1E3A8A" />
+      <Text style={styles.addNoteBtnText}>{t('form234.addNote')}</Text>
+    </TouchableOpacity>
+  );
+  const renderNoteInput = (openKey: string, value: string, onChangeText: (v: string) => void) =>
+    noteOpen[openKey] ? (
+      <TextInput
+        style={styles.noteInput}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={t('form234.notePlaceholder')}
+        placeholderTextColor="#94A3B8"
+        multiline
+        maxLength={2000}
+        editable={!readOnly}
+      />
+    ) : null;
 
   // Quick capture — driven by global TimerContext, no local state needed
   const {
@@ -367,16 +388,19 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           setHlinTotalWeight(d.hlinTotalWeight || '');
           setHloutCompany(d.hloutCompany || '');
           setHloutConfirmNo(d.hloutConfirmNo || '');
-          // DG_CLOSE_DT section timestamps
-          const closedAt: Record<string, string> = {};
-          if (d.dgCloseLanding)  closedAt['landing']  = d.dgCloseLanding;
-          if (d.dgCloseEffort)   closedAt['effort']   = d.dgCloseEffort;
-          if (d.dgCloseBaitUsed) closedAt['baitUsed'] = d.dgCloseBaitUsed;
-          if (d.dgCloseSar)      closedAt['sar']      = d.dgCloseSar;
-          if (d.dgCloseHlin)     closedAt['hlin']     = d.dgCloseHlin;
-          if (d.dgCloseHlout)    closedAt['hlout']    = d.dgCloseHlout;
-          if (d.dgClosePcons)    closedAt['pcons']    = d.dgClosePcons;
-          setSectionClosedAt(closedAt);
+          // Per-section REM notes — restore existing; Catch & Effort uses haul+catch together.
+          const r = log.remarks ?? {};
+          const ce = r.catch ?? r.haul ?? '';
+          const seeded: LogRemarks = {
+            trip: r.trip ?? '', landing: r.landing ?? '', catch: ce, haul: ce,
+            bait: r.bait ?? '', pcons: r.pcons ?? '', transfer: r.transfer ?? '',
+            hlin: r.hlin ?? '', hlout: r.hlout ?? '',
+          };
+          setRemarks(seeded);
+          setNoteOpen({
+            trip: !!seeded.trip, landing: !!seeded.landing, catch: !!ce, bait: !!seeded.bait,
+            pcons: !!seeded.pcons, transfer: !!seeded.transfer, hlin: !!seeded.hlin, hlout: !!seeded.hlout,
+          });
         }
       } else {
         // New log — today's date + fresh trip ID
@@ -471,15 +495,17 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     nbSpcmnBrd,
     hlinCompany, hlinConfirmNo, hlinEta, hlinTotalWeight,
     hloutCompany, hloutConfirmNo,
-    // DG_CLOSE_DT timestamps
-    dgCloseLanding: sectionClosedAt['landing'] || '',
-    dgCloseEffort:  sectionClosedAt['effort']  || '',
-    dgCloseBaitUsed: sectionClosedAt['baitUsed'] || '',
-    dgCloseSar:     sectionClosedAt['sar']     || '',
-    dgCloseHlin:    sectionClosedAt['hlin']    || '',
-    dgCloseHlout:   sectionClosedAt['hlout']   || '',
-    dgClosePcons:   sectionClosedAt['pcons']   || '',
   });
+
+  // Persist only non-empty notes (trimmed). Catch & Effort already mirrors haul+catch.
+  const buildRemarks = (): LogRemarks => {
+    const out: LogRemarks = {};
+    (Object.keys(remarks) as (keyof LogRemarks)[]).forEach(k => {
+      const v = remarks[k];
+      if (v && v.trim() !== '') out[k] = v.trim();
+    });
+    return out;
+  };
 
   const hasMeaningfulData = (): boolean => {
     const d = buildLogData();
@@ -506,6 +532,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         dateFished: dateFished || formatDate(new Date()),
         createdAt: Date.now(),
         data: buildLogData(),
+        remarks: buildRemarks(),
         subformId,
         regId,
         tripNum,
@@ -525,6 +552,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         dateFished: dateFished || formatDate(new Date()),
         createdAt: Date.now(),
         data: buildLogData(),
+        remarks: buildRemarks(),
         subformId,
         regId,
         tripNum,
@@ -974,6 +1002,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       dateFished,
       createdAt: Date.now(),
       data: buildLogData(),
+      remarks: buildRemarks(),
       subformId,
       regId,
       tripNum,
@@ -1044,7 +1073,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           <View style={styles.sectionHeader}>
             <View style={[styles.sectionIcon, { backgroundColor: '#DBEAFE' }]}><Calendar size={16} color="#1E3A8A" /></View>
             <Text style={styles.sectionTitle}>{t('form234.tripInfoSection')}</Text>
+            {renderNoteButton('trip')}
           </View>
+          {renderNoteInput('trip', remarks.trip ?? '', (v) => setNote('trip', v))}
           {/* DATE FISHED — date picker, auto-fills today on new log */}
           <View style={styles.fieldRow}>
             <Text style={styles.label}>{t('form234.dateFishedLabel')}</Text>
@@ -1103,40 +1134,23 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           <View style={styles.sectionHeader}>
             <View style={[styles.sectionIcon, { backgroundColor: '#FEE2E2' }]}><Clock size={16} color="#B91C1C" /></View>
             <Text style={styles.sectionTitle}>{t('form234.timestampsSection')}</Text>
-            <TouchableOpacity
-              style={isClosed('landing') ? styles.sectionUnlockBtn : styles.sectionCloseBtn}
-              onPress={() => isClosed('landing') ? unlockSection('landing') : closeSection('landing')}
-            >
-              <Text style={isClosed('landing') ? styles.sectionUnlockBtnText : styles.sectionCloseBtnText}>
-                {isClosed('landing') ? t('form234.unlockSection') : t('form234.closeSection')}
-              </Text>
-            </TouchableOpacity>
+            {renderNoteButton('landing')}
           </View>
-          {isClosed('landing') && <Text style={styles.closedNoticeText}>DG_CLOSE_DT: {sectionClosedAt['landing']}</Text>}
-          <View pointerEvents={isClosed('landing') ? 'none' : 'auto'} style={isClosed('landing') ? styles.lockedContent : undefined}>
-            {isVisible('sailTime') && renderTimestampField(t('form234.timeSailedLabel'), timeSailed, 'sailed', false, isRequired('sailTime'))}
-            {isVisible('haulStartTime') && renderTimestampField(t('form234.timeStartedHaulingLabel'), timeStartedHauling, 'startHaul', false, isRequired('haulStartTime'))}
-            {isVisible('haulEndTime') && renderTimestampField(t('form234.timeStoppedHaulingLabel'), timeStoppedHauling, 'stopHaul', false, isRequired('haulEndTime'))}
-            {isVisible('landingTime') && renderTimestampField(t('form234.timeOfLandingLabel'), timeOfLanding, 'landing', false, isRequired('landingTime'))}
-            {isVisible('soakDuration') && renderField(t('form234.soakDurationLabel'), soakDuration, setSoakDuration, t('form234.soakDurationPlaceholder'), false, false, 'decimal-pad', isRequired('soakDuration'))}
-          </View>
+          {renderNoteInput('landing', remarks.landing ?? '', (v) => setNote('landing', v))}
+          {isVisible('sailTime') && renderTimestampField(t('form234.timeSailedLabel'), timeSailed, 'sailed', false, isRequired('sailTime'))}
+          {isVisible('haulStartTime') && renderTimestampField(t('form234.timeStartedHaulingLabel'), timeStartedHauling, 'startHaul', false, isRequired('haulStartTime'))}
+          {isVisible('haulEndTime') && renderTimestampField(t('form234.timeStoppedHaulingLabel'), timeStoppedHauling, 'stopHaul', false, isRequired('haulEndTime'))}
+          {isVisible('landingTime') && renderTimestampField(t('form234.timeOfLandingLabel'), timeOfLanding, 'landing', false, isRequired('landingTime'))}
+          {isVisible('soakDuration') && renderField(t('form234.soakDurationLabel'), soakDuration, setSoakDuration, t('form234.soakDurationPlaceholder'), false, false, 'decimal-pad', isRequired('soakDuration'))}
         </View>
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View style={[styles.sectionIcon, { backgroundColor: '#DCFCE7' }]}><Scale size={16} color="#15803D" /></View>
             <Text style={styles.sectionTitle}>{t('form234.catchEffortSection')}</Text>
-            <TouchableOpacity
-              style={isClosed('effort') ? styles.sectionUnlockBtn : styles.sectionCloseBtn}
-              onPress={() => isClosed('effort') ? unlockSection('effort') : closeSection('effort')}
-            >
-              <Text style={isClosed('effort') ? styles.sectionUnlockBtnText : styles.sectionCloseBtnText}>
-                {isClosed('effort') ? t('form234.unlockSection') : t('form234.closeSection')}
-              </Text>
-            </TouchableOpacity>
+            {renderNoteButton('catch')}
           </View>
-          {isClosed('effort') && <Text style={styles.closedNoticeText}>DG_CLOSE_DT: {sectionClosedAt['effort']}</Text>}
-          <View pointerEvents={isClosed('effort') ? 'none' : 'auto'} style={isClosed('effort') ? styles.lockedContent : undefined}>
+          {renderNoteInput('catch', remarks.catch ?? '', (v) => { setNote('catch', v); setNote('haul', v); })}
           {/* LFA Selector */}
                     <View style={styles.fieldRow}>
                       <Text style={styles.label}>{t('form234.fishingAreaLabel')}{isRequired('fmaId') && <Text style={{ color: '#EF4444' }}> *</Text>}</Text>
@@ -1251,7 +1265,6 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               )}
             </View>
           )}
-          </View>
         </View>
 
         {isVisible('baitEntries') && (
@@ -1259,38 +1272,29 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           <View style={styles.sectionHeader}>
             <View style={[styles.sectionIcon, { backgroundColor: '#FEE2E2' }]}><Fish size={16} color="#B91C1C" /></View>
             <Text style={styles.sectionTitle}>{t('form234.baitReportingSection')}{isRequired('baitEntries') && <Text style={{ color: '#EF4444', fontSize: 13 }}> *</Text>}</Text>
-            <TouchableOpacity
-              style={isClosed('baitUsed') ? styles.sectionUnlockBtn : styles.sectionCloseBtn}
-              onPress={() => isClosed('baitUsed') ? unlockSection('baitUsed') : closeSection('baitUsed')}
-            >
-              <Text style={isClosed('baitUsed') ? styles.sectionUnlockBtnText : styles.sectionCloseBtnText}>
-                {isClosed('baitUsed') ? t('form234.unlockSection') : t('form234.closeSection')}
-              </Text>
-            </TouchableOpacity>
+            {renderNoteButton('bait')}
           </View>
-          {isClosed('baitUsed') && <Text style={styles.closedNoticeText}>DG_CLOSE_DT: {sectionClosedAt['baitUsed']}</Text>}
-          <View pointerEvents={isClosed('baitUsed') ? 'none' : 'auto'} style={isClosed('baitUsed') ? styles.lockedContent : undefined}>
-            {baitEntries.length === 0 && <Text style={styles.emptyHint}>{t('form234.noBaitYet')}</Text>}
-            {baitEntries.map((entry, i) => (
-              <View key={i} style={styles.entryRow}>
-                <View style={styles.entryInfo}>
-                  <Text style={styles.entryType}>{entry.type}</Text>
-                  <Text style={styles.entryLbs}>{t('form234.lbsSuffix', { lbs: entry.lbs })}</Text>
-                </View>
-                {!readOnly && (
-                  <TouchableOpacity style={styles.deleteBtn} onPress={() => deleteBait(i)}>
-                    <Trash2 size={16} color="#EF4444" />
-                  </TouchableOpacity>
-                )}
+          {renderNoteInput('bait', remarks.bait ?? '', (v) => setNote('bait', v))}
+          {baitEntries.length === 0 && <Text style={styles.emptyHint}>{t('form234.noBaitYet')}</Text>}
+          {baitEntries.map((entry, i) => (
+            <View key={i} style={styles.entryRow}>
+              <View style={styles.entryInfo}>
+                <Text style={styles.entryType}>{entry.type}</Text>
+                <Text style={styles.entryLbs}>{t('form234.lbsSuffix', { lbs: entry.lbs })}</Text>
               </View>
-            ))}
-            {!readOnly && (
-              <TouchableOpacity style={styles.addBtn} onPress={() => openSheet('bait')}>
-                <Plus size={16} color="#1E3A8A" />
-                <Text style={styles.addBtnText}>{t('form234.addBait')}</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+              {!readOnly && (
+                <TouchableOpacity style={styles.deleteBtn} onPress={() => deleteBait(i)}>
+                  <Trash2 size={16} color="#EF4444" />
+                </TouchableOpacity>
+              )}
+            </View>
+          ))}
+          {!readOnly && (
+            <TouchableOpacity style={styles.addBtn} onPress={() => openSheet('bait')}>
+              <Plus size={16} color="#1E3A8A" />
+              <Text style={styles.addBtnText}>{t('form234.addBait')}</Text>
+            </TouchableOpacity>
+          )}
         </View>
         )}
 
@@ -1325,17 +1329,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           <View style={styles.sectionHeader}>
             <View style={[styles.sectionIcon, { backgroundColor: '#FEF3C7' }]}><Anchor size={16} color="#B45309" /></View>
             <Text style={styles.sectionTitle}>{t('form234.interactionsSection')}</Text>
-            <TouchableOpacity
-              style={isClosed('pcons') ? styles.sectionUnlockBtn : styles.sectionCloseBtn}
-              onPress={() => isClosed('pcons') ? unlockSection('pcons') : closeSection('pcons')}
-            >
-              <Text style={isClosed('pcons') ? styles.sectionUnlockBtnText : styles.sectionCloseBtnText}>
-                {isClosed('pcons') ? t('form234.unlockSection') : t('form234.closeSection')}
-              </Text>
-            </TouchableOpacity>
+            {renderNoteButton('pcons')}
           </View>
-          {isClosed('pcons') && <Text style={styles.closedNoticeText}>DG_CLOSE_DT: {sectionClosedAt['pcons']}</Text>}
-          <View pointerEvents={isClosed('pcons') ? 'none' : 'auto'} style={isClosed('pcons') ? styles.lockedContent : undefined}>
+          {renderNoteInput('pcons', remarks.pcons ?? '', (v) => setNote('pcons', v))}
 
           {/* Bycatch */}
           <View style={[styles.incidentSection, { marginBottom: 12 }]}>
@@ -1404,29 +1400,18 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 <AlertTriangle size={16} color="#7C3AED" />
               </View>
               <Text style={[styles.sectionTitle, { fontSize: 13 }]}>{t('form234.sarSubsection')}</Text>
-              <TouchableOpacity
-                style={isClosed('sar') ? styles.sectionUnlockBtn : styles.sectionCloseBtn}
-                onPress={() => isClosed('sar') ? unlockSection('sar') : closeSection('sar')}
-              >
-                <Text style={isClosed('sar') ? styles.sectionUnlockBtnText : styles.sectionCloseBtnText}>
-                  {isClosed('sar') ? t('form234.unlockSection') : t('form234.closeSection')}
-                </Text>
-              </TouchableOpacity>
             </View>
-            {isClosed('sar') && <Text style={styles.closedNoticeText}>DG_CLOSE_DT: {sectionClosedAt['sar']}</Text>}
-            <View pointerEvents={isClosed('sar') ? 'none' : 'auto'} style={isClosed('sar') ? styles.lockedContent : undefined}>
-              {renderYesNoToggle(t('form234.sarIndLabel'), sarYes, handleSarYes)}
-              {sarYes === true && renderIncidentFields(
-                sarSpecies, setSarSpecies,
-                sarSpeciesOther, setSarSpeciesOther,
-                sarDropdownOpen, setSarDropdownOpen,
-                SAR_OPTIONS,
-                sarWhat, setSarWhat,
-                sarLat, setSarLat,
-                sarLng, setSarLng,
-                sarDate, sarTime, 'sarTime'
-              )}
-            </View>
+            {renderYesNoToggle(t('form234.sarIndLabel'), sarYes, handleSarYes)}
+            {sarYes === true && renderIncidentFields(
+              sarSpecies, setSarSpecies,
+              sarSpeciesOther, setSarSpeciesOther,
+              sarDropdownOpen, setSarDropdownOpen,
+              SAR_OPTIONS,
+              sarWhat, setSarWhat,
+              sarLat, setSarLat,
+              sarLng, setSarLng,
+              sarDate, sarTime, 'sarTime'
+            )}
           </View>
 
           <View style={styles.incidentSection}>
@@ -1447,7 +1432,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 <AlertTriangle size={16} color="#7C3AED" />
               </View>
               <Text style={[styles.sectionTitle, { fontSize: 13 }]}>{t('form234.transfersSubsection')}</Text>
+              {renderNoteButton('transfer')}
             </View>
+            {renderNoteInput('transfer', remarks.transfer ?? '', (v) => setNote('transfer', v))}
             {/* USE_CR_IND (Rule 639: defaults to No) + carrier VRN (Rule 642) */}
             {renderYesNoToggle(t('form234.useCarrierQuestion'), useCrInd === 'Y', (val) => {
               setUseCrInd(val ? 'Y' : 'N');
@@ -1489,7 +1476,6 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           </View>}
 
           {renderField(t('form234.personalUseLabel'), personalUse, setPersonalUse, '0', false, false, 'numeric')}
-          </View>{/* end PCONS lock */}
         </View>
 
         {(fmaId === 28599 || fmaId === 1595) && (
@@ -1497,22 +1483,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           <View style={styles.sectionHeader}>
             <View style={[styles.sectionIcon, { backgroundColor: '#DBEAFE' }]}><Anchor size={16} color="#1E3A8A" /></View>
             <Text style={styles.sectionTitle}>{t('form234.hlinSection')}</Text>
-            <TouchableOpacity
-              style={isClosed('hlin') ? styles.sectionUnlockBtn : styles.sectionCloseBtn}
-              onPress={() => isClosed('hlin') ? unlockSection('hlin') : closeSection('hlin')}
-            >
-              <Text style={isClosed('hlin') ? styles.sectionUnlockBtnText : styles.sectionCloseBtnText}>
-                {isClosed('hlin') ? t('form234.unlockSection') : t('form234.closeSection')}
-              </Text>
-            </TouchableOpacity>
+            {renderNoteButton('hlin')}
           </View>
-          {isClosed('hlin') && <Text style={styles.closedNoticeText}>DG_CLOSE_DT: {sectionClosedAt['hlin']}</Text>}
-          <View pointerEvents={isClosed('hlin') ? 'none' : 'auto'} style={isClosed('hlin') ? styles.lockedContent : undefined}>
-            {renderField(t('form234.companyLabel'), hlinCompany, setHlinCompany, t('form234.companyPlaceholder'), false, false, 'default', isRequired('hlinCompany'))}
-            {renderField(t('form234.confirmNoLabel'), hlinConfirmNo, setHlinConfirmNo, t('form234.confirmNoPlaceholder'), false, false, 'default', isRequired('hlinConfirmNo'))}
-            {renderField(t('form234.etaLabel'), hlinEta, setHlinEta, t('form234.etaPlaceholder'))}
-            {renderField(t('form234.totalWeightLabel'), hlinTotalWeight, setHlinTotalWeight, '0', false, false, 'numeric')}
-          </View>
+          {renderNoteInput('hlin', remarks.hlin ?? '', (v) => setNote('hlin', v))}
+          {renderField(t('form234.companyLabel'), hlinCompany, setHlinCompany, t('form234.companyPlaceholder'), false, false, 'default', isRequired('hlinCompany'))}
+          {renderField(t('form234.confirmNoLabel'), hlinConfirmNo, setHlinConfirmNo, t('form234.confirmNoPlaceholder'), false, false, 'default', isRequired('hlinConfirmNo'))}
+          {renderField(t('form234.etaLabel'), hlinEta, setHlinEta, t('form234.etaPlaceholder'))}
+          {renderField(t('form234.totalWeightLabel'), hlinTotalWeight, setHlinTotalWeight, '0', false, false, 'numeric')}
         </View>
         )}
 
@@ -1521,20 +1498,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           <View style={styles.sectionHeader}>
             <View style={[styles.sectionIcon, { backgroundColor: '#DBEAFE' }]}><Anchor size={16} color="#1E3A8A" /></View>
             <Text style={styles.sectionTitle}>{t('form234.hloutSection')}</Text>
-            <TouchableOpacity
-              style={isClosed('hlout') ? styles.sectionUnlockBtn : styles.sectionCloseBtn}
-              onPress={() => isClosed('hlout') ? unlockSection('hlout') : closeSection('hlout')}
-            >
-              <Text style={isClosed('hlout') ? styles.sectionUnlockBtnText : styles.sectionCloseBtnText}>
-                {isClosed('hlout') ? t('form234.unlockSection') : t('form234.closeSection')}
-              </Text>
-            </TouchableOpacity>
+            {renderNoteButton('hlout')}
           </View>
-          {isClosed('hlout') && <Text style={styles.closedNoticeText}>DG_CLOSE_DT: {sectionClosedAt['hlout']}</Text>}
-          <View pointerEvents={isClosed('hlout') ? 'none' : 'auto'} style={isClosed('hlout') ? styles.lockedContent : undefined}>
-            {renderField(t('form234.companyLabel'), hloutCompany, setHloutCompany, t('form234.companyPlaceholder'), false, false, 'default', isRequired('hloutCompany'))}
-            {renderField(t('form234.confirmNoLabel'), hloutConfirmNo, setHloutConfirmNo, t('form234.confirmNoPlaceholder'), false, false, 'default', isRequired('hloutConfirmNo'))}
-          </View>
+          {renderNoteInput('hlout', remarks.hlout ?? '', (v) => setNote('hlout', v))}
+          {renderField(t('form234.companyLabel'), hloutCompany, setHloutCompany, t('form234.companyPlaceholder'), false, false, 'default', isRequired('hloutCompany'))}
+          {renderField(t('form234.confirmNoLabel'), hloutConfirmNo, setHloutConfirmNo, t('form234.confirmNoPlaceholder'), false, false, 'default', isRequired('hloutConfirmNo'))}
         </View>
         )}
 
@@ -1845,22 +1813,17 @@ const styles = StyleSheet.create({
   sheetConfirmText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
   sheetCancelBtn: { paddingVertical: 12, alignItems: 'center', marginTop: 8 },
   sheetCancelText: { color: '#64748B', fontWeight: '600', fontSize: 15 },
-  // DG_CLOSE_DT section locking (Task 3)
-  sectionCloseBtn: {
+  addNoteBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6,
-    backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#CBD5E1',
+    backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#BFDBFE',
   },
-  sectionCloseBtnText: { fontSize: 11, fontWeight: '700', color: '#64748B' },
-  sectionUnlockBtn: {
-    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6,
-    backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FDE68A',
+  addNoteBtnText: { fontSize: 11, fontWeight: '700', color: '#1E3A8A' },
+  noteInput: {
+    borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8,
+    padding: 10, fontSize: 14, color: '#1E293B', backgroundColor: '#F8FAFC',
+    minHeight: 64, textAlignVertical: 'top', marginBottom: 12,
   },
-  sectionUnlockBtnText: { fontSize: 11, fontWeight: '700', color: '#B45309' },
-  closedNoticeText: {
-    fontSize: 11, color: '#94A3B8', fontStyle: 'italic',
-    marginBottom: 8, marginTop: -4,
-  },
-  lockedContent: { opacity: 0.45 },
 });
 
 export default FullDfoForm;
