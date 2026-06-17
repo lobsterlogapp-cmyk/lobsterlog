@@ -298,10 +298,23 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   //   BAIT_USED, SAR, HLIN, HLOUT, PCONS, EFFORT, LANDING, TRANSFER
   let body = '';
   body += baitXml;
-  // SAR node NOT emitted yet — sar_type mandates NB_SPCMN and SPCMN_COND_ID (no UI
-  // fields exist for either) and LAT/LONG with the required MODE="M"|"G" attribute
-  // (open question 3). The EFFORT.SAR_IND flag still transmits; the SAR detail data
-  // (sarSpecies/sarLat/sarLng/sarDate) stays app-side until those are resolved.
+  // SAR — XSD sar_type sequence: SAR_DT, LAT, LONG, SPECIE_ID, NB_SPCMN, WT?, SPCMN_COND_ID,
+  // DG_CLOSE_DT, REM?. Emitted ONLY when SAR_IND='Y' (the indicator gates the detail node);
+  // absent when N/null. LAT/LONG carry the required MODE attr (§11.3): G=GPS, M=manual
+  // (d.sarGpsSrc, mirrors EFFORT_DETAIL). WT optional → omitted. DG_CLOSE_DT auto-stamps.
+  if (sarInc === 'Y') {
+    const sarMode = d.sarGpsSrc === 'gps' ? 'G' : 'M';
+    body += `    <SAR>\n`;
+    body += tag('SAR_DT', toDate12(localToUtcIso(d.sarDate ?? '', d.sarTime ?? '')), '      ');
+    body += `      <LAT MODE="${sarMode}">${xmlEscape(d.sarLat ?? '')}</LAT>\n`;
+    body += `      <LONG MODE="${sarMode}">${xmlEscape(d.sarLng ?? '')}</LONG>\n`;
+    body += tag('SPECIE_ID',     d.sarSpecies ?? '', '      ');
+    body += tag('NB_SPCMN',      d.sarNbSpcmn ?? '', '      ');
+    body += tag('SPCMN_COND_ID', d.sarCondId ?? '', '      ');
+    body += tag('DG_CLOSE_DT',   toCloseTimestamp(d.dgCloseSar), '      ');
+    body += tag('REM',           rem.sar ?? '', '      ');
+    body += `    </SAR>\n`;
+  }
   // HLIN/HLOUT: Rules 2024/2025/1018 — emit only for FMA 28599 (38b) and 1595 (41)
   if (Number(d.fmaId) === 28599 || Number(d.fmaId) === 1595) {
     if (d.hlinCompany || d.hlinConfirmNo) {

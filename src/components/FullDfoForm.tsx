@@ -60,7 +60,7 @@ import { useTranslation } from 'react-i18next';
 import CrewSelector from './CrewSelector';
 import DfoPortSelector from './DfoPortSelector';
 import { CrewMember } from '../utils/crewStorage';
-import { MV_CATCH_USAGE, MV_PARTNERSHIP_TYPE, MV_SAR_LIST } from '../data/reftables';
+import { MV_CATCH_USAGE, MV_PARTNERSHIP_TYPE, MV_SAR_LIST, MV_SPECIMENS_CONDITION } from '../data/reftables';
 
 export interface FullDfoFormHandle {
   saveDraft: () => Promise<void>;
@@ -254,6 +254,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const [sarDate, setSarDate] = useState('');
   const [sarTime, setSarTime] = useState('');
   const [sarDropdownOpen, setSarDropdownOpen] = useState(false);
+  // SAR detail fields (S66b): NB_SPCMN count, SPCMN_COND_ID condition, and the LAT/LONG
+  // MODE provenance flag (mirrors gpsSrc — 'gps' on capture, 'manual' on manual edit).
+  const [sarNbSpcmn, setSarNbSpcmn] = useState('');
+  const [sarCondId, setSarCondId] = useState('');
+  const [sarCondPickerOpen, setSarCondPickerOpen] = useState(false);
+  const [sarGpsSrc, setSarGpsSrc] = useState<'gps' | 'manual'>('manual');
 
   // Lost Gear
   const [lostGearYes, setLostGearYes] = useState<boolean | null>(null);
@@ -365,6 +371,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             setSarLng(d.sarLng || '');
             setSarDate(d.sarDate || '');
             setSarTime(d.sarTime || '');
+            setSarNbSpcmn(d.sarNbSpcmn || '');
+            setSarCondId(d.sarCondId || '');
+            setSarGpsSrc(d.sarGpsSrc === 'gps' ? 'gps' : 'manual');
           } else if (d.sarYes === 'false') {
             setSarYes(false);
           }
@@ -393,12 +402,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           const seeded: LogRemarks = {
             trip: r.trip ?? '', landing: r.landing ?? '', catch: ce, haul: ce,
             bait: r.bait ?? '', pcons: r.pcons ?? '', transfer: r.transfer ?? '',
-            hlin: r.hlin ?? '', hlout: r.hlout ?? '',
+            hlin: r.hlin ?? '', hlout: r.hlout ?? '', sar: r.sar ?? '',
           };
           setRemarks(seeded);
           setNoteOpen({
             trip: !!seeded.trip, landing: !!seeded.landing, catch: !!ce, bait: !!seeded.bait,
             pcons: !!seeded.pcons, transfer: !!seeded.transfer, hlin: !!seeded.hlin, hlout: !!seeded.hlout,
+            sar: !!seeded.sar,
           });
         }
       } else {
@@ -488,6 +498,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     mmSpecies, mmSpeciesOther, mmWhat, mmLat, mmLng, mmDate, mmTime,
     sarYes: String(sarYes),
     sarSpecies, sarSpeciesOther, sarWhat, sarLat, sarLng, sarDate, sarTime,
+    sarNbSpcmn, sarCondId, sarGpsSrc,
     lostGearYes: String(lostGearYes),
     lostGearType, lostGearLat, lostGearLng, lostGearDate, lostGearTime,
     // MAR-specific
@@ -619,10 +630,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       setSarDate(formatDate(now));
       setSarTime(formatTime(now));
       await captureGps(setSarLat, setSarLng);
+      setSarGpsSrc('gps'); // §11.3: GPS-read SAR coords → MODE="G"
     } else {
       setSarSpecies(''); setSarSpeciesOther(''); setSarWhat('');
       setSarLat(''); setSarLng(''); setSarDate(''); setSarTime('');
-      setSarDropdownOpen(false);
+      setSarNbSpcmn(''); setSarCondId(''); setSarGpsSrc('manual');
+      setSarDropdownOpen(false); setSarCondPickerOpen(false);
     }
   };
 
@@ -944,6 +957,14 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     // send-time backstop; this catches it early with a clear message instead of a cryptic one.
     if (mmYes === null || sarYes === null || lostGearYes === null) {
       Alert.alert(t('form234.missingFieldsTitle'), t('form234.missingIndicatorsAnswer'), [{ text: tc('nav.ok') }]);
+      return;
+    }
+    // SAR detail (S66b): when SAR_IND='Y' the sar_type children SAR_DT/LAT/LONG/SPECIE_ID/
+    // NB_SPCMN/SPCMN_COND_ID are all mandatory (XSD sar_type, minOccurs=1). Block early with a
+    // clear message; validateElogXml is the send-time backstop once the node is emitted.
+    if (sarYes === true && (!sarSpecies || !sarNbSpcmn.trim() || !sarCondId ||
+        !sarLat.trim() || !sarLng.trim() || !sarDate || !sarTime)) {
+      Alert.alert(t('form234.missingFieldsTitle'), t('form234.missingSarFields'), [{ text: tc('nav.ok') }]);
       return;
     }
 
@@ -1407,7 +1428,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 <AlertTriangle size={16} color="#7C3AED" />
               </View>
               <Text style={[styles.sectionTitle, { fontSize: 13 }]}>{t('form234.sarSubsection')}</Text>
+              {renderNoteButton('sar')}
             </View>
+            {renderNoteInput('sar', remarks.sar ?? '', (v) => setNote('sar', v))}
             {renderYesNoToggle(t('form234.sarIndLabel'), sarYes, handleSarYes)}
             {sarYes === true && renderIncidentFields(
               sarSpecies, setSarSpecies,
@@ -1415,9 +1438,41 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               sarDropdownOpen, setSarDropdownOpen,
               MV_SAR_LIST,
               sarWhat, setSarWhat,
-              sarLat, setSarLat,
-              sarLng, setSarLng,
+              sarLat, (v: string) => { setSarLat(v); setSarGpsSrc('manual'); },
+              sarLng, (v: string) => { setSarLng(v); setSarGpsSrc('manual'); },
               sarDate, sarTime, 'sarTime'
+            )}
+            {sarYes === true && (
+              <>
+                {renderField(t('form234.sarNbSpcmnLabel'), sarNbSpcmn, setSarNbSpcmn, '0', false, false, 'numeric', true)}
+                <View style={styles.fieldRow}>
+                  <Text style={styles.label}>{t('form234.sarCondLabel')}<Text style={{ color: '#EF4444' }}> *</Text></Text>
+                  <TouchableOpacity
+                    style={styles.timeButton}
+                    onPress={() => { if (readOnly) return; setSarCondPickerOpen(o => !o); }}
+                  >
+                    <Text style={[styles.timeButtonText, !sarCondId && styles.timeButtonPlaceholder]}>
+                      {sarCondId ? MV_SPECIMENS_CONDITION.find(s => String(s.codeId) === sarCondId)?.descEn ?? t('form234.sarCondPlaceholder') : t('form234.sarCondPlaceholder')}
+                    </Text>
+                    <ChevronDown size={16} color="#64748B" />
+                  </TouchableOpacity>
+                  {sarCondPickerOpen && (
+                    <View style={styles.dropdownList}>
+                      {MV_SPECIMENS_CONDITION.map(s => (
+                        <TouchableOpacity
+                          key={s.codeId}
+                          style={[styles.dropdownItem, sarCondId === String(s.codeId) && styles.dropdownItemActive]}
+                          onPress={() => { setSarCondId(String(s.codeId)); setSarCondPickerOpen(false); }}
+                        >
+                          <Text style={[styles.dropdownItemText, sarCondId === String(s.codeId) && styles.dropdownItemTextActive]}>
+                            {s.descEn}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              </>
             )}
           </View>
 

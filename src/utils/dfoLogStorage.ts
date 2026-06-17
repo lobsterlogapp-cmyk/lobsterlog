@@ -14,7 +14,7 @@ export type DfoLogStatus = 'draft' | 'complete';
 // one or more XSD REM nodes in dfoXmlGenerator.ts (T1 Logbook test):
 //   trip -> TRIP | bait -> BAIT_USED | haul -> EFFORT + EFFORT_BY_GEAR + EFFORT_DETAIL |
 //   catch -> CATCH | landing -> LANDING | hlin -> HLIN | hlout -> HLOUT | pcons -> PCONS |
-//   transfer -> TRANSFER + TRANSFER_DTL (QC-88 only)
+//   transfer -> TRANSFER + TRANSFER_DTL (QC-88 only) | sar -> SAR
 // All optional, free text, type string_2000 (max 2000 chars) in the XSD.
 export interface LogRemarks {
   trip?: string;
@@ -26,6 +26,7 @@ export interface LogRemarks {
   hlout?: string;
   pcons?: string;
   transfer?: string;
+  sar?: string;
 }
 
 export interface DfoLog {
