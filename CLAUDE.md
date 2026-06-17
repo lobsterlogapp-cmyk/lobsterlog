@@ -1,6 +1,6 @@
 # LobsterLog — CLAUDE.md
 App version: 1.8.6 (versionCode 76)
-Last updated: June 16, 2026 (Session 62 complete; Session 63 next)
+Last updated: June 17, 2026 (Session 66b complete; Session 67 next)
 
 ## What this app is
 React Native / Expo mobile app. DFO-qualified electronic logbook for lobster harvesters.
@@ -129,8 +129,8 @@ Generator emits the nested GENERAL_INFO/TRIP/EFFORT tree; `validateElogXml()` re
 (mini parser + XSD-sequence spec + subform overlays). MAR-90 xmllint: only remaining
 error is LANDING.PORT_ID (open Q4) — with a dummy PORT_ID inserted the document FULLY
 VALIDATES. The validator enforces LANDING.PORT_ID for ALL subforms per the XSD (blocks
-the send with a pointer to open Q4; never green-lights a doc xmllint rejects). SAR detail + LAT/LONG emission held on open Q3 + missing SAR UI fields
-(NB_SPCMN, SPCMN_COND_ID). Fixture test: `src/utils/__tests__/genSampleMar90.oneoff.test.ts`.
+the send with a pointer to open Q4; never green-lights a doc xmllint rejects). SAR detail + LAT/LONG emission now BUILT (Session 66b — emits with NB_SPCMN/SPCMN_COND_ID + MODE provenance, node xmllint-valid; was held on open Q3 + missing SAR UI fields).
+Fixture test: `src/utils/__tests__/genSampleMar90.oneoff.test.ts`.
 Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 
 ---
@@ -199,7 +199,7 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 - NB_SPCMN_BRD — rendered in FullDfoForm Catch section, MAR only via isVisible()
 - HLIN section — rendered in FullDfoForm: company (req), confirmation no. (req), ETA (opt), total weight (opt), MAR only via isVisible()
 - HLOUT section — rendered in FullDfoForm: company (req), confirmation no. (req), MAR only via isVisible()
-- DG_CLOSE_DT section-close flow — Close/Unlock buttons on LANDING, EFFORT, BAIT_USED, SAR, PCONS, HLIN, HLOUT sections; stamps UTC ISO 8601 on close; locked sections use pointerEvents="none" + opacity: 0.45; timestamps persisted in buildLogData and restored on edit
+- DG_CLOSE_DT section-close flow — REMOVED (Session 65). The Close/Unlock buttons, section lock (pointerEvents/opacity), and dgClose* form writes are gone; DG_CLOSE_DT now relies ENTIRELY on the generator's toCloseTimestamp(undefined) auto-stamp (generation time), and the XSD min:1 is always satisfied. The header-right slot is now the per-section "add a note" affordance (see Session 65 / What's built)
 - KEPT_WT mandatory for MAR — in field config
 - LGRID_ID optional for MAR(90) ONLY — in field config; (S59 I1 CLOSED) generator now subform-gated to emit only on 90 (value-gate AND-ed in) + validator rejects present-for-88/89/91 ("blocked") per Subforms_requirements_234.xlsx row 85
 - OBS_TRIP_NUM optional for MAR — in TRIP section
@@ -374,8 +374,8 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
   emit sites** via the existing `tag()` (which drops empty/blank → absent note emits nothing),
   grouped at the human-section level — `haul` fans across EFFORT/EFFORT_BY_GEAR/EFFORT_DETAIL,
   `transfer` across TRANSFER/TRANSFER_DTL (QC-88 only), `pcons` into both PCONS nodes (bycatch +
-  personal-use). The 13th REM node, **SAR, is deferred — still not emitted** (blocked on open Q3 +
-  missing SAR UI fields; see Not yet built). EMPTY-NOTES PROOF: no-remarks XML is byte-identical
+  personal-use). The 13th REM node (SAR) was deferred at S62; **now BUILT in Session 66b — 13/13
+  REM nodes closed** (sar key added → LogRemarks = 10 keys). EMPTY-NOTES PROOF: no-remarks XML is byte-identical
   to pre-change output (modulo the pre-existing now()-fallback DG_CLOSE_DT), so the mandatory-only
   T2 path is untouched. TEST: new `genSampleRemT1.oneoff.test.ts` — two fixtures (MAR-90 covers
   11 sites incl. HLIN/HLOUT + both PCONS; QC-88 covers the leftover transfer×2), asserting exact
@@ -383,6 +383,39 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
   terminée") also exercises T4 (round-trips, `'`→`&apos;`, accents intact); both fixtures validate
   vs the real DFO XSD (REM = string_2000, optional). VERIFIED: tsc 33/0-new; jest 8 suites/21
   tests green; T2 (genSampleAllSubforms all four VALID) + S56/S57/S59 guards unregressed.
+- FAIL-row display in transmission register + Log History (§13.3.3) — DONE (Session 64). New
+  `indexFailureRecords()` (one row per failed attempt, newest-first) beside the byte-untouched
+  `indexSuccessRecords()`; SentLogCard + SentLogDetailModal badge conditioned on `record.outcome`
+  (green Accepted vs red Failed + `errorMessage` row on the fail path). DfoLogsListScreen renders a
+  FAILED TRANSMISSIONS section sourced from the persisted register via `indexFailureRecords(loadTransmissionRegister())`
+  — so failures SURVIVE an app restart (the in-memory `failedSends` retry state does not); LogHistoryScreen
+  interleaves collapsed success rows + per-attempt fail rows, newest-first. §13.3.3 fail-row requirement
+  satisfied. tsc 33/0-new, jest 21/21. Committed 8829a1f.
+- Per-section "add a note" UI (REM) + Close/Unlock removal — DONE (Session 65). Deleted the Close/Unlock
+  mechanism from FullDfoForm (button, sectionClosedAt state, lock, dgClose* writes/restore, styles, dead
+  i18n keys). Added a header-right "Add a note" affordance (`renderNoteButton`/`renderNoteInput`,
+  collapsed-by-default multiline) on Trip, Timestamps(landing), Catch&Effort(writes BOTH haul+catch),
+  Bait, Interactions(pcons), Transfers(QC-88), HLIN, HLOUT — each writing `log.remarks[<key>]`, seeded
+  on edit, persisted through ALL THREE save objects (draft/back-auto-save/complete) via `buildRemarks()`.
+  SAR note added Session 66b (10th key). tsc 33/0-new, jest 21/21. Committed f71bcd2.
+- MV_SAR_LIST generated reftable + SAR species repoint — DONE (Session 66a). MV_SAR_LIST_rel8.csv
+  (16 official species-at-risk codes) staged to data/dfo-reftables/ + registered in generateReftables.js
+  → src/data/reftables/mvSarList.ts (`DfoSarList`: codeId/descFr/descEn). SAR species dropdown repointed
+  off the demo `SAR_OPTIONS` and the partial hand-written `DFO_SAR_SPECIES_LIST` (BOTH RETIRED from
+  FullDfoForm.tsx + dfoConstants.ts) onto MV_SAR_LIST (displays descEn, stores codeId → real SPECIE_ID).
+  `renderIncidentFields` parameterized (string[] | coded {codeId,descEn}[], normalized internally) so the
+  Marine Mammal call site stays byte-identical. The independent legacy `SAR_OPTIONS` in
+  LobsterLogProposalForm.tsx is NOT touched. Codegen re-stamps the date header on all generated modules
+  (expected churn). tsc 33/0-new, jest 21/21. Committed c3353f7.
+- SAR detail node (sar_type) — DONE (Session 66b). `generateElogXml` emits `<SAR>` gated on SAR_IND='Y'
+  (ABSENT when N/null), children in XSD sequence: SAR_DT(date_12 from sarDate/sarTime), LAT/LONG (raw with
+  required MODE=G/M via the new `sarGpsSrc` provenance flag, mirroring EFFORT_DETAIL), SPECIE_ID (MV_SAR_LIST
+  codeId), NB_SPCMN, SPCMN_COND_ID (MV_SPECIMENS_CONDITION), DG_CLOSE_DT (auto-stamp), REM (rem.sar — closes
+  13/13 REM nodes); WT omitted (optional). New capture UI: NB_SPCMN (numeric renderField) + SPCMN_COND_ID
+  (coded dropdown) gated sarYes===true, rendered OUTSIDE the shared renderIncidentFields (MM untouched);
+  handleSave gate blocks SAR=Y with any missing mandatory SAR field (`missingSarFields` i18n). Validator SAR
+  spec needed NO change. New genSampleSarS66b.oneoff.test.ts (present-when-Y / absent-when-N); /tmp/sample_sar.xml
+  XMLLINT-VALID against the real logbook XSD (manual gate). tsc 33/0-new, jest 9 suites/23 tests. Committed f0d1142.
 
 ---
 
@@ -402,8 +435,8 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
   MV_GEAR_DESCRIPTION). MV_PORT details + PortSelector codeId wiring → see What's built (Session 53).
   Open Question 4 CLOSED
 - EFFORT_DETAIL LAT/LONG MODE emission — DONE (Session 51, MAR-90 FMA 38b per Rule
-  3059; gpsSrc source flag in FullDfoForm). SAR node emission still held on missing
-  SAR UI fields (NB_SPCMN, SPCMN_COND_ID — reftable now generated, UI not built)
+  3059; gpsSrc source flag in FullDfoForm). SAR node LAT/LONG MODE also DONE (Session 66b —
+  sarGpsSrc provenance flag; NB_SPCMN + SPCMN_COND_ID now captured; node xmllint-valid)
 - SOAKED_DUR wire unit — Session 51 finding: XML dictionary UNIT_OF_MEASURE_ID 11850
   = MINUTES (UI captures days per Rule 286; generator converts days→min). Worth a
   courtesy confirmation with Kane since Rule 165's "216 hours" phrasing is ambiguous
@@ -453,14 +486,20 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
   EMPTY_PROFILE (captainStorage.ts) and the three DfoSetupScreen seed writes. Deferred from
   S61 by decision — all PRODUCTION paths already read the profile as source of truth; only the
   dev harness still reads dfo*, so retiring is safe cleanup, not behavior change.
-- Per-section "add a note" UI (REM) — backend is DONE (Session 62; LogRemarks + generator emit
-  at 13 sites, see What's built). Next: the tap affordance in FullDfoForm that writes
-  `log.remarks[<sectionKey>]` for each human section (trip/bait/haul/catch/landing/hlin/hlout/
-  pcons/transfer), an early piece of the post-qualification UI overhaul, sitting on top of the
-  proven emit layer. SAR has no note UI and no REM emit yet (deferred with SAR node emission).
-- SAR REM emission — the 13th REM node; deferred with the SAR node itself (still not emitted,
-  blocked on open Q3 + missing SAR UI fields NB_SPCMN/SPCMN_COND_ID). Once SAR emits, wire a
-  `sar` key into LogRemarks + the generator + the T1 fixture to close the full 13/13.
+- Per-section "add a note" UI (REM) — DONE (Session 65; Close/Unlock removed, header-right note
+  affordance on all sections, remarks threaded through the save paths — see What's built). SAR note
+  added Session 66b.
+- SAR REM emission — DONE (Session 66b): the 13th REM node now emits (sar key added → LogRemarks
+  = 10 keys); 13/13 REM nodes closed and xmllint-valid.
+- November free-app relaunch / post-qualification UI overhaul — PLANNED (free-app side; handle
+  carefully). The per-section note UI (S65) is an early piece; the broader overhaul lands around the
+  November free-month promo window.
+- Archive LobsterLogProposalForm.tsx — the advocacy demo prop is now effectively dead (its SAR path
+  used the legacy free-app form). Own small session: grep importers, move/archive, fix paths, verify
+  build. Free-app side. NOTE: it keeps its OWN independent demo `SAR_OPTIONS` (left untouched in S66a) —
+  retire that together when the file is archived.
+- SAR `sarSpeciesOther` state is now inert on the SAR path — MV_SAR_LIST has no "Other" option, so the
+  free-text "Other" branch never triggers for SAR (still used by Marine Mammal). Cosmetic; note only.
 
 ---
 
@@ -497,10 +536,15 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 | Session 60 | June 15 2026 | Transmission register + Log History archive — TransmissionRecord snapshots vrn/tripNum/xsdValid/wsErrCode at send (frozen §13.3.1); DfoLogsListScreen splits unsent (full) vs sent (30-cap) with SentLogCard tap-to-detail; new LogHistoryScreen (full 3-yr archive, month+year filters); parseDfoSoapResponse returns ERR code on success; clears logbook T6 + mammals T9 register dependency. Committed 425ff28. |
 | Session 61 | June 16 2026 | Captain Profile as send source-of-truth. SEED: DfoSetupScreen's 3 activate handlers now also write fishingNumber←Licence / licenceHolderFin←FIN on activation (dfo* kept). REWIRE: all production readers repointed off dfo* onto the profile — generateElogXml FIN/LIC_NO, DfoLogsListScreen + Form222Screen + Form233Screen filenames (XML LIC_NO + filename now read the SAME fishingNumber → 1004460/1004461 drift closed), Form222 generator FIN+fallback, Form233 payload+display, TripStartConfirm rows (VRN untouched). GATE: new isProfileComplete() in captainStorage (returns i18n label keys, storage stays t()-free) wired into doSubmit before generateElogXml — bilingual sendGate popup blocks an incomplete profile, routes to Open Profile, no POST. 7 oneoff fixtures backfilled with the new fields. VERIFIED: tsc 33/0-new, jest 7/19 green, xmllint all four logbooks + 222 + 233 valid, live GLF-89 UAT → WS0000 (filename middle = VRN). dfo* NOT retired (P2 carried open: harness repoint then delete). |
 | Session 62 | June 16 2026 | REM (note) emission backend for TRG Logbook test T1 (BACKEND ONLY, no UI). Added optional LogRemarks type + remarks field on DfoLog (9 section keys, no migration); generator emits <REM> at all 13 buildable sites via tag() (drops empty), grouped at human-section level (haul fans ×3 across effort nodes, transfer ×2, pcons into both PCONS) — SAR (13th) deferred. Empty-notes XML byte-identical to pre-change (T2 untouched). New genSampleRemT1.oneoff.test.ts: MAR-90 ×11 sites + QC-88 ×2 transfer prove all 13; accented note exercises T4; both validate vs real XSD. tsc 33/0-new, jest 8 suites/21 tests green, S56/S57/S59 + T2 unregressed. |
+| Session 63 | June 17 2026 | Recon-only: DFO package deep-dive answering 5/7 open Kane questions; recon doc committed standalone (70ecef0). No code changes. |
+| Session 64 | June 17 2026 | Surface failed transmissions in register + Log History (§13.3.3). indexFailureRecords() (one row per failed attempt, sourced from the persisted register so it survives app restart — unlike the in-memory failedSends retry state); SentLogCard/SentLogDetailModal badge conditioned on record.outcome (red fail badge + errorMessage row); DfoLogsListScreen FAILED TRANSMISSIONS section + LogHistoryScreen interleaves success/fail rows. indexSuccessRecords() untouched. tsc 33/0-new, jest 21/21. Committed 8829a1f. |
+| Session 65 | June 17 2026 | Replace Close/Unlock with per-section note inputs. REMOVED the DG_CLOSE_DT close/unlock mechanism (button/state/lock/dgClose* form writes/styles/i18n keys) — DG_CLOSE_DT now relies on the generator's toCloseTimestamp(undefined) auto-stamp. ADDED header-right "Add a note" affordance to 8 sections (Catch&Effort writes haul+catch together) writing log.remarks[<key>], seeded on edit, threaded through all 3 save objects via buildRemarks(). tsc 33/0-new, jest 21/21. Committed f71bcd2. |
+| Session 66a | June 17 2026 | Ingest MV_SAR_LIST reftable (16 official species-at-risk codes) via generateReftables.js → mvSarList.ts (DfoSarList); repoint SAR species dropdown to MV_SAR_LIST (descEn/codeId → real SPECIE_ID); parameterized renderIncidentFields (string[] | coded {codeId,descEn}[]) keeping Marine Mammal byte-identical; retired demo SAR_OPTIONS + partial DFO_SAR_SPECIES_LIST (FullDfoForm/dfoConstants; the independent legacy LobsterLogProposalForm copy untouched). Codegen date-stamp refresh across generated modules (expected churn). tsc 33/0-new, jest 21/21. Committed c3353f7. |
+| Session 66b | June 17 2026 | Emit SAR detail node (sar_type): SAR_DT / LAT-LONG (MODE=G/M via new sarGpsSrc provenance flag) / SPECIE_ID / NB_SPCMN / SPCMN_COND_ID / DG_CLOSE_DT / REM, gated SAR_IND='Y' (absent when N/null), WT omitted. New NB_SPCMN (numeric) + SPCMN_COND_ID (MV_SPECIMENS_CONDITION dropdown) capture UI outside the shared renderIncidentFields (MM untouched); sar REM key added → LogRemarks 10 keys, 13/13 REM nodes closed; handleSave SAR-mandatory gate (missingSarFields); validator SAR spec unchanged. New genSampleSarS66b.oneoff.test.ts; /tmp/sample_sar.xml xmllint-valid against the real XSD. tsc 33/0-new, jest 9 suites/23 tests. Committed f0d1142. |
 
 ---
 
 ## Current session goals
 > Update this section at the start of each session.
 
-SESSION 63 — TBD.
+SESSION 67 — TBD.
