@@ -1313,16 +1313,6 @@ export const DFO_MAR_SPECIES_LIST = [
   { codeId: 14714, label: 'Sculpins (COTTIDAE)' },  // display as "Chabots (COTTIDAE)/Chaboisseaux" in French per Rule 272
 ] as const;
 
-// ─── SAR Species (Rule 7) ────────────────────────────────────
-export const DFO_SAR_SPECIES_LIST = [
-  { codeId: 1363,  label: 'Bass, Striped' },
-  { codeId: 14009, label: 'Shark, White' },
-  { codeId: 10561, label: 'Turtle, Leatherback Sea' },
-  { codeId: 4561,  label: 'Turtle, Loggerhead Sea' },
-  { codeId: 1375,  label: 'Wolffish, Northern' },
-  { codeId: 1382,  label: 'Wolffish, Spotted' },
-] as const;
-
 // ─── Gear Subtypes for Pot/Trap (Rule 608x) ─────────────────
 export const DFO_GEAR_SUBTYPE_LIST = [
   { codeId: 39684, label: 'Wooden traps' },

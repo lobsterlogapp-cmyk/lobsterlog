@@ -60,7 +60,7 @@ import { useTranslation } from 'react-i18next';
 import CrewSelector from './CrewSelector';
 import DfoPortSelector from './DfoPortSelector';
 import { CrewMember } from '../utils/crewStorage';
-import { MV_CATCH_USAGE, MV_PARTNERSHIP_TYPE } from '../data/reftables';
+import { MV_CATCH_USAGE, MV_PARTNERSHIP_TYPE, MV_SAR_LIST } from '../data/reftables';
 
 export interface FullDfoFormHandle {
   saveDraft: () => Promise<void>;
@@ -77,7 +77,6 @@ type BaitEntry = { type: string; lbs: string; };
 type BycatchEntry = { species: string; lbs: string; usage?: string; };
 
 const MARINE_MAMMAL_OPTIONS = ['North Atlantic Right Whale', 'Humpback Whale', 'Fin Whale', 'Minke Whale', 'Harbour Porpoise', 'Grey Seal', 'Harbour Seal', 'Atlantic White-sided Dolphin', 'Other'];
-const SAR_OPTIONS = ['North Atlantic Right Whale', 'Leatherback Sea Turtle', 'Loggerhead Sea Turtle', "Kemp's Ridley Sea Turtle", 'Atlantic Sturgeon', 'Striped Bass (inner Bay of Fundy)', 'Other'];
 
 // PCONS USG_ID choices offered on MAR-90 bycatch entries — a curated subset of
 // MV_CATCH_USAGE_rel1 (generated reftable). Labels render via i18n usageOption_<codeId>;
@@ -807,7 +806,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     setSpeciesOther: (v: string) => void,
     dropdownOpen: boolean,
     setDropdownOpen: (v: boolean) => void,
-    speciesOptions: string[],
+    speciesOptions: readonly (string | { codeId: number; descEn: string })[],
     what: string,
     setWhat: (v: string) => void,
     lat: string,
@@ -817,7 +816,14 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     dateStr: string,
     timeStr: string,
     pickerFieldName: PickerField
-  ) => (
+  ) => {
+    // Normalize to { value, label }: plain strings (Marine Mammal) use value === label;
+    // coded rows (SAR / MV_SAR_LIST) store codeId as the value but display descEn — so the
+    // SAR picker now yields a real SPECIE_ID while MM behaviour is unchanged.
+    const opts = speciesOptions.map(o =>
+      typeof o === 'string' ? { value: o, label: o } : { value: String(o.codeId), label: o.descEn });
+    const selectedLabel = opts.find(o => o.value === species)?.label ?? species;
+    return (
     <View style={styles.incidentBlock}>
       <Text style={styles.label}>{t('form234.speciesLabel')}</Text>
       <TouchableOpacity
@@ -825,25 +831,25 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         onPress={() => setDropdownOpen(!dropdownOpen)}
       >
         <Text style={[styles.dropdownBtnText, !species && styles.dropdownPlaceholder]}>
-          {species || t('form234.selectSpecies')}
+          {selectedLabel || t('form234.selectSpecies')}
         </Text>
         <ChevronDown size={16} color="#64748B" />
       </TouchableOpacity>
 
       {dropdownOpen && (
         <View style={styles.dropdownList}>
-          {speciesOptions.map(opt => (
+          {opts.map(opt => (
             <TouchableOpacity
-              key={opt}
-              style={[styles.dropdownItem, species === opt && styles.dropdownItemActive]}
+              key={opt.value}
+              style={[styles.dropdownItem, species === opt.value && styles.dropdownItemActive]}
               onPress={() => {
-                setSpecies(opt);
-                if (opt !== 'Other') setSpeciesOther('');
+                setSpecies(opt.value);
+                if (opt.value !== 'Other') setSpeciesOther('');
                 setDropdownOpen(false);
               }}
             >
-              <Text style={[styles.dropdownItemText, species === opt && styles.dropdownItemTextActive]}>
-                {opt}
+              <Text style={[styles.dropdownItemText, species === opt.value && styles.dropdownItemTextActive]}>
+                {opt.label}
               </Text>
             </TouchableOpacity>
           ))}
@@ -886,7 +892,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         />
       </View>
     </View>
-  );
+    );
+  };
 
   const renderLostGearFields = () => (
     <View style={styles.incidentBlock}>
@@ -1406,7 +1413,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               sarSpecies, setSarSpecies,
               sarSpeciesOther, setSarSpeciesOther,
               sarDropdownOpen, setSarDropdownOpen,
-              SAR_OPTIONS,
+              MV_SAR_LIST,
               sarWhat, setSarWhat,
               sarLat, setSarLat,
               sarLng, setSarLng,

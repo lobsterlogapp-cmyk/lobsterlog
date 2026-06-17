@@ -3,6 +3,7 @@
 export { MV_PORT, PORTS_BY_PROVINCE, type DfoPort } from './mvPort';
 export { MV_CATCH_USAGE, type DfoCatchUsage } from './mvCatchUsage';
 export { MV_SPECIMENS_CONDITION, type DfoSpecimensCondition } from './mvSpecimensCondition';
+export { MV_SAR_LIST, type DfoSarList } from './mvSarList';
 export { MV_BAIT_CONDITION, type DfoBaitCondition } from './mvBaitCondition';
 export { MV_PARTNERSHIP_TYPE, type DfoPartnershipType } from './mvPartnershipType';
 export { MV_NOAA_MM_SPECIES, type DfoNoaaMmSpecies } from './mvNoaaMmSpecies';

@@ -60,6 +60,7 @@ export const PORTS_BY_PROVINCE: Record<number, ${iface}[]> = (() => {
   // Form 234 pickers
   { csv: 'MV_CATCH_USAGE_rel1.csv', module: 'mvCatchUsage', exportName: 'MV_CATCH_USAGE', iface: 'DfoCatchUsage' },
   { csv: 'MV_SPECIMENS_CONDITION_rel1.csv', module: 'mvSpecimensCondition', exportName: 'MV_SPECIMENS_CONDITION', iface: 'DfoSpecimensCondition' },
+  { csv: 'MV_SAR_LIST_rel8.csv', module: 'mvSarList', exportName: 'MV_SAR_LIST', iface: 'DfoSarList' },
   { csv: 'MV_BAIT_CONDITION_rel2.csv', module: 'mvBaitCondition', exportName: 'MV_BAIT_CONDITION', iface: 'DfoBaitCondition' },
   { csv: 'MV_PARTNERSHIP_TYPE_rel1.csv', module: 'mvPartnershipType', exportName: 'MV_PARTNERSHIP_TYPE', iface: 'DfoPartnershipType' },
   // Form 222 marine mammal cluster

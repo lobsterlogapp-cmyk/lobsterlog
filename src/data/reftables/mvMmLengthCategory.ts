@@ -1,5 +1,5 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
-// Source: data/dfo-reftables/MV_MM_LENGTH_CATEGORY_rel4.csv (9 rows, generated 2026-06-13)
+// Source: data/dfo-reftables/MV_MM_LENGTH_CATEGORY_rel4.csv (9 rows, generated 2026-06-17)
 // Regenerate with: node scripts/generateReftables.js
 
 export interface DfoMmLengthCategory {
