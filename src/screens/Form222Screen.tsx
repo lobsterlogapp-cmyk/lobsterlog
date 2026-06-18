@@ -25,7 +25,8 @@ import {
   INTERACTION_TYPES,
   INTERACTION_TYPE_LABELS,
 } from '../utils/dfoForm222Generator';
-import { saveXmlArchiveEntry, loadLastLog } from '../utils/dfoLogStorage';
+import { loadLastLog } from '../utils/dfoLogStorage';
+import { submitDfoXml } from '../utils/submitDfoXml';
 import { generateDfoXmlFileName } from '../utils/dfoXmlGenerator';
 import { loadCaptainProfile, CaptainProfile, EMPTY_PROFILE } from '../utils/captainStorage';
 
@@ -188,17 +189,29 @@ export default function Form222Screen({ onClose }: Props) {
                 return;
               }
 
-              // Simulate HTTP call — replace with real fetch() once DFO provides endpoint URL
-              generateSoap222Envelope(
+              const fileName = generateDfoXmlFileName(profile.regId ?? 1004, profile.fishingNumber);
+              const result = await submitDfoXml({
+                soap: generateSoap222Envelope(xml, profile.elogKey, fileName),
                 xml,
-                profile.elogKey,
-                generateDfoXmlFileName(profile.regId ?? 1004, profile.fishingNumber)
-              );
+                fileName,
+                recordId: `FORM222-${entry.uid}`,
+                logId: `FORM222-${entry.uid}`,
+                snapshot: { vrn: profile.vesselNumber },
+              });
+
+              if (!result.ok) {
+                const detail = [
+                  result.errCode && `Error ${result.errCode}`,
+                  result.httpStatus && `HTTP ${result.httpStatus}`,
+                  result.errorMessage,
+                ].filter(Boolean).join('\n');
+                Alert.alert('Submission Failed', detail || 'Unknown error');
+                return;
+              }
 
               entry.sentToDfo = true;
               entry.sentAt = Date.now();
               await saveForm222Entry(entry);
-              await saveXmlArchiveEntry({ logId: `FORM222-${entry.uid}`, savedAt: Date.now(), xml });
 
               Alert.alert('Submitted', t('form222.submitSuccess'), [{ text: 'OK', onPress: onClose }]);
             } catch (e: any) {

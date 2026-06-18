@@ -22,7 +22,7 @@ import {
   validateForm233Xml,
   INACTIVITY_REASONS,
 } from '../utils/dfoForm233Generator';
-import { saveXmlArchiveEntry } from '../utils/dfoLogStorage';
+import { submitDfoXml } from '../utils/submitDfoXml';
 import { generateDfoXmlFileName } from '../utils/dfoXmlGenerator';
 import { loadCaptainProfile, CaptainProfile, EMPTY_PROFILE } from '../utils/captainStorage';
 
@@ -93,17 +93,29 @@ export default function Form233Screen({ onClose }: Props) {
                 return;
               }
 
-              // Simulate HTTP call — replace with real fetch() once DFO provides endpoint URL
-              generateSoap233Envelope(
+              const fileName = generateDfoXmlFileName(profile.regId ?? 1004, profile.fishingNumber);
+              const result = await submitDfoXml({
+                soap: generateSoap233Envelope(xml, profile.elogKey, fileName),
                 xml,
-                profile.elogKey,
-                generateDfoXmlFileName(profile.regId ?? 1004, profile.fishingNumber)
-              );
+                fileName,
+                recordId: `FORM233-${entry.uid}`,
+                logId: `FORM233-${entry.uid}`,
+                snapshot: { vrn: profile.vesselNumber },
+              });
+
+              if (!result.ok) {
+                const detail = [
+                  result.errCode && `Error ${result.errCode}`,
+                  result.httpStatus && `HTTP ${result.httpStatus}`,
+                  result.errorMessage,
+                ].filter(Boolean).join('\n');
+                Alert.alert('Submission Failed', detail || 'Unknown error');
+                return;
+              }
 
               entry.sentToDfo = true;
               entry.sentAt = Date.now();
               await saveForm233Entry(entry);
-              await saveXmlArchiveEntry({ logId: `FORM233-${entry.uid}`, savedAt: Date.now(), xml });
 
               Alert.alert('Submitted', 'Form 233 has been sent to DFO.', [{ text: 'OK', onPress: onClose }]);
             } catch (e: any) {

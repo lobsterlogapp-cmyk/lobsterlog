@@ -18,6 +18,7 @@ import { Plus, FileText, Send, Edit3, Eye, Play, Trash2, CheckCircle, User, Shie
 import { loadAllLogs, deleteLog, markSentToDfo, DfoLog, saveTransmissionRecord, TransmissionRecord, saveXmlArchiveEntry, loadTransmissionRegister } from '../utils/dfoLogStorage';
 import { SentLogCard, SentLogDetailModal, indexSuccessRecords, indexFailureRecords } from '../components/SentLogCard';
 import { generateElogXml, generateSoapEnvelope, generateReportUid, validateElogXml, generateDfoXmlFileName, findEffortOverlap, DFO_SOAP_ACTION_SAVE, DFO_UAT_ENDPOINT } from '../utils/dfoXmlGenerator';
+import { parseDfoSoapResponse } from '../utils/submitDfoXml';
 import { loadCaptainProfile, loadPrivacyAccepted, savePrivacyAccepted, isProfileComplete } from '../utils/captainStorage';
 import CaptainProfileScreen from './CaptainProfileScreen';
 import InspectionModeScreen from './InspectionModeScreen';
@@ -102,63 +103,10 @@ const getCountdownLabel = (log: DfoLog, now: number): { label: string; urgent: b
   return { label: i18next.t('logs.countdownHours', { ns: 'dfo', hours: hrs, mins }), urgent };
 };
 
-// --- DFO submission constants and response parser ---
+// --- DFO submission constants ---
+// parseDfoSoapResponse now lives in ../utils/submitDfoXml (shared with the form screens).
 
 const SEND_TIMEOUT_MS = 30000;
-
-// Response contract — ELOG_Web_Service_3_6_Eng.pdf §3.1.3: the SaveIncomingFile result is
-// a WS_RESP XML document (usually XML-escaped inside <SaveIncomingFileResult> in the SOAP
-// response). <ERR> = WS0000 means success; any other code is a failure (messages in the
-// Web Service Technical Guide). A missing response or null/0 <CONF> is also a failure.
-// On success: <VRN>, <FIN>, and one <LGBK_UID> per logbook (Form 233: <REPORT_UID> instead).
-export function parseDfoSoapResponse(text: string): {
-  success: boolean;
-  conf?: string;
-  errCode?: string;       // parsed WS_RESP <ERR> on success (e.g. 'WS0000') — register snapshot
-  errorCode?: string;
-  errorMessage?: string;
-  lgbkUids?: string[];
-  reportUids?: string[];
-} {
-  // Transport-level SOAP fault from the .asmx service
-  if (/<(soap:)?Fault[\s>]/i.test(text)) {
-    const msg = text.match(/<faultstring[^>]*>([\s\S]*?)<\/faultstring>/i)?.[1]?.trim();
-    return { success: false, errorCode: 'SOAP_FAULT', errorMessage: msg ?? 'SOAP fault' };
-  }
-
-  // The WS_RESP document arrives XML-escaped inside the SOAP result element — unescape once
-  let body = text;
-  if (!/<WS_RESP>/i.test(body) && /&lt;WS_RESP&gt;/i.test(body)) {
-    body = body
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&apos;/g, "'")
-      .replace(/&amp;/g, '&');
-  }
-
-  const grab = (el: string) =>
-    body.match(new RegExp(`<${el}\\s*>\\s*([^<]*)<\\/\\s*${el}\\s*>`, 'i'))?.[1]?.trim();
-  const grabAll = (el: string) =>
-    [...body.matchAll(new RegExp(`<${el}\\s*>\\s*([^<]*)<\\/\\s*${el}\\s*>`, 'gi'))]
-      .map(m => m[1].trim())
-      .filter(Boolean);
-
-  const conf = grab('CONF');
-  const err = grab('ERR');
-
-  if (err === 'WS0000') {
-    if (!conf || conf === '0') {
-      return { success: false, conf, errorCode: 'NO_CONF', errorMessage: 'WS0000 but confirmation number missing — treat as failed and retry' };
-    }
-    return { success: true, conf, errCode: err, lgbkUids: grabAll('LGBK_UID'), reportUids: grabAll('REPORT_UID') };
-  }
-  if (err) {
-    return { success: false, conf, errorCode: err, errorMessage: `DFO Web Service error ${err}` };
-  }
-  // No WS_RESP at all — per §3.1.3 the transmission must be considered failed
-  return { success: false, errorCode: 'NO_WS_RESP', errorMessage: 'No WS_RESP document in response' };
-}
 
 interface DfoLogsListScreenProps {
   onNewLog: () => void;
