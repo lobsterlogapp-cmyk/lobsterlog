@@ -13,6 +13,13 @@ import {
 } from './dfoLogStorage';
 import { DFO_UAT_ENDPOINT, DFO_SOAP_ACTION_SAVE } from './dfoXmlGenerator';
 
+// Rule 528 (DFO) — on the Form 222 and Form 233 paths the VRN (GENERAL_INFO.Vrn) must be
+// digits only, 4 to 6 digits. Source: FS-NAT-222-1-EN.pdf and FS-NAT-233-2-EN.pdf. This is
+// FORM-ONLY: Rule 528 is ABSENT from the 234 logbook package, whose VRN is the broader
+// string_12 (validated by isValidVrn in CaptainProfileScreen). Enforced as a hard send-time
+// block in both form screens; deliberately NOT applied to the logbook send path.
+export const isValidFormVrn = (s: string): boolean => /^\d{4,6}$/.test(s);
+
 // Mirror of the logbook doSubmit timeout (DfoLogsListScreen's SEND_TIMEOUT_MS). Kept local
 // here on purpose — the two copies are deduped in the later logbook-convergence follow-up.
 const SEND_TIMEOUT_MS = 30000;

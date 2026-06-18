@@ -26,10 +26,12 @@ import { changeLanguage } from '../i18n';
 const isValidFin = (s: string): boolean =>
   /^(\d{9}|[CD]\d{7}|\d{5,6}|DFOCC\d{9})$/.test(s);
 
-// VRN validation — DFO XSD (F222/F233/F234) types VRN as string_12 (max 12 chars,
-// alphanumeric). The original '// Rule 528 — exactly 4-6 digits' citation could not be
-// verified against the on-disk Standard v6.1 or any fact sheet — flagged for follow-up
-// with Kane. Widened to match XSD pending clarification.
+// VRN validation for the Captain Profile field, which feeds the 234 LOGBOOK path: the
+// logbook XSD types VRN as string_12 (max 12 chars, alphanumeric) and has NO Rule 528,
+// so this stays 1-12 alphanumeric DELIBERATELY — do not narrow it to digits here.
+// Rule 528 (digits only, 4-6 digits) applies ONLY to the Form 222/233 paths (verified
+// against FS-NAT-222-1-EN.pdf / FS-NAT-233-2-EN.pdf) and is enforced separately at form
+// send time via isValidFormVrn (src/utils/submitDfoXml.ts), not here.
 const isValidVrn = (s: string): boolean => /^[A-Za-z0-9]{1,12}$/.test(s);
 
 const LFA_OPTIONS = [

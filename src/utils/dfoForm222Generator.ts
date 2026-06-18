@@ -113,6 +113,20 @@ function toDate12(dateStr: string, timeStr: string): string {
   return d8 + hhmm;
 }
 
+// Clamp a hand-typed coordinate to the XSD's max 4 decimal places before it enters
+// the XML. The DFO 39588.222 LAT/LONG types allow at most 4 decimals; a high-precision
+// value (e.g. a 14-decimal GPS read) is rejected by DFO as WS1038 "XML content is not
+// valid against XSD". Rounds to 4 dp WITHOUT padding trailing zeros, so a value already
+// within 4 dp passes through unchanged; a finite negative keeps its leading minus.
+// Non-numeric/empty input is returned trimmed so the validator can flag it. Emit-only —
+// the stored/displayed coordinate is never mutated.
+export function clampCoord4(v: string): string {
+  const t = v.trim();
+  const n = Number(t);
+  if (t === '' || !Number.isFinite(n)) return t;
+  return String(Math.round(n * 10000) / 10000);
+}
+
 // XSD 39588.222: ELOG → GENERAL_INFO + MM_INTER[] → MM_INTER_INCDNT[].
 // The legacy INJURY/DEATH/ENTANGLE Y/N indicators have no XSD elements — they map
 // onto MM_INTER_INCDNT incident nodes; RELEASE_IND has no equivalent and is folded
@@ -136,9 +150,10 @@ export function generateForm222Xml(entry: Form222Entry, profile: CaptainProfile)
 
   if (entry.interactInd === 'Y') {
     mm += tag('INTERACT_DT', toDate12(entry.interactionDate, entry.interactionTime), '    ');
-    // LAT/LONG: typed manually on this form → MODE="M" (Standard v6.1 §11.3)
-    if (entry.lat.trim()) mm += `    <LAT MODE="M">${xmlEscape(entry.lat.trim())}</LAT>\n`;
-    if (entry.lon.trim()) mm += `    <LONG MODE="M">${xmlEscape(entry.lon.trim())}</LONG>\n`;
+    // LAT/LONG: typed manually on this form → MODE="M" (Standard v6.1 §11.3).
+    // Clamped to ≤4 decimals at emit (XSD LAT/LONG types) to avoid WS1038.
+    if (entry.lat.trim()) mm += `    <LAT MODE="M">${xmlEscape(clampCoord4(entry.lat))}</LAT>\n`;
+    if (entry.lon.trim()) mm += `    <LONG MODE="M">${xmlEscape(clampCoord4(entry.lon))}</LONG>\n`;
     mm += tag('NAME', entry.observerNm, '    ');
     mm += tag('ADDR', entry.contactInfo, '    ');
     // Interaction occurred during a lobster fishing operation
@@ -246,18 +261,22 @@ export function validateForm222Xml(
       if (repD > yyyymmddToDate(todayStr)) errors.push(`Rule 592: REP_DATE (${repDate}) must not be in the future`);
     }
 
-    // LAT/LONG: XSD latitude 40-70, longitude -165 to -35, MODE attribute required
+    // LAT/LONG: XSD 39588.222 latitude 38-72, longitude -148 to -40, ≤4 decimals,
+    // MODE attribute required. Ranges match the XSD exactly (the clamp at emit keeps
+    // decimals ≤4; the decimal check here is a defensive backstop).
     const latM = xml.match(/<LAT(\s[^>]*)?>([^<]*)<\/LAT>/);
     if (latM) {
       if (!/MODE="(M|G)"/.test(latM[1] ?? '')) errors.push('LAT is missing the required MODE="M"|"G" attribute');
       const v = parseFloat(latM[2]);
-      if (isNaN(v) || v < 40 || v > 70) errors.push(`LAT out of XSD range (40 to 70): ${latM[2]}`);
+      if (isNaN(v) || v < 38 || v > 72) errors.push(`LAT out of XSD range (38 to 72): ${latM[2]}`);
+      if (/\.\d{5,}/.test(latM[2])) errors.push(`LAT exceeds 4 decimal places: ${latM[2]}`);
     }
     const longM = xml.match(/<LONG(\s[^>]*)?>([^<]*)<\/LONG>/);
     if (longM) {
       if (!/MODE="(M|G)"/.test(longM[1] ?? '')) errors.push('LONG is missing the required MODE="M"|"G" attribute');
       const v = parseFloat(longM[2]);
-      if (isNaN(v) || v < -165 || v > -35) errors.push(`LONG out of XSD range (-165 to -35): ${longM[2]}`);
+      if (isNaN(v) || v < -148 || v > -40) errors.push(`LONG out of XSD range (-148 to -40): ${longM[2]}`);
+      if (/\.\d{5,}/.test(longM[2])) errors.push(`LONG exceeds 4 decimal places: ${longM[2]}`);
     }
 
     // NOAA_SPECIE_COD must exist in MV_NOAA_MM_SPECIES

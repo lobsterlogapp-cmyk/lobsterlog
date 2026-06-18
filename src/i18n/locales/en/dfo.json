@@ -2,7 +2,9 @@
   "sendGate": {
     "title": "Finish your Captain Profile",
     "body": "Before you can send to DFO, please fill in the following on your Captain Profile:",
-    "openProfile": "Open Profile"
+    "openProfile": "Open Profile",
+    "vrnRule528Title": "Invalid VRN",
+    "vrnRule528": "The VRN must be 4 to 6 digits for this form (DFO Rule 528)."
   },
   "setup": {
     "title": "DFO Setup",
@@ -292,8 +294,8 @@
     "lonLabel": "LONGITUDE (decimal degrees) *",
     "latPlaceholder": "e.g. 43.5000",
     "lonPlaceholder": "e.g. -66.1000",
-    "latError": "Latitude must be between 40 and 70",
-    "lonError": "Longitude must be between -165 and -35",
+    "latError": "Latitude must be between 38 and 72",
+    "lonError": "Longitude must be between -148 and -40",
     "lgbkNumRefLabel": "LOGBOOK NUMBER REFERRED *",
     "lgbkNumRefPlaceholder": "Logbook this report refers to",
     "speciesCard": "Species & Numbers",

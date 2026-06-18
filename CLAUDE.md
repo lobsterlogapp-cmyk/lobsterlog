@@ -1,6 +1,6 @@
 # LobsterLog — CLAUDE.md
 App version: 1.8.6 (versionCode 76)
-Last updated: June 18, 2026 (Session 69 complete; Session 70 next)
+Last updated: June 18, 2026 (Session 70 complete; Session 71 next)
 
 ## What this app is
 React Native / Expo mobile app. DFO-qualified electronic logbook for lobster harvesters.
@@ -148,8 +148,8 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 | `src/data/reftables/` | GENERATED — 11 MV_* tables (catch usage, specimens/bait condition, partnership, province, F222 cluster incl. MV_NOAA_MM_SPECIES) |
 | `FullDfoForm` | Main DFO form UI, isVisible()/isRequired() guards, all 4 subforms |
 | `DfoLogsListScreen` | Send to DFO handler (real fetch()), imports parseDfoSoapResponse from ../utils/submitDfoXml (relocated S69), retry UI, Form 222/233 entry points |
-| `Form222Screen` | Marine mammal interaction entry form — date, species, nb animals, type, disposition, notes; submits via shared submitDfoXml() (S69 — real transmission; NOT yet live-sent, held pending Rule 528 VRN fix) |
-| `Form233Screen` | Inactivity report entry form — period start/end, reason; pre-populates from captainStorage; submits via shared submitDfoXml() (S69 — real transmission; NOT yet live-sent, held pending Rule 528 VRN fix) |
+| `Form222Screen` | Marine mammal interaction entry form — date, species, nb animals, type, disposition, notes; submits via shared submitDfoXml() (S69 real transmission; S70 LIVE-SENT WS0000 CONF 162859/162861). Rule 528 4-6-digit VRN gate (isValidFormVrn) at top of handleSubmit; LAT/LON real-time validators on XSD ranges (38-72 / -148..-40) |
+| `Form233Screen` | Inactivity report entry form — period start/end, reason; pre-populates from captainStorage; submits via shared submitDfoXml() (S69 real transmission; S70 LIVE-SENT WS0000 CONF 162860). Rule 528 4-6-digit VRN gate (isValidFormVrn) at top of handleSubmit |
 | `submitDfoXml.ts` | NEW (S69) — shared, UI-free, store-agnostic DFO transmission helper. submitDfoXml() owns transport (fetch + 30s AbortController) + parseDfoSoapResponse (relocated here from DfoLogsListScreen — now defined in exactly ONE place) + TransmissionRecord write on success AND every failure path + saveXmlArchiveEntry on success; snapshot param carries vrn/tripNum/xsdValid for later logbook convergence. Does NOT touch entry stores, does NOT call markSentToDfo. |
 | `captainStorage` | CaptainProfile — subformId, regId, language, units, dfoActivated, dfoLicenceNo, dfoFin, elogKey; loadPrivacyAccepted() / savePrivacyAccepted() |
 | `navionicsStorage` | NavionicsPurchase interface; saveNavionicsPurchase/loadNavionicsPurchase/clearNavionicsPurchase (AsyncStorage key `navionics_purchase`), isNavionicsPurchaseActive() |
@@ -205,9 +205,9 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 - LGRID_ID optional for MAR(90) ONLY — in field config; (S59 I1 CLOSED) generator now subform-gated to emit only on 90 (value-gate AND-ed in) + validator rejects present-for-88/89/91 ("blocked") per Subforms_requirements_234.xlsx row 85
 - OBS_TRIP_NUM optional for MAR — in TRIP section
 - Form 222 generator — dfoForm222Generator.ts: Form222Entry (full field set per FS-NAT-222-1-EN), saveForm222Entry, loadForm222Entries (3-yr retention), generateForm222Xml (INTERACT_IND Y/N — when N only outputs indicator; when Y outputs all 15 fields in YYYYMMDD/HHMM format), validateForm222Xml (structural + date cross-validation Rules 566/589/590/591/592 + LAT/LON bounds + Y/N flag checks + RELEASE_IND conditional on ENTANGLE_IND=Y), generateSoap222Envelope; MARINE_MAMMAL_SPECIES (label+codeId pairs, TODO: confirm DFO code IDs), INTERACTION_TYPES (label+codeId pairs E/V/O); DISPOSITION_OPTIONS removed (replaced by individual Y/N indicator fields)
-- Form 222 UI — Form222Screen.tsx: INTERACT_IND master Y/N toggle collapses/expands all fields; REP_DATE + INTERACT_DT + INTERACT_TM date/time inputs; LAT/LON numeric inputs with real-time bounds validation (Rules 172/173); species dropdown (MARINE_MAMMAL_SPECIES_LABELS → SPECIE_ID code); NB_ANIMAL; INTERACT_TYPE_ID dropdown; INJURY_IND/DEATH_IND/ENTANGLE_IND/RELEASE_IND(conditional)/GEAR_DAMAGE_IND Y/N toggles; OBSERVER_NM + CONTACT_INFO text inputs; REMARKS multiline; all strings through i18n dfo.form222.*; FR stubs as _todo; validates + (S69) submits via shared submitDfoXml() — real transmission, persists success+failure TransmissionRecord and archives the XML on success, drives the success/failure Alert off the typed result (no more unconditional "Submitted"); saves the Form222 entry only on ok; accessible via modal from DfoLogsListScreen. NOT yet live-sent (held pending Rule 528 VRN fix)
+- Form 222 UI — Form222Screen.tsx: INTERACT_IND master Y/N toggle collapses/expands all fields; REP_DATE + INTERACT_DT + INTERACT_TM date/time inputs; LAT/LON numeric inputs with real-time bounds validation (Rules 172/173); species dropdown (MARINE_MAMMAL_SPECIES_LABELS → SPECIE_ID code); NB_ANIMAL; INTERACT_TYPE_ID dropdown; INJURY_IND/DEATH_IND/ENTANGLE_IND/RELEASE_IND(conditional)/GEAR_DAMAGE_IND Y/N toggles; OBSERVER_NM + CONTACT_INFO text inputs; REMARKS multiline; all strings through i18n dfo.form222.*; FR stubs as _todo; validates + (S69) submits via shared submitDfoXml() — real transmission, persists success+failure TransmissionRecord and archives the XML on success, drives the success/failure Alert off the typed result (no more unconditional "Submitted"); saves the Form222 entry only on ok; accessible via modal from DfoLogsListScreen. LIVE-SENT WS0000 (S70 — CONF 162859/162861) after the Rule 528 VRN gate + WS1038 coord clamp landed
 - Form 233 generator — dfoForm233Generator.ts: Form233Entry, saveForm233Entry, loadForm233Entries (3-yr retention), generateForm233Xml, validateForm233Xml, generateSoap233Envelope; INACTIVITY_REASONS; reason codes W/M/P/O
-- Form 233 UI — Form233Screen.tsx: pre-populates operator/licence/FIN from captainStorage (read-only); period start/end date inputs; reason dropdown; validates + (S69) submits via shared submitDfoXml() — real transmission, persists success+failure TransmissionRecord and archives the XML on success, drives the success/failure Alert off the typed result (no more unconditional "Submitted"); saves the Form233 entry only on ok; accessible via modal from DfoLogsListScreen. NOT yet live-sent (held pending Rule 528 VRN fix)
+- Form 233 UI — Form233Screen.tsx: pre-populates operator/licence/FIN from captainStorage (read-only); period start/end date inputs; reason dropdown; validates + (S69) submits via shared submitDfoXml() — real transmission, persists success+failure TransmissionRecord and archives the XML on success, drives the success/failure Alert off the typed result (no more unconditional "Submitted"); saves the Form233 entry only on ok; accessible via modal from DfoLogsListScreen. LIVE-SENT WS0000 (S70 — CONF 162860) after the Rule 528 VRN gate landed
 - DfoLogsListScreen — Form 222 + Form 233 secondary buttons below main ELOG button; two new modal states; two new Modal blocks
 - elogKey UI — CaptainProfileScreen: new "DFO Submission Settings" card with password-masked TextInput + Eye/EyeOff show/hide toggle; saves via existing saveCaptainProfile flow
 - DFO response handling — DfoLogsListScreen: real fetch() with 30s AbortController timeout; parseDfoSoapResponse() handles SOAP fault / DFO error elements / HTTP 4xx–5xx / success; four distinct error paths each save TransmissionRecord and surface appropriate Alert; DFO_ELOG_ENDPOINT stub constant ready for URL swap
@@ -449,20 +449,34 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
   submitDfoXml.oneoff.test.ts (mocks global.fetch + the storage writes): WS0000+valid CONF → ok, ONE
   success record, archive written, snapshot.vrn on the record; HTTP 500 → !ok, ONE failure record, NO
   archive; HTTP 200 + ERR≠WS0000 → !ok, ONE failure record, NO archive. tsc 33/0-new, jest 10 suites/26
-  tests. ⚠️ NOT yet live-sent against UAT — held pending the Rule 528 VRN 4–6-digit fix on the 222/233
-  path. Scope B (form rows rendering in the transmission register; TransmissionRecord `kind` field +
+  tests. (S70 UPDATE — both paths now LIVE-SENT WS0000 against UAT after the Rule 528 form-VRN gate +
+  WS1038 coordinate clamp landed; see the Session 70 What's built entry.)
+  Scope B (form rows rendering in the transmission register; TransmissionRecord `kind` field +
   register list-join) and the logbook-convergence follow-up (point doSubmit at submitDfoXml, threading
   vrn/tripNum/xsdValid via snapshot; dedup the duplicated SEND_TIMEOUT_MS) are deliberately NOT started.
+- Form-path hardenings: WS1038 coord clamp + Rule 528 VRN gate — DONE (Session 70). Both 222 AND 233
+  now LIVE-SENT WS0000 against UAT (222 CONF 162859/162861, 233 CONF 162860; VRN 104460 6-digit;
+  confirmed in the on-device transmission register). Two form-path-only changes, logbook (234) UNTOUCHED:
+  (A) **WS1038 root cause** (a hand-typed 14-decimal LAT / 13-decimal LONG — the live 222 failed because
+  the XSD LAT/LONG types allow ≤4 decimals) fixed via new exported `clampCoord4()` in dfoForm222Generator.ts,
+  applied at LAT/LONG emit (rounds to 4 dp WITHOUT padding trailing zeros — ≤4-dp values pass through
+  unchanged, leading minus preserved; emit-only, stored/displayed value never mutated); first live 222
+  WS0000 carried a raw 16-decimal coordinate auto-clamped. Coordinate validators TIGHTENED to the real XSD
+  ranges (lat 38-72, lon -148..-40; were the wider 40-70 / -165..-35) in BOTH validateForm222Xml (generator,
+  + a ≤4-decimal backstop) AND the screen real-time handleLatChange/handleLonChange; EN+FR latError/lonError
+  strings updated to the new ranges. (B) **Rule 528** (VRN digits-only, 4-6 digits — FS-NAT-222-1-EN.pdf /
+  FS-NAT-233-2-EN.pdf; ABSENT from the 234 package) enforced via new exported `isValidFormVrn` (`/^\d{4,6}$/`)
+  in submitDfoXml.ts (one definition, both screens import), as a HARD send-time block at the top of each
+  screen's handleSubmit (bilingual sendGate.vrnRule528 Alert, RETURN before envelope/submitDfoXml — no send,
+  no mark-sent, no archive). The logbook CaptainProfileScreen `isValidVrn` LEFT permissive (1-12 alphanumeric,
+  string_12) deliberately — its stale "could not be verified / flagged for Kane" comment corrected to state
+  Rule 528 is form-only and enforced separately. New formVrnAndCoordClamp.oneoff.test.ts (isValidFormVrn
+  accept 104460/10446/1044 reject 1004460/104/10446a/""; clampCoord4 43.36526203525844→"43.3653",
+  -65.6353660736118→"-65.6354", ≤4-dp unchanged, minus preserved). tsc 33/0-new, jest 11 suites/32 tests.
 
 ---
 
 ## Not yet built
-- (P1 — NEXT) Rule 528 VRN 4–6-digit fix on the 222/233 send path — the Form 222/233 screens now
-  transmit for real via submitDfoXml() (S69), but the 222/233 path still carries a 7-digit VRN; a live
-  send now would push a bad VRN and likely be rejected. ⛔ STANDING HOLD: do NOT fire a live 222/233 send
-  against UAT until this lands. The logbook send path is unaffected (validates 4–6-digit VRN already).
-  Once fixed: a first live 222 + 233 UAT send to confirm WS0000 end-to-end (mirrors the S53/54 logbook
-  proof).
 - Real DFO PRODUCTION endpoint URL — still pending from DFO. In-app transmission to the UAT
   .asmx is now LIVE on BOTH paths (Session 54): DFO_UAT_ENDPOINT in dfoXmlGenerator.ts (single
   source of truth), wired into per-log doSubmit + harness handleFire; both empty
@@ -552,7 +566,7 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 
 ## DFO qualification gates remaining
 - [x] XSD validation passing on test XML — all four subforms validate with real PORT_IDs (Session 53); first UAT SaveIncomingFile returned WS0000 (CONF 162836)
-- [ ] All prerequisite forms built (222 ✅, 233 ✅, Lost Gear confirmed ✅ — FGRS external, no Form 223)
+- [x] All prerequisite forms built (222 ✅, 233 ✅, Lost Gear confirmed ✅ — FGRS external, no Form 223) — both 222 + 233 live-sent WS0000 vs UAT (S70)
 - [ ] Confirmation of qualification from DFO
 - [ ] Authorization to deploy from DFO
 
@@ -590,6 +604,7 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 | Session 66b | June 17 2026 | Emit SAR detail node (sar_type): SAR_DT / LAT-LONG (MODE=G/M via new sarGpsSrc provenance flag) / SPECIE_ID / NB_SPCMN / SPCMN_COND_ID / DG_CLOSE_DT / REM, gated SAR_IND='Y' (absent when N/null), WT omitted. New NB_SPCMN (numeric) + SPCMN_COND_ID (MV_SPECIMENS_CONDITION dropdown) capture UI outside the shared renderIncidentFields (MM untouched); sar REM key added → LogRemarks 10 keys, 13/13 REM nodes closed; handleSave SAR-mandatory gate (missingSarFields); validator SAR spec unchanged. New genSampleSarS66b.oneoff.test.ts; /tmp/sample_sar.xml xmllint-valid against the real XSD. tsc 33/0-new, jest 9 suites/23 tests. Committed f0d1142. |
 | Session 67 | June 17 2026 | NL-91 gear-subtype UI wiring (mirror/completion of the S57 TRP_SZ_ID pattern — backend was already done in the v234.11 audit; the UI half was missing): "Gear Subtype" picker in FullDfoForm.tsx gated isVisible('gearSubtypeId') (NL-91 only, after the trapSize picker), DFO_GEAR_SUBTYPE_LIST options (39684/39685/39686, DESC_ENG → codeId, confirmed vs Jobel), writes d.gearSubtypeId; registered in DFO_SUBFORM_FIELD_CONFIG[91] + FULL_DFO_REQUIRED_FIELDS[91] for the friendly save-gate prompt; EN+FR picker keys; ADDED blocked-direction validator guard (now two-direction like TRP_SZ_ID/LGRID_ID/SPECIE_SZ_ID). All-four-region live UAT sends confirmed: MAR-90 / GLF-89 / QC-88 (CONF 162849) / NL-91 (CONF 162850), all WS0000 — closes the carried-open S61 cross-region item. tsc 33/0-new, jest 9 suites/23 tests. |
 | Session 68 | June 17 2026 | Recon-only: marine-mammal (Form 222) + Form 233 send-path findings; standalone recon doc docs/MAMMALS_AND_233_RECON_S68.md committed (0a59e5f). No code changes (CLAUDE.md not touched — findings live in the recon doc). Flagged the 222/233 fake-send (build SOAP envelope → discard → flip sentToDfo=true → unconditional "Submitted", no fetch/parse/TransmissionRecord) for the S69 wiring. |
+| Session 70 | June 18 2026 | Form-path hardenings (222/233 only, logbook 234 UNTOUCHED) — both forms now LIVE-SENT WS0000 vs UAT (222 CONF 162859/162861, 233 CONF 162860; VRN 104460; confirmed in on-device register). (A) WS1038 root cause = hand-typed >4-decimal LAT/LONG (XSD allows ≤4); new clampCoord4() rounds LAT/LONG to 4dp at emit (no trailing-zero pad, minus preserved, emit-only); coordinate validators tightened to real XSD ranges (lat 38-72 / lon -148..-40, was 40-70 / -165..-35) in BOTH generator validateForm222Xml (+≤4dp backstop) AND screen handleLatChange/handleLonChange; EN+FR lat/lon error strings updated; first live 222 carried a raw 16-decimal coord auto-clamped. (B) Rule 528 VRN 4-6-digit gate: new isValidFormVrn (/^\d{4,6}$/) in submitDfoXml.ts (one def, both screens import), hard send-time block at top of each handleSubmit (bilingual Alert, no send/mark/archive on fail); logbook isValidVrn left permissive (1-12 alphanum), stale comment corrected. New formVrnAndCoordClamp.oneoff.test.ts. tsc 33/0-new, jest 11 suites/32 tests. |
 | Session 69 | June 18 2026 | Wire Form 222 + 233 to real transmission (Scope A). New UI-free, store-agnostic src/utils/submitDfoXml.ts: submitDfoXml() owns transport (fetch + 30s AbortController) + parseDfoSoapResponse (RELOCATED out of DfoLogsListScreen → now defined in exactly ONE place; DfoLogsListScreen repointed to import it, zero doSubmit logic change) + TransmissionRecord write on success AND every failure path (built once, persisted via saveTransmissionRecord) + saveXmlArchiveEntry on success; returns typed { ok, errCode?, confNumber?, errorMessage?, httpStatus? }; snapshot:{vrn,tripNum,xsdValid} threaded undefined-safe onto both records for later logbook convergence; no entry-store writes, no markSentToDfo. Both form screens drop the fake-send and call submitDfoXml (FORM222-/FORM233- record id, snapshot:{vrn:profile.vesselNumber}), marking sent/saving the entry only on ok and surfacing errCode/httpStatus/errorMessage on failure; screens no longer archive directly. New submitDfoXml.oneoff.test.ts (mocks fetch + storage): WS0000+CONF→ok/one success record/archive/snapshot.vrn; HTTP 500→!ok/one failure record/no archive; ERR≠WS0000→!ok/one failure record/no archive. Grep proof: no "Simulate" comment left, neither screen imports saveXmlArchiveEntry, submitDfoXml imported in both, parseDfoSoapResponse in one place. ⚠️ NOT live-sent — held pending Rule 528 VRN 4–6-digit fix on the 222/233 path. Scope B (register rows / `kind` field / list-join) + logbook-convergence follow-up NOT started. tsc 33/0-new, jest 10 suites/26 tests. |
 
 ---
@@ -597,4 +612,4 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 ## Current session goals
 > Update this section at the start of each session.
 
-SESSION 70 — TBD.
+SESSION 71 — TBD.

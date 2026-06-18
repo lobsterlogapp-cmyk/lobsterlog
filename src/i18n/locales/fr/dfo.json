@@ -3,7 +3,9 @@
   "sendGate": {
     "title": "Complétez votre profil de capitaine",
     "body": "Avant de transmettre au MPO, veuillez remplir les éléments suivants dans votre profil de capitaine :",
-    "openProfile": "Ouvrir le profil"
+    "openProfile": "Ouvrir le profil",
+    "vrnRule528Title": "NMV invalide",
+    "vrnRule528": "Le NMV doit comporter de 4 à 6 chiffres pour ce formulaire (règle 528 du MPO)."
   },
   "setup": {
     "title": "Configuration DFO",
@@ -293,8 +295,8 @@
     "lonLabel": "LONGITUDE *",
     "latPlaceholder": "ex. 44.5000",
     "lonPlaceholder": "ex. -64.0000",
-    "latError": "La latitude doit être entre 40 et 70",
-    "lonError": "La longitude doit être entre -165 et -35",
+    "latError": "La latitude doit être entre 38 et 72",
+    "lonError": "La longitude doit être entre -148 et -40",
     "lgbkNumRefLabel": "NO DU JOURNAL DE BORD RÉFÉRÉ *",
     "lgbkNumRefPlaceholder": "Journal auquel ce rapport se réfère",
     "speciesCard": "Espèce et interaction",

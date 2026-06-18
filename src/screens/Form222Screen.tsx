@@ -26,7 +26,7 @@ import {
   INTERACTION_TYPE_LABELS,
 } from '../utils/dfoForm222Generator';
 import { loadLastLog } from '../utils/dfoLogStorage';
-import { submitDfoXml } from '../utils/submitDfoXml';
+import { submitDfoXml, isValidFormVrn } from '../utils/submitDfoXml';
 import { generateDfoXmlFileName } from '../utils/dfoXmlGenerator';
 import { loadCaptainProfile, CaptainProfile, EMPTY_PROFILE } from '../utils/captainStorage';
 
@@ -105,8 +105,8 @@ export default function Form222Screen({ onClose }: Props) {
   const handleLatChange = (v: string) => {
     set('lat')(v);
     const n = parseFloat(v);
-    // XSD 39588.222 latitude type: 40-70 deg
-    if (v && (isNaN(n) || n < 40 || n > 70)) {
+    // XSD 39588.222 latitude type: 38-72 deg
+    if (v && (isNaN(n) || n < 38 || n > 72)) {
       setLatError(t('form222.latError'));
     } else {
       setLatError('');
@@ -116,8 +116,8 @@ export default function Form222Screen({ onClose }: Props) {
   const handleLonChange = (v: string) => {
     set('lon')(v);
     const n = parseFloat(v);
-    // XSD 39588.222 longitude type: -165 to -35 deg
-    if (v && (isNaN(n) || n < -165 || n > -35)) {
+    // XSD 39588.222 longitude type: -148 to -40 deg
+    if (v && (isNaN(n) || n < -148 || n > -40)) {
       setLonError(t('form222.lonError'));
     } else {
       setLonError('');
@@ -125,6 +125,12 @@ export default function Form222Screen({ onClose }: Props) {
   };
 
   const handleSubmit = async () => {
+    // Rule 528 — VRN must be 4-6 digits on the Form 222 path (FS-NAT-222-1-EN.pdf).
+    // Hard block before any envelope/submit: no send, no mark-sent, no archive.
+    if (!isValidFormVrn(profile.vesselNumber.trim())) {
+      Alert.alert(t('sendGate.vrnRule528Title'), t('sendGate.vrnRule528'));
+      return;
+    }
     if (form.interactInd === 'Y') {
       const missing =
         !form.reportDate ||

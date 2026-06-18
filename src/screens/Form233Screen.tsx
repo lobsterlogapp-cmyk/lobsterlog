@@ -22,7 +22,7 @@ import {
   validateForm233Xml,
   INACTIVITY_REASONS,
 } from '../utils/dfoForm233Generator';
-import { submitDfoXml } from '../utils/submitDfoXml';
+import { submitDfoXml, isValidFormVrn } from '../utils/submitDfoXml';
 import { generateDfoXmlFileName } from '../utils/dfoXmlGenerator';
 import { loadCaptainProfile, CaptainProfile, EMPTY_PROFILE } from '../utils/captainStorage';
 
@@ -56,6 +56,12 @@ export default function Form233Screen({ onClose }: Props) {
     setForm(prev => ({ ...prev, [key]: value }));
 
   const handleSubmit = async () => {
+    // Rule 528 — VRN must be 4-6 digits on the Form 233 path (FS-NAT-233-2-EN.pdf).
+    // Hard block before any envelope/submit: no send, no mark-sent, no archive.
+    if (!isValidFormVrn(profile.vesselNumber.trim())) {
+      Alert.alert(t('sendGate.vrnRule528Title'), t('sendGate.vrnRule528'));
+      return;
+    }
     if (!form.periodStartDate || !form.periodEndDate || !form.reason) {
       Alert.alert('Missing Fields', 'Please complete all required fields before submitting.');
       return;
