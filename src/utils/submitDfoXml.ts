@@ -86,6 +86,7 @@ export interface SubmitDfoXmlArgs {
   logId: string;      // TransmissionRecord.logId + XML archive key — same prefixed id
   endpoint?: string;
   actionHeader?: string;
+  kind?: 'logbook' | 'form222' | 'form233';
   // §13.3.1 register snapshot fields captured at send. Threaded onto BOTH the success and
   // failure records, undefined-safe. The logbook will pass its own vrn/tripNum/xsdValid here
   // when it converges onto this helper. (tripNum is number to match TransmissionRecord.)
@@ -109,6 +110,7 @@ export async function submitDfoXml({
   endpoint = DFO_UAT_ENDPOINT,
   actionHeader = DFO_SOAP_ACTION_SAVE,
   snapshot,
+  kind,
 }: SubmitDfoXmlArgs): Promise<SubmitDfoXmlResult> {
   // §13.3.1 snapshot fields, undefined-safe — spread onto both success and failure records.
   const snapshotFields = {
@@ -130,6 +132,7 @@ export async function submitDfoXml({
     errorMessage,
     ...(fileName && { fileName }),
     ...snapshotFields,
+    ...(kind && { kind }),
     xmlSnapshot: xml,
     soapSnapshot: soap,
   });
@@ -185,6 +188,7 @@ export async function submitDfoXml({
       ...(result.conf && { confNumber: result.conf }),
       ...(result.errCode && { wsErrCode: result.errCode }),
       ...snapshotFields,
+      ...(kind && { kind }),
       xmlSnapshot: xml,
       soapSnapshot: soap,
     };

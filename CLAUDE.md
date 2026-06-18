@@ -1,6 +1,6 @@
 # LobsterLog — CLAUDE.md
 App version: 1.8.6 (versionCode 76)
-Last updated: June 18, 2026 (Session 70 complete; Session 71 next)
+Last updated: June 18, 2026 (Session 71 complete; Session 72 next)
 
 ## What this app is
 React Native / Expo mobile app. DFO-qualified electronic logbook for lobster harvesters.
@@ -452,8 +452,9 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
   tests. (S70 UPDATE — both paths now LIVE-SENT WS0000 against UAT after the Rule 528 form-VRN gate +
   WS1038 coordinate clamp landed; see the Session 70 What's built entry.)
   Scope B (form rows rendering in the transmission register; TransmissionRecord `kind` field +
-  register list-join) and the logbook-convergence follow-up (point doSubmit at submitDfoXml, threading
-  vrn/tripNum/xsdValid via snapshot; dedup the duplicated SEND_TIMEOUT_MS) are deliberately NOT started.
+  register list-join) is now DONE — Session 71 (see the Scope B What's built entry). The
+  logbook-convergence follow-up (point doSubmit at submitDfoXml, threading vrn/tripNum/xsdValid via
+  snapshot; dedup the duplicated SEND_TIMEOUT_MS) remains deliberately NOT started.
 - Form-path hardenings: WS1038 coord clamp + Rule 528 VRN gate — DONE (Session 70). Both 222 AND 233
   now LIVE-SENT WS0000 against UAT (222 CONF 162859/162861, 233 CONF 162860; VRN 104460 6-digit;
   confirmed in the on-device transmission register). Two form-path-only changes, logbook (234) UNTOUCHED:
@@ -473,6 +474,25 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
   Rule 528 is form-only and enforced separately. New formVrnAndCoordClamp.oneoff.test.ts (isValidFormVrn
   accept 104460/10446/1044 reject 1004460/104/10446a/""; clampCoord4 43.36526203525844→"43.3653",
   -65.6353660736118→"-65.6354", ≤4-dp unchanged, minus preserved). tsc 33/0-new, jest 11 suites/32 tests.
+- Scope B — render Form 222/233 rows in the transmission register — DONE (Session 71). Closes the
+  S69-deferred Scope B register-display half. DATA LAYER: optional `kind?: 'logbook'|'form222'|'form233'`
+  added to TransmissionRecord + exported `transmissionKind(record)` (dfoLogStorage.ts) — prefers the
+  explicit kind, falls back to the FORM222-/FORM233- logId prefix so pre-existing records (the S70 live
+  sends) classify with NO migration / NO re-send; submitDfoXml gained an optional `kind` arg threaded
+  undefined-safe onto BOTH the success and failure records (alongside snapshotFields), and the two form
+  screens now pass kind:'form222'/'form233'. CARD: new standalone src/components/FormSentCard.tsx (single
+  `record` prop, NO backing DfoLog — title from transmissionKind, date/vrn/badge/conf/error styling
+  MIRRORED from SentLogCard, which is NOT edited) + EN/FR i18n keys (logs.regForm222Title /
+  regForm233Title / regErrorLabel). WIRING: both list screens load the raw register into state and derive
+  formRecords = register.filter(r => transmissionKind(r) !== 'logbook'); DfoLogsListScreen interleaves form
+  successes into the SENT section + form failures into the FAILED section (by attemptedAt; logbook 30-cap
+  unchanged, form rows uncapped on top — per decision); LogHistoryScreen merges form rows into its single
+  chronological `rows` list via a kind-discriminated union + a matchesSelectionTs(attemptedAt) month/year
+  filter (form-record years feed the YEAR dropdown). Logbook rows, doSubmit, and all send/submit logic
+  UNTOUCHED; form records never route through logById (no double-count). Mammals T9 register-screenshot half
+  UNBLOCKED — form records now render in BOTH register screens; verified on-device (S70 CONF
+  162859/162861/162860 visible in SENT). New transmissionKind.oneoff.test.ts (prefix fallback ×3 +
+  explicit-kind-beats-prefix). tsc 33/0-new, jest 12 suites/36 tests.
 
 ---
 
@@ -606,10 +626,11 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 | Session 68 | June 17 2026 | Recon-only: marine-mammal (Form 222) + Form 233 send-path findings; standalone recon doc docs/MAMMALS_AND_233_RECON_S68.md committed (0a59e5f). No code changes (CLAUDE.md not touched — findings live in the recon doc). Flagged the 222/233 fake-send (build SOAP envelope → discard → flip sentToDfo=true → unconditional "Submitted", no fetch/parse/TransmissionRecord) for the S69 wiring. |
 | Session 70 | June 18 2026 | Form-path hardenings (222/233 only, logbook 234 UNTOUCHED) — both forms now LIVE-SENT WS0000 vs UAT (222 CONF 162859/162861, 233 CONF 162860; VRN 104460; confirmed in on-device register). (A) WS1038 root cause = hand-typed >4-decimal LAT/LONG (XSD allows ≤4); new clampCoord4() rounds LAT/LONG to 4dp at emit (no trailing-zero pad, minus preserved, emit-only); coordinate validators tightened to real XSD ranges (lat 38-72 / lon -148..-40, was 40-70 / -165..-35) in BOTH generator validateForm222Xml (+≤4dp backstop) AND screen handleLatChange/handleLonChange; EN+FR lat/lon error strings updated; first live 222 carried a raw 16-decimal coord auto-clamped. (B) Rule 528 VRN 4-6-digit gate: new isValidFormVrn (/^\d{4,6}$/) in submitDfoXml.ts (one def, both screens import), hard send-time block at top of each handleSubmit (bilingual Alert, no send/mark/archive on fail); logbook isValidVrn left permissive (1-12 alphanum), stale comment corrected. New formVrnAndCoordClamp.oneoff.test.ts. tsc 33/0-new, jest 11 suites/32 tests. |
 | Session 69 | June 18 2026 | Wire Form 222 + 233 to real transmission (Scope A). New UI-free, store-agnostic src/utils/submitDfoXml.ts: submitDfoXml() owns transport (fetch + 30s AbortController) + parseDfoSoapResponse (RELOCATED out of DfoLogsListScreen → now defined in exactly ONE place; DfoLogsListScreen repointed to import it, zero doSubmit logic change) + TransmissionRecord write on success AND every failure path (built once, persisted via saveTransmissionRecord) + saveXmlArchiveEntry on success; returns typed { ok, errCode?, confNumber?, errorMessage?, httpStatus? }; snapshot:{vrn,tripNum,xsdValid} threaded undefined-safe onto both records for later logbook convergence; no entry-store writes, no markSentToDfo. Both form screens drop the fake-send and call submitDfoXml (FORM222-/FORM233- record id, snapshot:{vrn:profile.vesselNumber}), marking sent/saving the entry only on ok and surfacing errCode/httpStatus/errorMessage on failure; screens no longer archive directly. New submitDfoXml.oneoff.test.ts (mocks fetch + storage): WS0000+CONF→ok/one success record/archive/snapshot.vrn; HTTP 500→!ok/one failure record/no archive; ERR≠WS0000→!ok/one failure record/no archive. Grep proof: no "Simulate" comment left, neither screen imports saveXmlArchiveEntry, submitDfoXml imported in both, parseDfoSoapResponse in one place. ⚠️ NOT live-sent — held pending Rule 528 VRN 4–6-digit fix on the 222/233 path. Scope B (register rows / `kind` field / list-join) + logbook-convergence follow-up NOT started. tsc 33/0-new, jest 10 suites/26 tests. |
+| Session 71 | June 18 2026 | Scope B — render Form 222/233 rows in the transmission register (closes the S69-deferred display half). DATA: optional `kind` discriminator on TransmissionRecord + exported `transmissionKind(record)` (explicit kind, else FORM222-/FORM233- logId-prefix fallback → pre-existing S70 records classify with no migration); submitDfoXml gained an optional `kind` arg threaded onto both records, both form screens pass kind:'form222'/'form233'. CARD: new standalone FormSentCard.tsx (single `record` prop, no backing DfoLog; styling mirrored from the untouched SentLogCard) + EN/FR i18n (regForm222Title/regForm233Title/regErrorLabel). WIRING: both screens load the raw register + derive formRecords; DfoLogsListScreen interleaves form successes/failures into the existing SENT/FAILED sections by attemptedAt (logbook 30-cap unchanged, form rows uncapped); LogHistoryScreen merges into its single chronological rows list (kind union + matchesSelectionTs month/year filter, form years feed the dropdown). Logbook rows + doSubmit + send/submit logic untouched; no double-count (form ids never resolve via logById). Mammals T9 register-screenshot half UNBLOCKED — verified on-device (S70 CONF 162859/162861/162860 visible in SENT). New transmissionKind.oneoff.test.ts. tsc 33/0-new, jest 12 suites/36 tests. |
 
 ---
 
 ## Current session goals
 > Update this section at the start of each session.
 
-SESSION 71 — TBD.
+SESSION 72 — TBD.

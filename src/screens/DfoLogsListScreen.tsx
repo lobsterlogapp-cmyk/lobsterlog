@@ -15,8 +15,9 @@ import {
   BackHandler,
 } from 'react-native';
 import { Plus, FileText, Send, Edit3, Eye, Play, Trash2, CheckCircle, User, Shield, RotateCcw, Archive } from 'lucide-react-native';
-import { loadAllLogs, deleteLog, markSentToDfo, DfoLog, saveTransmissionRecord, TransmissionRecord, saveXmlArchiveEntry, loadTransmissionRegister } from '../utils/dfoLogStorage';
+import { loadAllLogs, deleteLog, markSentToDfo, DfoLog, saveTransmissionRecord, TransmissionRecord, saveXmlArchiveEntry, loadTransmissionRegister, transmissionKind } from '../utils/dfoLogStorage';
 import { SentLogCard, SentLogDetailModal, indexSuccessRecords, indexFailureRecords } from '../components/SentLogCard';
+import { FormSentCard } from '../components/FormSentCard';
 import { generateElogXml, generateSoapEnvelope, generateReportUid, validateElogXml, generateDfoXmlFileName, findEffortOverlap, DFO_SOAP_ACTION_SAVE, DFO_UAT_ENDPOINT } from '../utils/dfoXmlGenerator';
 import { parseDfoSoapResponse } from '../utils/submitDfoXml';
 import { loadCaptainProfile, loadPrivacyAccepted, savePrivacyAccepted, isProfileComplete } from '../utils/captainStorage';
@@ -133,6 +134,7 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
   const [completed, setCompleted] = useState<DfoLog[]>([]);
   const [successRecords, setSuccessRecords] = useState<Record<string, TransmissionRecord>>({});
   const [failureRecords, setFailureRecords] = useState<TransmissionRecord[]>([]);
+  const [register, setRegister] = useState<TransmissionRecord[]>([]);
   const [detailLog, setDetailLog] = useState<DfoLog | null>(null);
   const [detailRecord, setDetailRecord] = useState<TransmissionRecord | undefined>(undefined);
   const [loading, setLoading] = useState(true);
@@ -154,6 +156,7 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
     setDrafts(all.filter(l => l.status === 'draft'));
     setCompleted(all.filter(l => l.status === 'complete' || !l.status));
     const register = await loadTransmissionRegister();
+    setRegister(register);
     setSuccessRecords(indexSuccessRecords(register));
     setFailureRecords(indexFailureRecords(register));
     setLoading(false);
@@ -502,6 +505,39 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
     .map(rec => ({ rec, log: logById.get(rec.logId) }))
     .filter((x): x is { rec: TransmissionRecord; log: DfoLog } => !!x.log);
 
+  // Scope B: register records with no backing DfoLog (Form 222/233). They are NOT routed
+  // through logById — they render with FormSentCard. Split by outcome so successes interleave
+  // into the SENT section and failures into the FAILED section (both by attemptedAt).
+  const formRecords = register.filter(r => transmissionKind(r) !== 'logbook');
+  const formSuccessRecords = formRecords.filter(r => r.outcome === 'success');
+  const formFailureRecords = formRecords.filter(r => r.outcome === 'failure');
+
+  // SENT section, interleaved newest-first. Logbook rows keep their exact data (capped at 30,
+  // unchanged); form rows are added on top (uncapped, per decision). Logbook ts falls back to
+  // createdAt when no success record is present, matching the screen's existing ordering basis.
+  type SentRow =
+    | { kind: 'logbook'; key: string; ts: number; log: DfoLog; record?: TransmissionRecord }
+    | { kind: 'form'; key: string; ts: number; record: TransmissionRecord };
+  const sentRows: SentRow[] = [
+    ...sentCapped.map((log): SentRow => ({
+      kind: 'logbook',
+      key: log.id,
+      ts: successRecords[log.id]?.attemptedAt ?? log.createdAt,
+      log,
+      record: successRecords[log.id],
+    })),
+    ...formSuccessRecords.map((r): SentRow => ({ kind: 'form', key: r.id, ts: r.attemptedAt, record: r })),
+  ].sort((a, b) => b.ts - a.ts);
+
+  // FAILED section, interleaved newest-first by attemptedAt (logbook rows unchanged).
+  type FailRow =
+    | { kind: 'logbook'; key: string; ts: number; log: DfoLog; rec: TransmissionRecord }
+    | { kind: 'form'; key: string; ts: number; rec: TransmissionRecord };
+  const failRowsMerged: FailRow[] = [
+    ...failureRows.map(({ rec, log }): FailRow => ({ kind: 'logbook', key: `${rec.logId}-${rec.attemptedAt}`, ts: rec.attemptedAt, log, rec })),
+    ...formFailureRecords.map((r): FailRow => ({ kind: 'form', key: `${r.logId}-${r.attemptedAt}`, ts: r.attemptedAt, rec: r })),
+  ].sort((a, b) => b.ts - a.ts);
+
   return (
     <SafeAreaView style={styles.container}>
       {/* ── Header ── */}
@@ -590,18 +626,20 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
           </>
         )}
 
-        {sentLogs.length > 0 && (
+        {sentRows.length > 0 && (
           <>
             <Text style={[styles.sectionHeader, (drafts.length > 0 || completedUnsent.length > 0) && { marginTop: 16 }]}>
               {t('logs.sentLogs')}
             </Text>
-            {sentCapped.map(log => (
+            {sentRows.map(row => row.kind === 'logbook' ? (
               <SentLogCard
-                key={log.id}
-                log={log}
-                record={successRecords[log.id]}
-                onPress={() => setDetailLog(log)}
+                key={row.key}
+                log={row.log}
+                record={row.record}
+                onPress={() => setDetailLog(row.log)}
               />
+            ) : (
+              <FormSentCard key={row.key} record={row.record} />
             ))}
             {sentLogs.length > SENT_DISPLAY_CAP && (
               <Text style={styles.sentCapNote}>
@@ -611,18 +649,20 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
           </>
         )}
 
-        {failureRows.length > 0 && (
+        {failRowsMerged.length > 0 && (
           <>
             <Text style={[styles.sectionHeader, { marginTop: 16 }]}>
               {t('logs.failedLogs')}
             </Text>
-            {failureRows.map(({ rec, log }) => (
+            {failRowsMerged.map(row => row.kind === 'logbook' ? (
               <SentLogCard
-                key={`${rec.logId}-${rec.attemptedAt}`}
-                log={log}
-                record={rec}
-                onPress={() => { setDetailLog(log); setDetailRecord(rec); }}
+                key={row.key}
+                log={row.log}
+                record={row.rec}
+                onPress={() => { setDetailLog(row.log); setDetailRecord(row.rec); }}
               />
+            ) : (
+              <FormSentCard key={row.key} record={row.rec} />
             ))}
           </>
         )}

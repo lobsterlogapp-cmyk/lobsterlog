@@ -241,6 +241,7 @@ export interface TransmissionRecord {
   tripNum?: number;     // DfoLog.tripNum at send (Rule 48 sequential trip number)
   xsdValid?: boolean;   // result of validateElogXml() run before the POST
   wsErrCode?: string;   // parsed WS_RESP <ERR> (e.g. 'WS0000' on success)
+  kind?: 'logbook' | 'form222' | 'form233';  // discriminator for Scope B register display
 }
 
 export async function saveTransmissionRecord(record: TransmissionRecord): Promise<void> {
@@ -263,6 +264,18 @@ export async function loadTransmissionRegister(): Promise<TransmissionRecord[]> 
   } catch {
     return [];
   }
+}
+
+export function transmissionKind(
+  record: Pick<TransmissionRecord, 'kind' | 'logId'>
+): 'logbook' | 'form222' | 'form233' {
+  // Prefer the explicit kind field when present (new records stamp it).
+  if (record.kind) return record.kind;
+  // Fall back to the logId prefix so pre-existing records (e.g. the S70
+  // live 222/233 sends) classify with no migration / no re-send.
+  if (record.logId.startsWith('FORM222-')) return 'form222';
+  if (record.logId.startsWith('FORM233-')) return 'form233';
+  return 'logbook';
 }
 
 // --- XML ARCHIVE (DFO Standard: 3-year retention) ---
