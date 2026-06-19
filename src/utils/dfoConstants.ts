@@ -1428,14 +1428,14 @@ export interface SubformFieldConfig {
 export const DFO_SUBFORM_FIELD_CONFIG: Record<number, SubformFieldConfig> = {
   // ── QC (subform 88) ─────────────────────────────────────
   88: {
-    visible:  ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'lgridCodeId', 'crewNb', 'mammalIncident', 'sarIncident', 'lostGear', 'catchWeight', 'trapHauls', 'fmaId', 'departurePort', 'portId'],
+    visible:  ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'lgridCodeId', 'baitEntries', 'crewNb', 'mammalIncident', 'sarIncident', 'lostGear', 'catchWeight', 'trapHauls', 'fmaId', 'departurePort', 'portId'],
     required: ['fmaId', 'catchWeight', 'trapHauls', 'crewNb', 'portId'],
   },
   // ── GLF (subform 89) ────────────────────────────────────
   // portId (LANDING.PORT_ID) is XSD-mandatory for every subform; GLF default filter
   // pending Kane's blocked-vs-mandatory note, but the schema requires the element.
   89: {
-    visible:  ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'lgridCodeId', 'mammalIncident', 'sarIncident', 'lostGear', 'catchWeight', 'trapHauls', 'fmaId', 'departurePort', 'portId'],
+    visible:  ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'lgridCodeId', 'baitEntries', 'mammalIncident', 'sarIncident', 'lostGear', 'catchWeight', 'trapHauls', 'fmaId', 'departurePort', 'portId'],
     required: ['fmaId', 'catchWeight', 'trapHauls', 'portId'],
   },
   // ── MAR (subform 90) ────────────────────────────────────
@@ -1448,7 +1448,7 @@ export const DFO_SUBFORM_FIELD_CONFIG: Record<number, SubformFieldConfig> = {
   // row 79; gearSubtypeId (EFFORT_BY_GEAR.GEAR_SBTYP_ID) mandatory for NL only — row 75.
   // Both blocked for 88/89/90 (absent from their config = not rendered, not required).
   91: {
-    visible:  ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'lgridCodeId', 'mammalIncident', 'sarIncident', 'lostGear', 'catchWeight', 'trapHauls', 'fmaId', 'departurePort', 'portId', 'trapSize', 'gearSubtypeId'],
+    visible:  ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'lgridCodeId', 'baitEntries', 'mammalIncident', 'sarIncident', 'lostGear', 'catchWeight', 'trapHauls', 'fmaId', 'departurePort', 'portId', 'trapSize', 'gearSubtypeId'],
     required: ['fmaId', 'catchWeight', 'trapHauls', 'portId', 'trapSize', 'gearSubtypeId'],
   },
 };
