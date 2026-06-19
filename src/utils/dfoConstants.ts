@@ -1658,6 +1658,21 @@ export function getDfoBaitTypeList(subformId: number) {
   }
 }
 
+// BT_COND_ID visibility, keyed STRICTLY off the bait type codeId (never the label):
+//   NL-91          → blocked outright (DFO_BAIT_COND_BLOCKED_NL).
+//   QC-88 / GLF-89 → mandatory only for Herring/Mackerel (Rule 984), else blocked.
+//   MAR-90 (& default) → blocked for Waste/Electronic/Synthetic (Rule 3060), else mandatory.
+export function baitConditionState(
+  subformId: number,
+  baitTypeCodeId: number,
+): 'mandatory' | 'blocked' {
+  if (subformId === 91) return DFO_BAIT_COND_BLOCKED_NL ? 'blocked' : 'mandatory';
+  if (subformId === 88 || subformId === 89) {
+    return DFO_BAIT_COND_REQUIRED_QC_GLF.has(baitTypeCodeId) ? 'mandatory' : 'blocked';
+  }
+  return DFO_BAIT_NO_CONDITION.has(baitTypeCodeId) ? 'blocked' : 'mandatory';
+}
+
 export function getDfoCatchSpeciesList(subformId: number) {
   switch (subformId) {
     case 89: return DFO_CATCH_SPECIES_GLF;

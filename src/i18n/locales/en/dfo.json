@@ -64,6 +64,8 @@
     "pleaseSelectSpecies": "Please select a species.",
     "pleaseEnterWeight": "Please enter the weight in lbs.",
     "pleaseSelectUsage": "Please select a usage.",
+    "pleaseSelectBaitCondition": "Please select the bait condition.",
+    "baitConditionLabel": "CONDITION",
     "missingFieldsTitle": "Missing Fields",
     "missingBait": "Please add at least one bait entry.",
     "missingBycatchAnswer": "Please answer Yes or No for Bycatch.",

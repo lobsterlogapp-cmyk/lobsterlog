@@ -65,6 +65,8 @@
     "pleaseSelectSpecies": "Sélectionne une espèce.",
     "pleaseEnterWeight": "Entre le poids en livres.",
     "pleaseSelectUsage": "Sélectionne une utilisation.",
+    "pleaseSelectBaitCondition": "Sélectionne l'état de l'appât.",
+    "baitConditionLabel": "ÉTAT",
     "missingFieldsTitle": "Champs manquants",
     "missingBait": "Ajoute au moins une entrée d'appât.",
     "missingBycatchAnswer": "Réponds Oui ou Non pour les prises accessoires.",

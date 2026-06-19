@@ -48,6 +48,7 @@ import {
   DFO_FMA_LGRID_REQUIRED,
   getDfoFmaList,
   getDfoBaitTypeList,
+  baitConditionState,
   getDfoCatchSpeciesList,
   DFO_SUBFORM_FIELD_CONFIG,
   DFO_FMA_38B,
@@ -61,7 +62,7 @@ import { useTranslation } from 'react-i18next';
 import CrewSelector from './CrewSelector';
 import DfoPortSelector from './DfoPortSelector';
 import { CrewMember } from '../utils/crewStorage';
-import { MV_CATCH_USAGE, MV_PARTNERSHIP_TYPE, MV_SAR_LIST, MV_SPECIMENS_CONDITION } from '../data/reftables';
+import { MV_CATCH_USAGE, MV_PARTNERSHIP_TYPE, MV_SAR_LIST, MV_SPECIMENS_CONDITION, MV_BAIT_CONDITION } from '../data/reftables';
 
 export interface FullDfoFormHandle {
   saveDraft: () => Promise<void>;
@@ -74,7 +75,7 @@ interface FullDfoFormProps {
   onBack?: () => void;
 }
 
-type BaitEntry = { type: string; lbs: string; };
+type BaitEntry = { type: string; lbs: string; condition?: number; };
 type BycatchEntry = { species: string; lbs: string; usage?: string; };
 
 const MARINE_MAMMAL_OPTIONS = ['North Atlantic Right Whale', 'Humpback Whale', 'Fin Whale', 'Minke Whale', 'Harbour Porpoise', 'Grey Seal', 'Harbour Seal', 'Atlantic White-sided Dolphin', 'Other'];
@@ -286,10 +287,14 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const [sheetVisible, setSheetVisible] = useState(false);
   const [sheetMode, setSheetMode] = useState<SheetMode>(null);
   const [sheetSelectedType, setSheetSelectedType] = useState('');
+  const [sheetSelectedCodeId, setSheetSelectedCodeId] = useState<number | null>(null);
   const [sheetCustomType, setSheetCustomType] = useState('');
   const [sheetLbs, setSheetLbs] = useState('');
   const [sheetDropdownOpen, setSheetDropdownOpen] = useState(false);
   const [sheetUsage, setSheetUsage] = useState('');
+  // BT_COND_ID (bait condition) — held only while a 'mandatory' bait type is selected
+  const [sheetCondition, setSheetCondition] = useState<number | null>(null);
+  const [sheetConditionOpen, setSheetConditionOpen] = useState(false);
 
   useEffect(() => {
     const loadExisting = async () => {
@@ -715,9 +720,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const openSheet = (mode: SheetMode) => {
     setSheetMode(mode);
     setSheetSelectedType('');
+    setSheetSelectedCodeId(null);
     setSheetCustomType('');
     setSheetLbs('');
     setSheetUsage('');
+    setSheetCondition(null);
+    setSheetConditionOpen(false);
     setSheetDropdownOpen(false);
     setSheetVisible(true);
   };
@@ -737,7 +745,17 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       return;
     }
     if (sheetMode === 'bait') {
-      setBaitEntries(prev => [...prev, { type: finalType, lbs: sheetLbs.trim() }]);
+      // BT_COND_ID: when the rule makes condition mandatory for this type/region (Rule 3060/984),
+      // a value must be chosen before the entry can be added (HARD block, to spec).
+      const condState = sheetSelectedCodeId != null
+        ? baitConditionState(subformId, sheetSelectedCodeId)
+        : 'blocked';
+      if (condState === 'mandatory' && sheetCondition == null) {
+        Alert.alert(t('form234.missingTitle'), t('form234.pleaseSelectBaitCondition'));
+        return;
+      }
+      const condition = condState === 'mandatory' ? sheetCondition ?? undefined : undefined;
+      setBaitEntries(prev => [...prev, { type: finalType, lbs: sheetLbs.trim(), condition }]);
     } else {
       setBycatchEntries(prev => [...prev, { species: finalType, lbs: sheetLbs.trim(), usage: sheetUsage || undefined }]);
     }
@@ -747,10 +765,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const deleteBait = (index: number) => setBaitEntries(prev => prev.filter((_, i) => i !== index));
   const deleteBycatch = (index: number) => setBycatchEntries(prev => prev.filter((_, i) => i !== index));
 
-  const getSheetOptions = () => {
+  // Options carry codeId so a selection resolves its codeId from the chosen list entry
+  // directly (never by re-matching the label string). bycatch entries have no codeId here.
+  const getSheetOptions = (): { label: string; codeId?: number }[] => {
     switch (sheetMode) {
-      case 'bait': return getDfoBaitTypeList(subformId).map(b => b.label);
-      case 'bycatch': return getDfoCatchSpeciesList(subformId).map(s => s.label);
+      case 'bait': return getDfoBaitTypeList(subformId).map(b => ({ label: b.label, codeId: b.codeId }));
+      case 'bycatch': return getDfoCatchSpeciesList(subformId).map(s => ({ label: s.label }));
       default: return [];
     }
   };
@@ -1684,12 +1704,20 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                   <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
                     {getSheetOptions().map(opt => (
                       <TouchableOpacity
-                        key={opt}
-                        style={[styles.dropdownItem, sheetSelectedType === opt && styles.dropdownItemActive]}
-                        onPress={() => { setSheetSelectedType(opt); setSheetDropdownOpen(false); }}
+                        key={opt.label}
+                        style={[styles.dropdownItem, sheetSelectedType === opt.label && styles.dropdownItemActive]}
+                        onPress={() => {
+                          setSheetSelectedType(opt.label);
+                          setSheetSelectedCodeId(opt.codeId ?? null);
+                          // Type changed → drop any held condition so a stale pick can't persist
+                          // (covers a flip into a 'blocked' state).
+                          setSheetCondition(null);
+                          setSheetConditionOpen(false);
+                          setSheetDropdownOpen(false);
+                        }}
                       >
-                        <Text style={[styles.dropdownItemText, sheetSelectedType === opt && styles.dropdownItemTextActive]}>
-                          {opt}
+                        <Text style={[styles.dropdownItemText, sheetSelectedType === opt.label && styles.dropdownItemTextActive]}>
+                          {opt.label}
                         </Text>
                       </TouchableOpacity>
                     ))}
@@ -1706,6 +1734,41 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                   placeholderTextColor="#94A3B8"
                   autoFocus
                 />
+              )}
+
+              {/* BT_COND_ID — only when the rule makes condition mandatory for this type/region
+                  (Rule 3060 MAR / Rule 984 QC-GLF; blocked types and NL-91 render nothing).
+                  Options from MV_BAIT_CONDITION (ingested, carries FR). */}
+              {sheetMode === 'bait' && sheetSelectedCodeId != null &&
+                baitConditionState(subformId, sheetSelectedCodeId) === 'mandatory' && (
+                <>
+                  <Text style={[styles.sheetLabel, { marginTop: 14 }]}>
+                    {t('form234.baitConditionLabel')}<Text style={{ color: '#EF4444' }}> *</Text>
+                  </Text>
+                  <TouchableOpacity style={styles.dropdownBtn} onPress={() => setSheetConditionOpen(o => !o)}>
+                    <Text style={[styles.dropdownBtnText, sheetCondition == null && styles.dropdownPlaceholder]}>
+                      {sheetCondition != null
+                        ? MV_BAIT_CONDITION.find(c => c.codeId === sheetCondition)?.descEn ?? t('form234.selectPlaceholder')
+                        : t('form234.selectPlaceholder')}
+                    </Text>
+                    <ChevronDown size={16} color="#64748B" />
+                  </TouchableOpacity>
+                  {sheetConditionOpen && (
+                    <View style={styles.dropdownList}>
+                      {MV_BAIT_CONDITION.map(c => (
+                        <TouchableOpacity
+                          key={c.codeId}
+                          style={[styles.dropdownItem, sheetCondition === c.codeId && styles.dropdownItemActive]}
+                          onPress={() => { setSheetCondition(c.codeId); setSheetConditionOpen(false); }}
+                        >
+                          <Text style={[styles.dropdownItemText, sheetCondition === c.codeId && styles.dropdownItemTextActive]}>
+                            {c.descEn}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </>
               )}
 
               <Text style={[styles.sheetLabel, { marginTop: 14 }]}>{t('form234.weightLbsLabel')}</Text>

@@ -7,7 +7,7 @@
 import forge from 'node-forge';
 import { DfoLog } from './dfoLogStorage';
 import { CaptainProfile } from './captainStorage';
-import { getDfoBaitTypeList, getDfoPconsSpeciesList, DFO_SPECIE_FRM_ID, DFO_PCONS_OTHER_SIZE_ID, DFO_GEAR_ID, DFO_SOFT_VER, DFO_CIE_ID, DFO_FORM_VER_ID, DFO_HLIN_COMPANY_LIST, DFO_HLOUT_COMPANY_LIST, DFO_SUBFORM_REGISTRY, DFO_FMA_38B, DFO_FMA_NB_VNTCH, DFO_FMA_NB_VNTCH_YOU } from './dfoConstants';
+import { getDfoBaitTypeList, baitConditionState, getDfoPconsSpeciesList, DFO_SPECIE_FRM_ID, DFO_PCONS_OTHER_SIZE_ID, DFO_GEAR_ID, DFO_SOFT_VER, DFO_CIE_ID, DFO_FORM_VER_ID, DFO_HLIN_COMPANY_LIST, DFO_HLOUT_COMPANY_LIST, DFO_SUBFORM_REGISTRY, DFO_FMA_38B, DFO_FMA_NB_VNTCH, DFO_FMA_NB_VNTCH_YOU } from './dfoConstants';
 import { MV_PARTNERSHIP_TYPE } from '../data/reftables';
 
 export function generateReportUid(): string {
@@ -101,18 +101,22 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   let baitXml = '';
   try {
     const baitList = getDfoBaitTypeList(subformId);
-    const entries: { type: string; lbs: string }[] = JSON.parse(d.baitEntries || '[]');
+    const entries: { type: string; lbs: string; condition?: number }[] = JSON.parse(d.baitEntries || '[]');
     const baitCloseDt = toCloseTimestamp(d.dgCloseBaitUsed);
     baitXml = entries.map(e => {
       const match = baitList.find(b => b.label === e.type);
       const typeCode = match ? String(match.codeId) : '0';
       const wtKg = kgStr(e.lbs, inLbs);
       if (!wtKg) return '';
-      // BT_COND_ID: conditional per bait type (Item 13, Rules 3060/984/NL-block) —
-      // no condition field in the bait UI yet; optional in XSD, omitted for now
+      // BT_COND_ID: conditional per bait type/region (Item 13, Rules 3060 MAR / 984 QC-GLF /
+      // NL-block). Emit only where the rule makes condition mandatory AND a value was captured;
+      // tag() drop-empty keeps the blocked case absent (T2-safe). codeId resolved as for BT_TYP_ID.
+      const condMandatory = baitConditionState(subformId, match ? match.codeId : 0) === 'mandatory';
+      const condStr = condMandatory && e.condition != null ? String(e.condition) : '';
       return `    <BAIT_USED>\n` +
              tag('BT_TYP_ID',   typeCode, '      ') +
              tag('BT_WT',       wtKg, '      ') +
+             tag('BT_COND_ID',  condStr, '      ') +
              tag('DG_CLOSE_DT', baitCloseDt, '      ') +
              tag('REM',         rem.bait ?? '', '      ') +
              `    </BAIT_USED>\n`;
