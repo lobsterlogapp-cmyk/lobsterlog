@@ -71,6 +71,24 @@ export const PORTS_BY_PROVINCE: Record<number, ${iface}[]> = (() => {
   { csv: 'MV_CONFIDENCE_LEVEL_rel3.csv', module: 'mvConfidenceLevel', exportName: 'MV_CONFIDENCE_LEVEL', iface: 'DfoConfidenceLevel' },
   { csv: 'MV_GEAR_DESCRIPTION_rel13.csv', module: 'mvGearDescription', exportName: 'MV_GEAR_DESCRIPTION', iface: 'DfoGearDescription' },
   { csv: 'MV_PROVINCE_rel3.csv', module: 'mvProvince', exportName: 'MV_PROVINCE', iface: 'DfoProvince' },
+  // Spatial pickers (Session 72 ingest). MV_GRID — 5,272-row grid table (EFFORT.LGRID_ID /
+  // GRID_ID): CODE_ID + DESC_*, all in the shared COLUMN_MAP, so no per-table override needed.
+  { csv: 'MV_GRID_rel1.csv', module: 'mvGrid', exportName: 'MV_GRID', iface: 'DfoGrid' },
+  // MV_STAT_DISTRICT_SECTION — 199-row district/section table carrying its parent stat-area
+  // columns. STAT_AREA_ID is populated for only 62/199 rows (sections with no parent stat area
+  // have none), so it's nullable; STAT_AREA_DESC_* come through as '' on those rows.
+  {
+    csv: 'MV_STAT_DISTRICT_SECTION_rel8.csv', module: 'mvStatDistrictSection',
+    exportName: 'MV_STAT_DISTRICT_SECTION', iface: 'DfoStatDistrictSection',
+    columns: {
+      CODE_ID:            { field: 'codeId', type: 'number' },
+      DESC_FRE:           { field: 'descFr', type: 'string' },
+      DESC_ENG:           { field: 'descEn', type: 'string' },
+      STAT_AREA_ID:       { field: 'statAreaId', type: 'number?' },
+      STAT_AREA_DESC_FRE: { field: 'statAreaDescFr', type: 'string' },
+      STAT_AREA_DESC_ENG: { field: 'statAreaDescEn', type: 'string' },
+    },
+  },
 ];
 
 /** RFC-4180-ish CSV parse: quoted fields, "" escapes, embedded commas. No embedded newlines in DFO tables. */

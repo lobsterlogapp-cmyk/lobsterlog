@@ -13,3 +13,5 @@ export { MV_MM_SPECIMENS_CONDITION, type DfoMmSpecimensCondition } from './mvMmS
 export { MV_CONFIDENCE_LEVEL, type DfoConfidenceLevel } from './mvConfidenceLevel';
 export { MV_GEAR_DESCRIPTION, type DfoGearDescription } from './mvGearDescription';
 export { MV_PROVINCE, type DfoProvince } from './mvProvince';
+export { MV_GRID, type DfoGrid } from './mvGrid';
+export { MV_STAT_DISTRICT_SECTION, type DfoStatDistrictSection } from './mvStatDistrictSection';
