@@ -1429,19 +1429,19 @@ export const DFO_SUBFORM_FIELD_CONFIG: Record<number, SubformFieldConfig> = {
   // ── QC (subform 88) ─────────────────────────────────────
   88: {
     visible:  ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'lgridCodeId', 'baitEntries', 'crewNb', 'mammalIncident', 'sarIncident', 'lostGear', 'catchWeight', 'trapHauls', 'fmaId', 'departurePort', 'portId'],
-    required: ['fmaId', 'catchWeight', 'trapHauls', 'crewNb', 'portId'],
+    required: ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'fmaId', 'catchWeight', 'trapHauls', 'crewNb', 'baitEntries', 'portId'],
   },
   // ── GLF (subform 89) ────────────────────────────────────
   // portId (LANDING.PORT_ID) is XSD-mandatory for every subform; GLF default filter
   // pending Kane's blocked-vs-mandatory note, but the schema requires the element.
   89: {
     visible:  ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'lgridCodeId', 'baitEntries', 'mammalIncident', 'sarIncident', 'lostGear', 'catchWeight', 'trapHauls', 'fmaId', 'departurePort', 'portId'],
-    required: ['fmaId', 'catchWeight', 'trapHauls', 'portId'],
+    required: ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'fmaId', 'catchWeight', 'trapHauls', 'baitEntries', 'portId'],
   },
   // ── MAR (subform 90) ────────────────────────────────────
   90: {
     visible:  ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'lgridCodeId', 'baitEntries', 'crewNb', 'mammalIncident', 'sarIncident', 'lostGear', 'catchWeight', 'trapHauls', 'fmaId', 'departurePort', 'portId', 'nbSpcmnBrd', 'hlin', 'hlout'],
-    required: ['fmaId', 'catchWeight', 'trapHauls', 'crewNb', 'baitEntries', 'portId', 'hlinCompany', 'hlinConfirmNo', 'hloutCompany', 'hloutConfirmNo'],
+    required: ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'fmaId', 'catchWeight', 'trapHauls', 'crewNb', 'baitEntries', 'portId', 'hlinCompany', 'hlinConfirmNo', 'hloutCompany', 'hloutConfirmNo'],
   },
   // ── NL (subform 91) ─────────────────────────────────────
   // trapSize (EFFORT_DETAIL.TRP_SZ_ID) mandatory for NL only — Subforms_requirements_234.xlsx
@@ -1449,7 +1449,7 @@ export const DFO_SUBFORM_FIELD_CONFIG: Record<number, SubformFieldConfig> = {
   // Both blocked for 88/89/90 (absent from their config = not rendered, not required).
   91: {
     visible:  ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'lgridCodeId', 'baitEntries', 'mammalIncident', 'sarIncident', 'lostGear', 'catchWeight', 'trapHauls', 'fmaId', 'departurePort', 'portId', 'trapSize', 'gearSubtypeId'],
-    required: ['fmaId', 'catchWeight', 'trapHauls', 'portId', 'trapSize', 'gearSubtypeId'],
+    required: ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'fmaId', 'catchWeight', 'trapHauls', 'baitEntries', 'portId', 'trapSize', 'gearSubtypeId'],
   },
 };
 
