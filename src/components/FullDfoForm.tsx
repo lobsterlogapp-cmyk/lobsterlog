@@ -978,6 +978,16 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       Alert.alert(t('form234.missingFieldsTitle'), t('form234.missingTransferAnswer'), [{ text: tc('nav.ok') }]);
       return;
     }
+    // TRANSFER companion fields (QC-88): when a transfer is being recorded, the transfer
+    // time (TRNSF_DT), weight, and a destination (vessel VRN or pound number) are all
+    // mandatory for the TRANSFER/TRANSFER_DTL node (Rules 248/251/252). Block early with a
+    // friendly per-field prompt — mirrors the SAR detail gate below — so a blank transfer
+    // time can't reach the generator and launder to midnight (Session 76).
+    if (subformId === 88 && transferYes === true &&
+        (!transferTime.trim() || !transferWt.trim() || (!transferToVrn.trim() && !transferToPndNum.trim()))) {
+      Alert.alert(t('form234.missingFieldsTitle'), t('form234.missingTransferFields'), [{ text: tc('nav.ok') }]);
+      return;
+    }
     // SAR_IND / LOST_GEAR_IND / MM_INTER_IND are mandatory Y/N on EFFORT for ALL four
     // subforms (XSD effort_type, minOccurs=1) — no subform condition. validateElogXml is the
     // send-time backstop; this catches it early with a clear message instead of a cryptic one.

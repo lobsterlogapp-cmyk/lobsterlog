@@ -29,17 +29,17 @@ function xmlEscape(s: string): string {
 }
 
 // Combines dateFished (YYYY-MM-DD) and a HH:MM time into a UTC ISO 8601 string,
-// treating the inputs as device-local time.
+// treating the inputs as device-local time. A blank/whitespace time returns '' (NOT a
+// midnight default), so the absence surfaces structurally — tag() drops the element and
+// the min:1 checks fire — instead of being laundered into junk 00:00 (Session 76).
 function localToUtcIso(dateStr: string, timeStr: string): string {
   if (!dateStr) return '';
   const [y, mo, d] = dateStr.split('-').map(Number);
   if (isNaN(y) || isNaN(mo) || isNaN(d)) return '';
-  let h = 0, mi = 0;
-  if (timeStr) {
-    const parts = timeStr.split(':').map(Number);
-    h = isNaN(parts[0]) ? 0 : parts[0];
-    mi = isNaN(parts[1]) ? 0 : parts[1];
-  }
+  if (!timeStr || !timeStr.trim()) return '';
+  const parts = timeStr.split(':').map(Number);
+  const h = isNaN(parts[0]) ? 0 : parts[0];
+  const mi = isNaN(parts[1]) ? 0 : parts[1];
   return new Date(y, mo - 1, d, h, mi, 0, 0).toISOString();
 }
 
@@ -835,6 +835,19 @@ export function validateElogXml(xml: string, subformId: number): { valid: boolea
         });
       });
     });
+
+    // A completed fishing day with effort + catch must record a landing. The generator
+    // gates the whole <LANDING> node on a present landing time (if (landDt)); with the
+    // Session 76 blank-time hardening a blank landingTime drops the node entirely, and
+    // LANDING is min:0 in TRIP_SPEC so the structural walk stays silent. Backstop it:
+    // effort+catch present but no LANDING node → error. (handleSave's S75 required-field
+    // check guards the normal save path; this covers draft-load / import / future callers.)
+    const hasEffortWithCatch = efforts.some(ef =>
+      get(ef, 'EFFORT_BY_GEAR').some(ebg =>
+        get(ebg, 'EFFORT_DETAIL').some(ed => get(ed, 'CATCH').length > 0)));
+    if (hasEffortWithCatch && get(trip, 'LANDING').length === 0) {
+      errors.push(`${p}: LANDING is required when effort and catch are present`);
+    }
 
     // Rules 45/46: landing must follow trip start and the last effort end
     get(trip, 'LANDING').forEach((l, li) => {

@@ -72,6 +72,7 @@
     "missingBycatchAnswer": "Réponds Oui ou Non pour les prises accessoires.",
     "missingBycatchEntries": "Tu as sélectionné Oui pour les prises accessoires — ajoute au moins une entrée.",
     "missingTransferAnswer": "Réponds Oui ou Non pour les transferts.",
+    "missingTransferFields": "Remplis tous les champs requis pour le transfert : heure du transfert, poids transféré et destination (NEB du navire ou numéro de vivier).",
     "missingIndicatorsAnswer": "Réponds Oui ou Non pour l'interaction avec un mammifère marin, l'interaction avec une espèce en péril et les engins perdus ou trouvés.",
     "missingFieldsBody": "Remplis tous les champs avant de sauvegarder.\n\nManquants:\n• ",
     "saveError": "Impossible de sauvegarder le journal. Réessaie.",
