@@ -1007,6 +1007,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       trapSize,
       gearSubtypeId,
       operName:    'ok',
+      sailTime:      timeSailed,
+      haulStartTime: timeStartedHauling,
+      haulEndTime:   timeStoppedHauling,
+      landingTime:   timeOfLanding,
     };
     const fieldLabels: Record<string, string> = {
       startDt:     'Date Fished',
@@ -1021,6 +1025,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       trapSize:    'Trap Size',
       gearSubtypeId: 'Gear Subtype',
       operName:    'Operator Name (Captain Profile)',
+      sailTime:      'Time Sailed',
+      haulStartTime: 'Time Started Hauling',
+      haulEndTime:   'Time Stopped Hauling',
+      landingTime:   'Time of Landing',
     };
     const required = getRequiredFields(subformId);
     const missing: string[] = [];

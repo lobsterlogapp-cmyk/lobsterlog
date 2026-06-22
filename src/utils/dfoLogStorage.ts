@@ -156,10 +156,10 @@ export const saveDraft = async (log: Omit<DfoLog, 'status'>): Promise<boolean> =
 
 // Required fields for the Full DFO form — per subform
 export const FULL_DFO_REQUIRED_FIELDS: Record<number, string[]> = {
-  88: ['operName', 'startDt', 'fmaId', 'catchWeight', 'trapHauls', 'lgbkUid', 'firstEntryDt', 'crewNb', 'portId'],
-  89: ['operName', 'startDt', 'fmaId', 'catchWeight', 'trapHauls', 'lgbkUid', 'firstEntryDt'],
-  90: ['operName', 'startDt', 'fmaId', 'lgridCodeId', 'catchWeight', 'trapHauls', 'lgbkUid', 'firstEntryDt', 'crewNb'],
-  91: ['operName', 'startDt', 'fmaId', 'catchWeight', 'trapHauls', 'lgbkUid', 'firstEntryDt', 'portId', 'trapSize', 'gearSubtypeId'],
+  88: ['operName', 'startDt', 'fmaId', 'catchWeight', 'trapHauls', 'lgbkUid', 'firstEntryDt', 'crewNb', 'portId', 'sailTime', 'haulStartTime', 'haulEndTime', 'landingTime'],
+  89: ['operName', 'startDt', 'fmaId', 'catchWeight', 'trapHauls', 'lgbkUid', 'firstEntryDt', 'sailTime', 'haulStartTime', 'haulEndTime', 'landingTime'],
+  90: ['operName', 'startDt', 'fmaId', 'lgridCodeId', 'catchWeight', 'trapHauls', 'lgbkUid', 'firstEntryDt', 'crewNb', 'sailTime', 'haulStartTime', 'haulEndTime', 'landingTime'],
+  91: ['operName', 'startDt', 'fmaId', 'catchWeight', 'trapHauls', 'lgbkUid', 'firstEntryDt', 'portId', 'trapSize', 'gearSubtypeId', 'sailTime', 'haulStartTime', 'haulEndTime', 'landingTime'],
 };
 
 export function getRequiredFields(subformId: number): string[] {
