@@ -481,8 +481,20 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     if (haulStartTime) setTimeStartedHauling(haulStartTime);
   }, [haulStartTime]);
 
+  // Adopt a haul-end time only when it arrives AFTER this form mounts (normal Quick
+  // Capture: open the form, then Start/Stop Haul). A value already present in the global
+  // TimerContext AT mount is a STALE leftover from a previous log's haul — haulEndTime
+  // latches, reset only on the next startHaul — and must NOT pre-fill a new log; on the
+  // Edit path the saved value loaded above must stand instead. Session 76.
+  const haulEndAtMountRef = useRef<string | null>(null);
   useEffect(() => {
-    if (haulEndTime) setTimeStoppedHauling(haulEndTime);
+    if (haulEndAtMountRef.current === null) {
+      haulEndAtMountRef.current = haulEndTime; // baseline: ignore whatever was present at mount
+      return;
+    }
+    if (haulEndTime && haulEndTime !== haulEndAtMountRef.current) {
+      setTimeStoppedHauling(haulEndTime);
+    }
   }, [haulEndTime]);
 
   const buildLogData = (): Record<string, string> => ({
