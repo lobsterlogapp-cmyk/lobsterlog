@@ -4,7 +4,7 @@
 // from the proven SentLogCard so that card is not touched; styles are mirrored (not imported)
 // so the two read as siblings in the register list.
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { CheckCircle, XCircle } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { TransmissionRecord, transmissionKind } from '../utils/dfoLogStorage';
@@ -45,9 +45,10 @@ const OutcomeBadge: React.FC<{ outcome?: TransmissionRecord['outcome'] }> = ({ o
 
 interface FormSentCardProps {
   record: TransmissionRecord;
+  onPress: () => void;
 }
 
-export const FormSentCard: React.FC<FormSentCardProps> = ({ record }) => {
+export const FormSentCard: React.FC<FormSentCardProps> = ({ record, onPress }) => {
   const { t } = useTranslation('dfo');
   const kind = transmissionKind(record);
   const title =
@@ -58,7 +59,7 @@ export const FormSentCard: React.FC<FormSentCardProps> = ({ record }) => {
   const isFailure = record.outcome === 'failure';
 
   return (
-    <View style={styles.card}>
+    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.cardTopRow}>
         <View style={{ flex: 1 }}>
           <Text style={styles.logId}>{title}</Text>
@@ -74,7 +75,7 @@ export const FormSentCard: React.FC<FormSentCardProps> = ({ record }) => {
           : !!record.confNumber && <Field label={t('logs.regConfLabel')} value={record.confNumber} />}
         <Field label={t('logs.regSentLabel')} value={formatSentDate(record.attemptedAt)} />
       </View>
-    </View>
+    </TouchableOpacity>
   );
 };
 

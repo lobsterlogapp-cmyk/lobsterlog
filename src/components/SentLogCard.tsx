@@ -5,7 +5,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, SafeAreaView, StyleSheet } from 'react-native';
 import { CheckCircle, XCircle, X } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
-import { DfoLog, TransmissionRecord } from '../utils/dfoLogStorage';
+import { DfoLog, TransmissionRecord, transmissionKind } from '../utils/dfoLogStorage';
 
 // Latest SUCCESS transmission record per logId. A log can have several attempts
 // (failures + the eventual success); the register card always shows the success.
@@ -106,6 +106,14 @@ export const SentLogDetailModal: React.FC<SentLogDetailModalProps> = ({ visible,
     : record?.xsdValid === false ? t('logs.detailXsdFail')
     : t('logs.detailXsdUnknown');
 
+  // For form records (no backing DfoLog) the header is derived from the record kind,
+  // mirroring FormSentCard's title contract; logbook records ignore this and use log.*.
+  const formKind = record ? transmissionKind(record) : undefined;
+  const formTitle =
+    formKind === 'form222' ? t('logs.regForm222Title')
+    : formKind === 'form233' ? t('logs.regForm233Title')
+    : record?.logId ?? '';
+
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={styles.detailContainer}>
@@ -117,20 +125,20 @@ export const SentLogDetailModal: React.FC<SentLogDetailModalProps> = ({ visible,
         </View>
 
         <ScrollView contentContainerStyle={{ padding: 16 }}>
-          {!log || !record ? (
+          {!record ? (
             <Text style={styles.noRecord}>{t('logs.detailNoRecord')}</Text>
           ) : (
             <>
               <View style={styles.detailIdRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.logId}>{log.id}</Text>
-                  <Text style={styles.logDate}>{log.dateFished}</Text>
+                  <Text style={styles.logId}>{log ? log.id : formTitle}</Text>
+                  <Text style={styles.logDate}>{log ? log.dateFished : formatSentDate(record.attemptedAt)}</Text>
                 </View>
                 <OutcomeBadge outcome={record.outcome} />
               </View>
 
               <View style={styles.detailCard}>
-                <DetailRow label={t('logs.regTripLabel')} value={tripNum !== undefined ? `#${tripNum}` : '—'} />
+                {log && <DetailRow label={t('logs.regTripLabel')} value={tripNum !== undefined ? `#${tripNum}` : '—'} />}
                 <DetailRow label={t('logs.regVesselLabel')} value={record.vrn || '—'} />
                 <DetailRow label={t('logs.regConfLabel')} value={record.confNumber || '—'} />
                 <DetailRow label={t('logs.regSentLabel')} value={formatSentDate(record.attemptedAt)} />

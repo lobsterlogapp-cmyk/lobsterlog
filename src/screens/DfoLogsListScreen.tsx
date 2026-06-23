@@ -639,7 +639,11 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
                 onPress={() => setDetailLog(row.log)}
               />
             ) : (
-              <FormSentCard key={row.key} record={row.record} />
+              <FormSentCard
+                key={row.key}
+                record={row.record}
+                onPress={() => { setDetailRecord(row.record); setDetailLog(null); }}
+              />
             ))}
             {sentLogs.length > SENT_DISPLAY_CAP && (
               <Text style={styles.sentCapNote}>
@@ -662,7 +666,11 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
                 onPress={() => { setDetailLog(row.log); setDetailRecord(row.rec); }}
               />
             ) : (
-              <FormSentCard key={row.key} record={row.rec} />
+              <FormSentCard
+                key={row.key}
+                record={row.rec}
+                onPress={() => { setDetailRecord(row.rec); setDetailLog(null); }}
+              />
             ))}
           </>
         )}
@@ -764,7 +772,7 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
 
       {/* ── Transmission Result detail (tap a sent card) ── */}
       <SentLogDetailModal
-        visible={detailLog !== null}
+        visible={detailLog !== null || detailRecord !== undefined}
         log={detailLog}
         record={detailRecord ?? (detailLog ? successRecords[detailLog.id] : undefined)}
         onClose={() => { setDetailLog(null); setDetailRecord(undefined); }}

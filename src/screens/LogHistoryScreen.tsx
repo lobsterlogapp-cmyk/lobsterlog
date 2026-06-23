@@ -211,13 +211,17 @@ const LogHistoryScreen: React.FC<LogHistoryScreenProps> = ({ onBack, refreshKey 
               onPress={() => { setDetailLog(row.log); setDetailRecord(row.record); }}
             />
           ) : (
-            <FormSentCard key={row.key} record={row.record} />
+            <FormSentCard
+              key={row.key}
+              record={row.record}
+              onPress={() => { setDetailRecord(row.record); setDetailLog(null); }}
+            />
           ))
         )}
       </ScrollView>
 
       <SentLogDetailModal
-        visible={detailLog !== null}
+        visible={detailLog !== null || detailRecord !== undefined}
         log={detailLog}
         record={detailRecord}
         onClose={() => { setDetailLog(null); setDetailRecord(undefined); }}
