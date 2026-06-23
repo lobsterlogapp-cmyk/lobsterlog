@@ -203,7 +203,7 @@ export default function Form222Screen({ onClose }: Props) {
                 recordId: `FORM222-${entry.uid}`,
                 logId: `FORM222-${entry.uid}`,
                 kind: 'form222',
-                snapshot: { vrn: profile.vesselNumber },
+                snapshot: { vrn: profile.vesselNumber, xsdValid: validation.valid },
               });
 
               if (!result.ok) {

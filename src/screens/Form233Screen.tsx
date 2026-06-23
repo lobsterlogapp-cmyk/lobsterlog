@@ -107,7 +107,7 @@ export default function Form233Screen({ onClose }: Props) {
                 recordId: `FORM233-${entry.uid}`,
                 logId: `FORM233-${entry.uid}`,
                 kind: 'form233',
-                snapshot: { vrn: profile.vesselNumber },
+                snapshot: { vrn: profile.vesselNumber, xsdValid: validation.valid },
               });
 
               if (!result.ok) {
