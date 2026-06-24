@@ -1,17 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
+  Modal,
   Platform,
   SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { ChevronLeft, ChevronDown } from 'lucide-react-native';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { ChevronLeft, ChevronDown, Calendar } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import {
   Form233Entry,
@@ -42,11 +44,31 @@ const EMPTY_FORM: FormState = {
   reason: '',
 };
 
+// Mirror of FullDfoForm.formatDate — picker Date → YYYY-MM-DD (the string the generator accepts).
+const formatPickerDate = (d: Date): string => {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+// Seed the picker from the currently-entered YYYY-MM-DD (mirror of FullDfoForm.parseDateTime, date-only).
+const parsePickerDate = (dateStr: string): Date => {
+  const d = new Date();
+  if (dateStr) {
+    const [y, mo, da] = dateStr.split('-').map(Number);
+    if (!isNaN(y) && !isNaN(mo) && !isNaN(da)) d.setFullYear(y, mo - 1, da);
+  }
+  return d;
+};
+
 export default function Form233Screen({ onClose }: Props) {
   const { t } = useTranslation('dfo');
+  const { t: tc } = useTranslation('common');
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [profile, setProfile] = useState<CaptainProfile>(EMPTY_PROFILE);
   const [reasonOpen, setReasonOpen] = useState(false);
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     loadCaptainProfile().then(setProfile);
@@ -55,7 +77,39 @@ export default function Form233Screen({ onClose }: Props) {
   const set = (key: keyof FormState) => (value: string) =>
     setForm(prev => ({ ...prev, [key]: value }));
 
+  // Date pickers (mirror FullDfoForm's platform-split). Both fields are date-only.
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [pickerField, setPickerField] = useState<'start' | 'end' | null>(null);
+  const [pickerDate, setPickerDate] = useState(new Date());
+  const [tempDate, setTempDate] = useState(new Date());
+
+  const openPicker = (field: 'start' | 'end') => {
+    const current = parsePickerDate(field === 'start' ? form.periodStartDate : form.periodEndDate);
+    setPickerDate(current);
+    setTempDate(current);
+    setPickerField(field);
+    setPickerVisible(true);
+  };
+
+  const handlePickerChange = (event: DateTimePickerEvent, selected?: Date) => {
+    if (!selected) return;
+    if (Platform.OS === 'android') {
+      setPickerVisible(false);
+      if (event.type === 'dismissed') return;
+      applyPickerValue(selected);
+    } else {
+      setTempDate(selected);
+    }
+  };
+
+  const applyPickerValue = (d: Date) => {
+    const value = formatPickerDate(d);
+    if (pickerField === 'start') set('periodStartDate')(value);
+    else if (pickerField === 'end') set('periodEndDate')(value);
+  };
+
   const handleSubmit = async () => {
+    if (sending) return; // re-tap guard while a send is in flight (mirror logbook)
     // Rule 528 — VRN must be 4-6 digits on the Form 233 path (FS-NAT-233-2-EN.pdf).
     // Hard block before any envelope/submit: no send, no mark-sent, no archive.
     if (!isValidFormVrn(profile.vesselNumber.trim())) {
@@ -77,6 +131,7 @@ export default function Form233Screen({ onClose }: Props) {
           style: 'default',
           onPress: async () => {
             try {
+              setSending(true);
               const entry: Form233Entry = {
                 uid: generateForm233Uid(),
                 savedAt: Date.now(),
@@ -127,6 +182,8 @@ export default function Form233Screen({ onClose }: Props) {
               Alert.alert('Submitted', 'Form 233 has been sent to DFO.', [{ text: 'OK', onPress: onClose }]);
             } catch (e: any) {
               Alert.alert('Submission Failed', e.message ?? 'Unknown error');
+            } finally {
+              setSending(false);
             }
           },
         },
@@ -186,26 +243,30 @@ export default function Form233Screen({ onClose }: Props) {
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>{t('form233.startDateLabel')}</Text>
-            <TextInput
-              style={styles.input}
-              value={form.periodStartDate}
-              onChangeText={set('periodStartDate')}
-              placeholder={t('form233.datePlaceholder')}
-              placeholderTextColor="#CBD5E1"
-              keyboardType="numbers-and-punctuation"
-            />
+            <TouchableOpacity
+              style={styles.dropdownButton}
+              onPress={() => openPicker('start')}
+              activeOpacity={0.8}
+            >
+              <Text style={form.periodStartDate ? styles.dropdownValueText : styles.dropdownPlaceholderText}>
+                {form.periodStartDate || t('form233.datePlaceholder')}
+              </Text>
+              <Calendar size={18} color="#94A3B8" />
+            </TouchableOpacity>
           </View>
 
           <View style={[styles.inputGroup, styles.lastInputGroup]}>
             <Text style={styles.label}>{t('form233.endDateLabel')}</Text>
-            <TextInput
-              style={styles.input}
-              value={form.periodEndDate}
-              onChangeText={set('periodEndDate')}
-              placeholder={t('form233.datePlaceholder')}
-              placeholderTextColor="#CBD5E1"
-              keyboardType="numbers-and-punctuation"
-            />
+            <TouchableOpacity
+              style={styles.dropdownButton}
+              onPress={() => openPicker('end')}
+              activeOpacity={0.8}
+            >
+              <Text style={form.periodEndDate ? styles.dropdownValueText : styles.dropdownPlaceholderText}>
+                {form.periodEndDate || t('form233.datePlaceholder')}
+              </Text>
+              <Calendar size={18} color="#94A3B8" />
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -249,10 +310,49 @@ export default function Form233Screen({ onClose }: Props) {
           </View>
         </View>
 
-        <TouchableOpacity style={styles.submitButton} onPress={handleSubmit} activeOpacity={0.8}>
-          <Text style={styles.submitButtonText}>{t('form233.submitButton')}</Text>
-        </TouchableOpacity>
+        {sending ? (
+          <View style={styles.submitButtonSending}>
+            <ActivityIndicator size="small" color="#FFFFFF" />
+            <Text style={styles.submitButtonText}>{t('logs.sending')}</Text>
+          </View>
+        ) : (
+          <TouchableOpacity style={styles.submitButton} onPress={handleSubmit} activeOpacity={0.8}>
+            <Text style={styles.submitButtonText}>{t('form233.submitButton')}</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
+
+      {Platform.OS === 'ios' && (
+        <Modal visible={pickerVisible} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <TouchableOpacity onPress={() => setPickerVisible(false)}>
+                  <Text style={styles.modalCancel}>{tc('nav.cancel')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => { applyPickerValue(tempDate); setPickerVisible(false); }}>
+                  <Text style={styles.modalConfirm}>{tc('nav.done')}</Text>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={tempDate}
+                mode="date"
+                display="spinner"
+                onChange={(_e: DateTimePickerEvent, s?: Date) => { if (s) setTempDate(s); }}
+                style={{ backgroundColor: '#FFFFFF' }}
+              />
+            </View>
+          </View>
+        </Modal>
+      )}
+      {Platform.OS === 'android' && pickerVisible && (
+        <DateTimePicker
+          value={pickerDate}
+          mode="date"
+          display="default"
+          onChange={handlePickerChange}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -405,9 +505,30 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: '#1E40AF',
   },
+  submitButtonSending: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: '#1E40AF',
+  },
   submitButtonText: {
     fontWeight: 'bold',
     color: '#FFFFFF',
     fontSize: 16,
   },
+  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
+  modalContent: {
+    backgroundColor: '#FFFFFF', borderTopLeftRadius: 16,
+    borderTopRightRadius: 16, paddingBottom: 30,
+  },
+  modalHeader: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: '#E2E8F0',
+  },
+  modalCancel: { fontSize: 16, color: '#64748B', fontWeight: '600' },
+  modalConfirm: { fontSize: 16, color: '#1E3A8A', fontWeight: '700' },
 });

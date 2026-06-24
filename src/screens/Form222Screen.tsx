@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
+  Modal,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -11,7 +13,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { ChevronLeft, ChevronDown } from 'lucide-react-native';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { ChevronLeft, ChevronDown, Calendar, Clock } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import {
   Form222Entry,
@@ -78,14 +81,44 @@ const EMPTY_FORM: FormState = {
   lgbkNumRef: '',
 };
 
+// Mirror of FullDfoForm.formatDate / formatTime — picker Date → the strings the generator accepts.
+const formatPickerDate = (d: Date): string => {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+const formatPickerTime = (d: Date): string => {
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+};
+
+// Seed the picker from the currently-entered YYYY-MM-DD (+ optional HH:MM); mirror of FullDfoForm.parseDateTime.
+const parsePickerDateTime = (dateStr: string, timeStr: string): Date => {
+  const d = new Date();
+  if (dateStr) {
+    const [y, mo, da] = dateStr.split('-').map(Number);
+    if (!isNaN(y) && !isNaN(mo) && !isNaN(da)) d.setFullYear(y, mo - 1, da);
+  }
+  if (timeStr) {
+    const [h, mi] = timeStr.split(':').map(Number);
+    if (!isNaN(h) && !isNaN(mi)) d.setHours(h, mi, 0, 0);
+  }
+  return d;
+};
+
 export default function Form222Screen({ onClose }: Props) {
   const { t } = useTranslation('dfo');
+  const { t: tc } = useTranslation('common');
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [profile, setProfile] = useState<CaptainProfile>(EMPTY_PROFILE);
   const [speciesOpen, setSpeciesOpen] = useState(false);
   const [interactionTypeOpen, setInteractionTypeOpen] = useState(false);
   const [latError, setLatError] = useState('');
   const [lonError, setLonError] = useState('');
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     loadCaptainProfile().then(setProfile);
@@ -100,6 +133,43 @@ export default function Form222Screen({ onClose }: Props) {
 
   const toggleYN = (key: keyof FormState) => () => {
     setForm(prev => ({ ...prev, [key]: prev[key] === 'Y' ? 'N' : 'Y' }));
+  };
+
+  // Date/time pickers (mirror FullDfoForm's platform-split). Report = date-only; interaction = datetime.
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [pickerField, setPickerField] = useState<'report' | 'interaction' | null>(null);
+  const [pickerDate, setPickerDate] = useState(new Date());
+  const [tempDate, setTempDate] = useState(new Date());
+
+  const openPicker = (field: 'report' | 'interaction') => {
+    const current = field === 'interaction'
+      ? parsePickerDateTime(form.interactionDate, form.interactionTime)
+      : parsePickerDateTime(form.reportDate, '');
+    setPickerDate(current);
+    setTempDate(current);
+    setPickerField(field);
+    setPickerVisible(true);
+  };
+
+  const handlePickerChange = (event: DateTimePickerEvent, selected?: Date) => {
+    if (!selected) return;
+    if (Platform.OS === 'android') {
+      setPickerVisible(false);
+      if (event.type === 'dismissed') return;
+      applyPickerValue(selected);
+    } else {
+      setTempDate(selected);
+    }
+  };
+
+  const applyPickerValue = (d: Date) => {
+    if (pickerField === 'report') {
+      set('reportDate')(formatPickerDate(d));
+    } else if (pickerField === 'interaction') {
+      // One picker, two stored strings — mirror of FullDfoForm's mmTime case.
+      set('interactionDate')(formatPickerDate(d));
+      set('interactionTime')(formatPickerTime(d));
+    }
   };
 
   const handleLatChange = (v: string) => {
@@ -125,6 +195,7 @@ export default function Form222Screen({ onClose }: Props) {
   };
 
   const handleSubmit = async () => {
+    if (sending) return; // re-tap guard while a send is in flight (mirror logbook)
     // Rule 528 — VRN must be 4-6 digits on the Form 222 path (FS-NAT-222-1-EN.pdf).
     // Hard block before any envelope/submit: no send, no mark-sent, no archive.
     if (!isValidFormVrn(profile.vesselNumber.trim())) {
@@ -160,6 +231,7 @@ export default function Form222Screen({ onClose }: Props) {
           style: 'default',
           onPress: async () => {
             try {
+              setSending(true);
               const entry: Form222Entry = {
                 uid: generateForm222Uid(),
                 savedAt: Date.now(),
@@ -223,6 +295,8 @@ export default function Form222Screen({ onClose }: Props) {
               Alert.alert('Submitted', t('form222.submitSuccess'), [{ text: 'OK', onPress: onClose }]);
             } catch (e: any) {
               Alert.alert('Submission Failed', e.message ?? 'Unknown error');
+            } finally {
+              setSending(false);
             }
           },
         },
@@ -361,14 +435,16 @@ export default function Form222Screen({ onClose }: Props) {
               <Text style={styles.cardHeader}>{t('form222.reportDetailsCard')}</Text>
               <View style={styles.lastInputGroup}>
                 <Text style={styles.label}>{t('form222.reportDateLabel')}</Text>
-                <TextInput
-                  style={styles.input}
-                  value={form.reportDate}
-                  onChangeText={set('reportDate')}
-                  placeholder={t('form222.datePlaceholder')}
-                  placeholderTextColor="#CBD5E1"
-                  keyboardType="numbers-and-punctuation"
-                />
+                <TouchableOpacity
+                  style={styles.dropdownButton}
+                  onPress={() => openPicker('report')}
+                  activeOpacity={0.8}
+                >
+                  <Text style={form.reportDate ? styles.dropdownValueText : styles.dropdownPlaceholderText}>
+                    {form.reportDate || t('form222.datePlaceholder')}
+                  </Text>
+                  <Calendar size={18} color="#94A3B8" />
+                </TouchableOpacity>
               </View>
               <View style={styles.lastInputGroup}>
                 <Text style={styles.label}>{t('form222.lgbkNumRefLabel')}</Text>
@@ -390,26 +466,30 @@ export default function Form222Screen({ onClose }: Props) {
 
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>{t('form222.interactionDateLabel')}</Text>
-                <TextInput
-                  style={styles.input}
-                  value={form.interactionDate}
-                  onChangeText={set('interactionDate')}
-                  placeholder={t('form222.datePlaceholder')}
-                  placeholderTextColor="#CBD5E1"
-                  keyboardType="numbers-and-punctuation"
-                />
+                <TouchableOpacity
+                  style={styles.dropdownButton}
+                  onPress={() => openPicker('interaction')}
+                  activeOpacity={0.8}
+                >
+                  <Text style={form.interactionDate ? styles.dropdownValueText : styles.dropdownPlaceholderText}>
+                    {form.interactionDate || t('form222.datePlaceholder')}
+                  </Text>
+                  <Calendar size={18} color="#94A3B8" />
+                </TouchableOpacity>
               </View>
 
               <View style={styles.lastInputGroup}>
                 <Text style={styles.label}>{t('form222.interactionTimeLabel')}</Text>
-                <TextInput
-                  style={styles.input}
-                  value={form.interactionTime}
-                  onChangeText={set('interactionTime')}
-                  placeholder={t('form222.timePlaceholder')}
-                  placeholderTextColor="#CBD5E1"
-                  keyboardType="numbers-and-punctuation"
-                />
+                <TouchableOpacity
+                  style={styles.dropdownButton}
+                  onPress={() => openPicker('interaction')}
+                  activeOpacity={0.8}
+                >
+                  <Text style={form.interactionTime ? styles.dropdownValueText : styles.dropdownPlaceholderText}>
+                    {form.interactionTime || t('form222.timePlaceholder')}
+                  </Text>
+                  <Clock size={18} color="#94A3B8" />
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -540,10 +620,49 @@ export default function Form222Screen({ onClose }: Props) {
           </>
         )}
 
-        <TouchableOpacity style={styles.submitButton} onPress={handleSubmit} activeOpacity={0.8}>
-          <Text style={styles.submitButtonText}>{t('form222.submitButton')}</Text>
-        </TouchableOpacity>
+        {sending ? (
+          <View style={styles.submitButtonSending}>
+            <ActivityIndicator size="small" color="#FFFFFF" />
+            <Text style={styles.submitButtonText}>{t('logs.sending')}</Text>
+          </View>
+        ) : (
+          <TouchableOpacity style={styles.submitButton} onPress={handleSubmit} activeOpacity={0.8}>
+            <Text style={styles.submitButtonText}>{t('form222.submitButton')}</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
+
+      {Platform.OS === 'ios' && (
+        <Modal visible={pickerVisible} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <TouchableOpacity onPress={() => setPickerVisible(false)}>
+                  <Text style={styles.modalCancel}>{tc('nav.cancel')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => { applyPickerValue(tempDate); setPickerVisible(false); }}>
+                  <Text style={styles.modalConfirm}>{tc('nav.done')}</Text>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={tempDate}
+                mode={pickerField === 'interaction' ? 'datetime' : 'date'}
+                display="spinner"
+                onChange={(_e: DateTimePickerEvent, s?: Date) => { if (s) setTempDate(s); }}
+                style={{ backgroundColor: '#FFFFFF' }}
+              />
+            </View>
+          </View>
+        </Modal>
+      )}
+      {Platform.OS === 'android' && pickerVisible && (
+        <DateTimePicker
+          value={pickerDate}
+          mode={pickerField === 'interaction' ? 'datetime' : 'date'}
+          display="default"
+          onChange={handlePickerChange}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -758,9 +877,30 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: '#1E40AF',
   },
+  submitButtonSending: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: '#1E40AF',
+  },
   submitButtonText: {
     fontWeight: 'bold',
     color: '#FFFFFF',
     fontSize: 16,
   },
+  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
+  modalContent: {
+    backgroundColor: '#FFFFFF', borderTopLeftRadius: 16,
+    borderTopRightRadius: 16, paddingBottom: 30,
+  },
+  modalHeader: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: '#E2E8F0',
+  },
+  modalCancel: { fontSize: 16, color: '#64748B', fontWeight: '600' },
+  modalConfirm: { fontSize: 16, color: '#1E3A8A', fontWeight: '700' },
 });
