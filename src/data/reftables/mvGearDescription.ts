@@ -1,5 +1,5 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
-// Source: data/dfo-reftables/MV_GEAR_DESCRIPTION_rel13.csv (147 rows, generated 2026-06-19)
+// Source: data/dfo-reftables/MV_GEAR_DESCRIPTION_rel13.csv (147 rows, generated 2026-06-25)
 // Regenerate with: node scripts/generateReftables.js
 
 export interface DfoGearDescription {

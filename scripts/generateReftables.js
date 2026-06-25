@@ -89,6 +89,21 @@ export const PORTS_BY_PROVINCE: Record<number, ${iface}[]> = (() => {
       STAT_AREA_DESC_ENG: { field: 'statAreaDescEn', type: 'string' },
     },
   },
+  // MV_STAT_SECTION_VS_FMA — ~64-row section↔FMA cross-reference: each row pairs a stat-section
+  // code/desc with its FMA code/desc. All six columns are table-specific (none in the shared
+  // COLUMN_MAP), so it needs a per-table override — same shape as MV_STAT_DISTRICT_SECTION above.
+  {
+    csv: 'MV_STAT_SECTION_VS_FMA_rel6.csv', module: 'mvStatSectionVsFma',
+    exportName: 'MV_STAT_SECTION_VS_FMA', iface: 'DfoStatSectionVsFma',
+    columns: {
+      STAT_SECT_CODE_ID:  { field: 'statSectCodeId', type: 'number' },
+      STAT_SECT_DESC_FRE: { field: 'statSectDescFr', type: 'string' },
+      STAT_SECT_DESC_ENG: { field: 'statSectDescEn', type: 'string' },
+      FMA_CODE_ID:        { field: 'fmaCodeId', type: 'number' },
+      FMA_DESC_FRE:       { field: 'fmaDescFr', type: 'string' },
+      FMA_DESC_ENG:       { field: 'fmaDescEn', type: 'string' },
+    },
+  },
 ];
 
 /** RFC-4180-ish CSV parse: quoted fields, "" escapes, embedded commas. No embedded newlines in DFO tables. */

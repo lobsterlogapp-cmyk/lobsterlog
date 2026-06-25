@@ -15,3 +15,4 @@ export { MV_GEAR_DESCRIPTION, type DfoGearDescription } from './mvGearDescriptio
 export { MV_PROVINCE, type DfoProvince } from './mvProvince';
 export { MV_GRID, type DfoGrid } from './mvGrid';
 export { MV_STAT_DISTRICT_SECTION, type DfoStatDistrictSection } from './mvStatDistrictSection';
+export { MV_STAT_SECTION_VS_FMA, type DfoStatSectionVsFma } from './mvStatSectionVsFma';

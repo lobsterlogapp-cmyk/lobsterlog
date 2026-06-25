@@ -120,6 +120,8 @@
     "selectLfa": "Select LFA...",
     "lgridLabel": "LOBSTER SETTLEMENT GRID",
     "selectGrid": "Select grid...",
+    "statSectLabel": "STATISTICAL SECTION",
+    "selectStatSect": "Select section...",
     "catchWeightLabel": "LOBSTER CATCH WEIGHT (LBS)",
     "trapHaulsLabel": "TRAP HAULS",
     "vnotchLabel": "V-NOTCH / SIZE COUNTS",

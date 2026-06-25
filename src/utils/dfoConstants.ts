@@ -6,6 +6,7 @@
 // ============================================================
 
 import { MV_PORT, MV_PROVINCE } from '../data/reftables';
+import { MV_STAT_SECTION_VS_FMA, type DfoStatSectionVsFma } from '../data/reftables';
 
 // ─── Hardcoded header values ────────────────────────────────
 export const DFO_FORM_VER_ID = 234;
@@ -1252,6 +1253,28 @@ export const DFO_LGRID_BY_FMA: Record<number, Array<{ codeId: number; display: n
     }
   ]
 };
+
+// ─── Stat Sections per FMA (Rule 621) ───────────────────────
+// Mirrors the DFO_LGRID_BY_FMA / DFO_FMA_LGRID_REQUIRED pair above, but DERIVED from
+// the MV_STAT_SECTION_VS_FMA cross-reference (NL subform 91) rather than hand-listed.
+// Key = FMA codeId, Value = the stat-section rows for that FMA.
+export const DFO_STAT_SECT_BY_FMA: Record<number, DfoStatSectionVsFma[]> = (() => {
+  const m: Record<number, DfoStatSectionVsFma[]> = {};
+  for (const r of MV_STAT_SECTION_VS_FMA) {
+    if (!m[r.fmaCodeId]) m[r.fmaCodeId] = [];
+    m[r.fmaCodeId].push(r);
+  }
+  return m;
+})();
+
+// FMAs that require STAT_SECT_ID (Rule 621) — explicit 17-LFA mandatory list from the
+// fact sheet, hardcoded like DFO_FMA_LGRID_REQUIRED. NOT derived from the table:
+// MV_STAT_SECTION_VS_FMA (the Rule 622 validity map) spans 19 FMAs incl. LFA 01/02,
+// which Rule 621 does NOT make mandatory — so the gate is the 17, not the table's span.
+export const DFO_FMA_STAT_SECT_REQUIRED = new Set<number>([
+  1653, 2073, 1654, 1655, 2075, 2077, 2079, 39674, 39675,
+  2083, 2085, 2087, 2089, 2091, 2093, 2095, 2097,
+]);
 
 // ─── Bait Types — MAR Subform 90 (Rule 239b) ────────────────
 // BT_COND_ID is BLOCKED for Waste/Electronic/Synthetic (Rule 3060)

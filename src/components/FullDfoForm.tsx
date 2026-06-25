@@ -46,6 +46,8 @@ import {
   DFO_FMA_LIST,
   DFO_LGRID_BY_FMA,
   DFO_FMA_LGRID_REQUIRED,
+  DFO_STAT_SECT_BY_FMA,
+  DFO_FMA_STAT_SECT_REQUIRED,
   getDfoFmaList,
   getDfoBaitTypeList,
   baitConditionState,
@@ -123,7 +125,7 @@ type PickerField = 'sailed' | 'startHaul' | 'stopHaul' | 'landing' | 'mmTime' | 
 type SheetMode = 'bait' | 'bycatch' | null;
 
 const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLogId, onSaved, readOnly = false, onBack }, ref) => {
-  const { t } = useTranslation('dfo');
+  const { t, i18n } = useTranslation('dfo');
   const { t: tc } = useTranslation('common');
 
   // Core fields — start BLANK for new logs so completion % reflects real progress
@@ -133,6 +135,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const [lgridDisplay, setLgridDisplay] = useState('');
   const [fmaPickerOpen, setFmaPickerOpen] = useState(false);
   const [lgridPickerOpen, setLgridPickerOpen] = useState(false);
+  // STAT_SECT_ID (NL subform 91 only) — mirrors the lgrid picker state trio
+  const [statSectId, setStatSectId] = useState<number | null>(null);
+  const [statSectDisplay, setStatSectDisplay] = useState('');
+  const [statSectPickerOpen, setStatSectPickerOpen] = useState(false);
   const [catchWeight, setCatchWeight] = useState('');
   const [trapHauls, setTrapHauls] = useState('');
   const [portLanded, setPortLanded] = useState('');
@@ -313,6 +319,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           setFmaId(d.fmaId ? Number(d.fmaId) : null);
           setLgridCodeId(d.lgridCodeId ? Number(d.lgridCodeId) : null);
           setLgridDisplay(d.lgridDisplay || '');
+          setStatSectId(d.statSectId ? Number(d.statSectId) : null);
+          setStatSectDisplay(d.statSectDisplay || '');
           setCatchWeight(d.catchWeight || '');
           setTrapHauls(d.trapHauls || '');
           setPortLanded(d.portLanded || '');
@@ -501,6 +509,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     fmaId: String(fmaId ?? ''),
         lgridCodeId: String(lgridCodeId ?? ''),
         lgridDisplay,
+        statSectId: String(statSectId ?? ''),
+        statSectDisplay,
         catchWeight, trapHauls,
     portLanded, portLandedCodeId: String(portLandedCodeId ?? ''),
     crewRegistry: JSON.stringify(crewMembers),
@@ -1020,6 +1030,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       startDt:     dateFished,
       fmaId:       fmaId ? String(fmaId) : '',
       lgridCodeId: DFO_FMA_LGRID_REQUIRED.has(fmaId ?? 0) ? (lgridDisplay || '') : 'ok',
+      statSectId:  DFO_FMA_STAT_SECT_REQUIRED.has(fmaId ?? 0) ? (statSectDisplay || '') : 'ok',
       catchWeight,
       trapHauls,
       lgbkUid,
@@ -1038,6 +1049,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       startDt:     'Date Fished',
       fmaId:       'Fishing Area (LFA)',
       lgridCodeId: 'Lobster Settlement Grid',
+      statSectId:  'Statistical Section',
       catchWeight: 'Lobster Catch Weight',
       trapHauls:   'Trap Hauls',
       lgbkUid:     'Log Book UID',
@@ -1259,6 +1271,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                                 setFmaId(f.codeId);
                                 setLgridCodeId(null);
                                 setLgridDisplay('');
+                                setStatSectId(null);
+                                setStatSectDisplay('');
                                 setFmaPickerOpen(false);
                               }}
                             >
@@ -1302,6 +1316,47 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                                   </Text>
                                 </TouchableOpacity>
                               ))}
+                            </ScrollView>
+                          </View>
+                        )}
+                      </View>
+                    )}
+
+                    {/* STAT_SECT_ID Selector — NL(91) ONLY, mandatory for the Rule 621 FMAs.
+                        Blocked for 88/89/90 (Rule 608); visible implies required here. */}
+                    {subformId === 91 && fmaId !== null && DFO_FMA_STAT_SECT_REQUIRED.has(fmaId) && (
+                      <View style={styles.fieldRow}>
+                        <Text style={styles.label}>{t('form234.statSectLabel')}<Text style={{ color: '#EF4444' }}> *</Text></Text>
+                        <TouchableOpacity
+                          style={styles.timeButton}
+                          onPress={() => { if (readOnly) return; setStatSectPickerOpen(o => !o); setFmaPickerOpen(false); }}
+                        >
+                          <Text style={[styles.timeButtonText, !statSectDisplay && styles.timeButtonPlaceholder]}>
+                            {statSectDisplay || t('form234.selectStatSect')}
+                          </Text>
+                          <ChevronDown size={16} color="#64748B" />
+                        </TouchableOpacity>
+                        {statSectPickerOpen && (
+                          <View style={[styles.dropdownList, { maxHeight: 200 }]}>
+                            <ScrollView nestedScrollEnabled>
+                              {(DFO_STAT_SECT_BY_FMA[fmaId] ?? []).map(r => {
+                                const label = i18n.language.startsWith('fr') ? r.statSectDescFr : r.statSectDescEn;
+                                return (
+                                  <TouchableOpacity
+                                    key={r.statSectCodeId}
+                                    style={[styles.dropdownItem, statSectId === r.statSectCodeId && styles.dropdownItemActive]}
+                                    onPress={() => {
+                                      setStatSectId(r.statSectCodeId);
+                                      setStatSectDisplay(label);
+                                      setStatSectPickerOpen(false);
+                                    }}
+                                  >
+                                    <Text style={[styles.dropdownItemText, statSectId === r.statSectCodeId && styles.dropdownItemTextActive]}>
+                                      {label}
+                                    </Text>
+                                  </TouchableOpacity>
+                                );
+                              })}
                             </ScrollView>
                           </View>
                         )}

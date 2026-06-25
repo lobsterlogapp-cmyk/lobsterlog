@@ -7,7 +7,7 @@
 import forge from 'node-forge';
 import { DfoLog } from './dfoLogStorage';
 import { CaptainProfile } from './captainStorage';
-import { getDfoBaitTypeList, baitConditionState, getDfoPconsSpeciesList, DFO_SPECIE_FRM_ID, DFO_PCONS_OTHER_SIZE_ID, DFO_GEAR_ID, DFO_SOFT_VER, DFO_CIE_ID, DFO_FORM_VER_ID, DFO_HLIN_COMPANY_LIST, DFO_HLOUT_COMPANY_LIST, DFO_SUBFORM_REGISTRY, DFO_FMA_38B, DFO_FMA_NB_VNTCH, DFO_FMA_NB_VNTCH_YOU } from './dfoConstants';
+import { getDfoBaitTypeList, baitConditionState, getDfoPconsSpeciesList, DFO_SPECIE_FRM_ID, DFO_PCONS_OTHER_SIZE_ID, DFO_GEAR_ID, DFO_SOFT_VER, DFO_CIE_ID, DFO_FORM_VER_ID, DFO_HLIN_COMPANY_LIST, DFO_HLOUT_COMPANY_LIST, DFO_SUBFORM_REGISTRY, DFO_FMA_38B, DFO_FMA_NB_VNTCH, DFO_FMA_NB_VNTCH_YOU, DFO_FMA_STAT_SECT_REQUIRED, DFO_STAT_SECT_BY_FMA } from './dfoConstants';
 import { MV_PARTNERSHIP_TYPE } from '../data/reftables';
 
 export function generateReportUid(): string {
@@ -280,6 +280,11 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   // Subforms_requirements_234.xlsx row 79. Values constrained to 39682=Standard /
   // 39683=Large (Rule 611, DFO_TRAP_SIZE_LIST). XSD sequence: after LONG, before CATCH.
   if (subformId === 91) effort += tag('TRP_SZ_ID', d.trapSize ?? '', '          ');
+  // STAT_SECT_ID: Mandatory for the Rule 621 FMAs, Blocked elsewhere (Rule 608). Unlike
+  // LGRID/TRP_SZ_ID this is FMA-GATED, NOT subform-gated — emit only when the effort FMA is
+  // in DFO_FMA_STAT_SECT_REQUIRED (those 17 FMAs are all NL-91). Value-gate AND-ed in via
+  // tag() (blank → absent). XSD sequence: after TRP_SZ_ID, before REM.
+  if (DFO_FMA_STAT_SECT_REQUIRED.has(Number(d.fmaId))) effort += tag('STAT_SECT_ID', d.statSectId ?? '', '          ');
   // REM: EFFORT_DETAIL note (last child before CATCH) — same 'haul' text
   effort += tag('REM', rem.haul ?? '', '          ');
   effort += `          <CATCH>\n`;
@@ -793,6 +798,24 @@ export function validateElogXml(xml: string, subformId: number): { valid: boolea
           // only for 90 when populated; optional there, so no mandatory check.
           if (subformId !== 90 && get(ed, 'LGRID_ID').length > 0) {
             errors.push(`${dp}: LGRID_ID is blocked for subform ${subformId}`);
+          }
+          // STAT_SECT_ID (Rules 621 + 622): FMA-gated, NOT subform-gated (mirrors the emit).
+          // Rule 621 — mandatory when the effort FMA is in DFO_FMA_STAT_SECT_REQUIRED, blocked
+          // (must be absent) otherwise. Rule 622 — when present, the (FMA, section) pair must
+          // exist in MV_STAT_SECTION_VS_FMA, i.e. statSectId ∈ DFO_STAT_SECT_BY_FMA[FMA].
+          const statSectNode = get(ed, 'STAT_SECT_ID')[0];
+          const statSectReq = DFO_FMA_STAT_SECT_REQUIRED.has(efFma);
+          if (statSectReq && !statSectNode) {
+            errors.push(`${dp}: STAT_SECT_ID is mandatory for this FMA (Rule 621)`);
+          }
+          if (!statSectReq && statSectNode) {
+            errors.push(`${dp}: STAT_SECT_ID is blocked for this FMA (Rule 621)`);
+          }
+          if (statSectReq && statSectNode) {
+            const validSects = (DFO_STAT_SECT_BY_FMA[efFma] ?? []).map(r => String(r.statSectCodeId));
+            if (!validSects.includes(statSectNode.text)) {
+              errors.push(`${dp}: STAT_SECT_ID ${statSectNode.text} is not valid for this FMA (Rule 622)`);
+            }
           }
           // Rules 623-626: NB_VNTCH / NB_VNTCH_YOU — QC FMA-conditional
           const vntch = get(ed, 'NB_VNTCH').length > 0;

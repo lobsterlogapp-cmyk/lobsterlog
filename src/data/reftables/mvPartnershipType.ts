@@ -1,5 +1,5 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
-// Source: data/dfo-reftables/MV_PARTNERSHIP_TYPE_rel1.csv (2 rows, generated 2026-06-19)
+// Source: data/dfo-reftables/MV_PARTNERSHIP_TYPE_rel1.csv (2 rows, generated 2026-06-25)
 // Regenerate with: node scripts/generateReftables.js
 
 export interface DfoPartnershipType {

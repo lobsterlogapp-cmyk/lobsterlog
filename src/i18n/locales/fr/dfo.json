@@ -121,6 +121,8 @@
     "selectLfa": "Sélectionne une ZPH…",
     "lgridLabel": "GRILLE DE PEUPLEMENT DU HOMARD",
     "selectGrid": "Sélectionne une grille…",
+    "statSectLabel": "SECTION STATISTIQUE",
+    "selectStatSect": "Sélectionner une section...",
     "catchWeightLabel": "POIDS DES CAPTURES (LBS)",
     "trapHaulsLabel": "LEVÉES DE CASIERS",
     "vnotchLabel": "ENCOCHES EN V / COMPTAGES",
