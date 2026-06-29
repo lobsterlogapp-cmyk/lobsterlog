@@ -1,0 +1,8 @@
+{
+  "firestore": [
+    {
+      "database": "dfo-elog",
+      "rules": "firestore.rules"
+    }
+  ]
+}

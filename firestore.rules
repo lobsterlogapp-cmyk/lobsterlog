@@ -1,0 +1,26 @@
+rules_version = '2';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Security rules for the dfo-elog Firestore database (northamerica-northeast1).
+//
+// This database holds DFO backup data ONLY. The free/Pro (default) database has
+// its own separate rules and is NOT governed by this file — deploy this file to
+// the dfo-elog database specifically (see firebase.json).
+//
+// All backup data lives under the signed-in user's Firebase auth UID:
+//     backups/{uid}/stores/{storeId}
+//
+// A harvester may read and write ONLY their own backup subtree: request.auth.uid
+// must equal the {uid} path segment. No cross-user access, no unauthenticated
+// access, and no catch-all allow — everything outside backups/{uid} is denied.
+// ─────────────────────────────────────────────────────────────────────────────
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /backups/{uid}/{document=**} {
+      allow read, write: if request.auth != null
+                         && request.auth.uid == uid;
+    }
+
+  }
+}

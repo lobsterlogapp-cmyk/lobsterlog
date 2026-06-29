@@ -232,5 +232,20 @@
     "crossingSea": "MER DE TRAVERS",
     "windAgainstSea": "VENT CONTRE MER ⚠",
     "tideCountdown": "{{type}} dans {{hours}}h {{mins}}m"
+  },
+  "backup": {
+    "cardHeader": "Sauvegarde infonuagique",
+    "toggleLabel": "Sauvegarder mon journal sur les serveurs canadiens sécurisés de LobsterLog",
+    "toggleHelp": "Désactivée par défaut. Une fois activée, ton journal de bord, tes formulaires et ton profil MPO sont copiés dans ton compte privé pour que tu puisses les récupérer si tu perds ou changes de téléphone.",
+    "learnMore": "Qu'est-ce qui est sauvegardé?",
+    "explainerTitle": "Sauvegarde infonuagique",
+    "explainerSubtitle": "Ton journal, prêt sur un nouveau téléphone",
+    "whatTitle": "Ce qui est sauvegardé",
+    "whatBody": "Tes entrées de journal de bord MPO, tes formulaires 222 et 233, ton archive XML envoyée et ton registre de transmission, ton profil de capitaine et ton équipage enregistré. Rien du côté du journal de pêche gratuit n'est inclus.",
+    "whereTitle": "Où c'est stocké",
+    "whereBody": "Sur les serveurs sécurisés de LobsterLog au Canada, dans ton propre compte privé. Toi seul, une fois connecté, peux lire ou écrire ta sauvegarde — personne d'autre ne peut la voir.",
+    "controlTitle": "Tu gardes le contrôle",
+    "controlBody": "La sauvegarde reste désactivée jusqu'à ce que tu l'actives, et tu peux la désactiver à tout moment sur cet écran. La désactiver arrête les nouvelles sauvegardes; elle ne supprime pas ce qui se trouve déjà sur ton téléphone.",
+    "closeButton": "Compris"
   }
 }

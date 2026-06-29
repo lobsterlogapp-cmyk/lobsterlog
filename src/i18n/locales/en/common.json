@@ -231,5 +231,20 @@
     "crossingSea": "CROSSING SEA",
     "windAgainstSea": "WIND AGAINST SEA ⚠",
     "tideCountdown": "{{type}} in {{hours}}h {{mins}}m"
+  },
+  "backup": {
+    "cardHeader": "Cloud Backup",
+    "toggleLabel": "Back up my logbook to LobsterLog's secure Canadian servers",
+    "toggleHelp": "Off by default. When on, your DFO logbook, forms, and profile are copied to your private account so you can get them back if you lose or replace your phone.",
+    "learnMore": "What gets backed up?",
+    "explainerTitle": "Cloud Backup",
+    "explainerSubtitle": "Your logbook, safe on a new phone",
+    "whatTitle": "What's backed up",
+    "whatBody": "Your DFO logbook entries, your Form 222 and Form 233 reports, your sent-XML archive and transmission register, your Captain Profile, and your saved crew. Nothing from the free fishing-log side is included.",
+    "whereTitle": "Where it's stored",
+    "whereBody": "On LobsterLog's secure servers in Canada, inside your own private account. Only you, signed in, can read or write your backup — no one else can see it.",
+    "controlTitle": "It's yours to control",
+    "controlBody": "Backup stays off until you turn it on, and you can turn it off again any time on this screen. Turning it off stops new backups; it does not delete what's already on your phone.",
+    "closeButton": "Got it"
   }
 }

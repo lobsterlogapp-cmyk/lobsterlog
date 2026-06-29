@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
+  Modal,
   Platform,
   SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -20,6 +22,8 @@ import {
   saveCaptainProfile,
 } from '../utils/captainStorage';
 import { DFO_FMA_LIST } from '../utils/dfoConstants';
+import { loadBackupConsent, saveBackupConsent } from '../utils/dfoBackup';
+import BackupExplainerModal from './BackupExplainerModal';
 import { changeLanguage } from '../i18n';
 
 // Rule 260 — valid FIN formats: 9 digits | C/D + 7 digits | 5–6 digits | DFOCC + 9 digits
@@ -54,10 +58,21 @@ export default function CaptainProfileScreen({ onClose }: Props) {
   const [showElogKey, setShowElogKey] = useState(false);
   const [finError, setFinError] = useState('');
   const [vrnError, setVrnError] = useState('');
+  const [backupConsent, setBackupConsent] = useState(false);
+  const [explainerOpen, setExplainerOpen] = useState(false);
 
   useEffect(() => {
     loadCaptainProfile().then(setProfile);
+    loadBackupConsent().then(setBackupConsent);
   }, []);
+
+  // Persist the backup consent immediately on toggle (not via the profile Save
+  // button) so the choice survives an app restart on its own. Default is OFF;
+  // nothing backs up until this is ON (write-through is wired in Phase 2).
+  const handleBackupConsentChange = async (value: boolean) => {
+    setBackupConsent(value);
+    await saveBackupConsent(value);
+  };
 
   const handleSave = async () => {
     if (profile.licenceHolderFin.trim() && !isValidFin(profile.licenceHolderFin.trim())) {
@@ -245,6 +260,23 @@ export default function CaptainProfileScreen({ onClose }: Props) {
         </View>
 
         <View style={styles.card}>
+          <Text style={styles.cardHeader}>{t('backup.cardHeader')}</Text>
+          <View style={styles.backupRow}>
+            <Text style={styles.backupToggleLabel}>{t('backup.toggleLabel')}</Text>
+            <Switch
+              value={backupConsent}
+              onValueChange={handleBackupConsentChange}
+              trackColor={{ false: '#CBD5E1', true: '#1E40AF' }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+          <Text style={styles.backupHelp}>{t('backup.toggleHelp')}</Text>
+          <TouchableOpacity onPress={() => setExplainerOpen(true)} activeOpacity={0.7}>
+            <Text style={styles.backupLearnMore}>{t('backup.learnMore')}</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.card}>
           <Text style={styles.cardHeader}>{t('settings.language')}</Text>
           <View style={styles.languageToggleRow}>
             <TouchableOpacity
@@ -272,6 +304,15 @@ export default function CaptainProfileScreen({ onClose }: Props) {
           <Text style={styles.saveButtonText}>{t('profile.save')}</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      <Modal
+        visible={explainerOpen}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setExplainerOpen(false)}
+      >
+        <BackupExplainerModal onClose={() => setExplainerOpen(false)} />
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -454,5 +495,30 @@ const styles = StyleSheet.create({
     color: '#DC2626',
     marginTop: 4,
     fontWeight: '500',
+  },
+  backupRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  backupToggleLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#334155',
+    lineHeight: 20,
+  },
+  backupHelp: {
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 18,
+    marginTop: 10,
+  },
+  backupLearnMore: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1E40AF',
+    marginTop: 12,
   },
 });
