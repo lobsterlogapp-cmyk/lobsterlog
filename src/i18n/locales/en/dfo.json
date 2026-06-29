@@ -122,6 +122,8 @@
     "selectGrid": "Select grid...",
     "statSectLabel": "STATISTICAL SECTION",
     "selectStatSect": "Select section...",
+    "gridLabel": "GRID",
+    "selectQcGrid": "Select grid...",
     "catchWeightLabel": "LOBSTER CATCH WEIGHT (LBS)",
     "trapHaulsLabel": "TRAP HAULS",
     "vnotchLabel": "V-NOTCH / SIZE COUNTS",

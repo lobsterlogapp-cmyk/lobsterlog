@@ -1276,6 +1276,37 @@ export const DFO_FMA_STAT_SECT_REQUIRED = new Set<number>([
   2083, 2085, 2087, 2089, 2091, 2093, 2095, 2097,
 ]);
 
+// ─── QC GRID_ID validity (Rules 1011 / 613x / 614x) ─────────
+// Source of truth: docs/RECON_grid_id_S83.md + docs/RECON_grid_orphan_check_S83.md.
+// These two sets partition the 40 QC LFAs (DFO_FMA_LIST_QC): 29 BLOCKED + 11 FILTERED.
+
+// Rule 1011: when DFO region is Quebec (Reg_id 1006) AND the FMA is one of these 29,
+// the capture of EFFORT_DETAIL.GRID_ID is BLOCKED (Rule 1012 mandates it for QC FMAs
+// NOT in this set). The 29-code QC exclusion cluster, verbatim from RECON_grid_id_S83.md.
+export const DFO_GRID_BLOCKED_FMA = new Set<number>([
+  25640, 25656, 25658, 25657, 25636, 25659, 25660, 25662, 25661, 25673,
+  25672, 25674, 25675, 25676, 25677, 25678, 25679, 25663, 25680, 25664,
+  25665, 25666, 25671, 25667, 25668, 25670, 25669, 25635, 25634,
+]);
+
+// Rules 613x / 614x: for these FMAs, GRID_ID is restricted to MV_GRID rows whose
+// DESC_FRE first character equals the map digit below — "4" (map #4, Rule 613x, LFA 22)
+// or "1" (map #1, Rule 614x). Eleven QC-only FILTERED codes from RECON_grid_orphan_check_S83.md
+// (the two Gulf 614x triggers 1526/1527 are deliberately excluded — not Quebec).
+export const DFO_FMA_GRID_MAP: Record<number, string> = {
+  1534: '4',   // Rule 613x — LFA 22 (map #4)
+  25641: '1',  // Rule 614x — LFA 17a (map #1)
+  25626: '1',  // Rule 614x — LFA 18a
+  25627: '1',  // Rule 614x — LFA 18b
+  25628: '1',  // Rule 614x — LFA 18c
+  25629: '1',  // Rule 614x — LFA 18d
+  25630: '1',  // Rule 614x — LFA 18e
+  25631: '1',  // Rule 614x — LFA 18f
+  25632: '1',  // Rule 614x — LFA 18g
+  25633: '1',  // Rule 614x — LFA 18h
+  25637: '1',  // Rule 614x — LFA 18i
+};
+
 // ─── Bait Types — MAR Subform 90 (Rule 239b) ────────────────
 // BT_COND_ID is BLOCKED for Waste/Electronic/Synthetic (Rule 3060)
 // BT_COND_ID is MANDATORY for all other bait types

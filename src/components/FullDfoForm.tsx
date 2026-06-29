@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
+  FlatList,
+  Dimensions,
   Alert,
   Platform,
   Modal,
@@ -48,6 +50,7 @@ import {
   DFO_FMA_LGRID_REQUIRED,
   DFO_STAT_SECT_BY_FMA,
   DFO_FMA_STAT_SECT_REQUIRED,
+  DFO_FMA_GRID_MAP,
   getDfoFmaList,
   getDfoBaitTypeList,
   baitConditionState,
@@ -64,7 +67,7 @@ import { useTranslation } from 'react-i18next';
 import CrewSelector from './CrewSelector';
 import DfoPortSelector from './DfoPortSelector';
 import { CrewMember } from '../utils/crewStorage';
-import { MV_CATCH_USAGE, MV_PARTNERSHIP_TYPE, MV_SAR_LIST, MV_SPECIMENS_CONDITION, MV_BAIT_CONDITION } from '../data/reftables';
+import { MV_CATCH_USAGE, MV_PARTNERSHIP_TYPE, MV_SAR_LIST, MV_SPECIMENS_CONDITION, MV_BAIT_CONDITION, MV_GRID } from '../data/reftables';
 
 export interface FullDfoFormHandle {
   saveDraft: () => Promise<void>;
@@ -90,6 +93,31 @@ const BYCATCH_USAGE_OPTIONS = PCONS_USAGE_CODE_IDS
   .map(id => MV_CATCH_USAGE.find(u => u.codeId === id))
   .filter((u): u is NonNullable<typeof u> => u != null)
   .map(u => ({ label: u.descEn, value: String(u.codeId) }));
+
+// Natural, numeric-aware sort for FMA labels so "20a10" sorts after "20a9a" (not after
+// "20a1") and sub-letter entries land right (20a3a after 20a3; 20a9a after 20a9). Splits
+// each label into digit / non-digit chunks; numeric chunks compare as numbers, text as
+// text, and a shorter prefix sorts first. Display-time only — never mutates the source.
+const compareFmaLabel = (a: { label: string }, b: { label: string }): number => {
+  const ax = a.label.match(/\d+|\D+/g) ?? [];
+  const bx = b.label.match(/\d+|\D+/g) ?? [];
+  const n = Math.min(ax.length, bx.length);
+  for (let i = 0; i < n; i++) {
+    const ac = ax[i], bc = bx[i];
+    const aNum = /^\d+$/.test(ac), bNum = /^\d+$/.test(bc);
+    if (aNum && bNum) {
+      const d = parseInt(ac, 10) - parseInt(bc, 10);
+      if (d !== 0) return d;
+    } else if (ac !== bc) {
+      return ac < bc ? -1 : 1;
+    }
+  }
+  return ax.length - bx.length;
+};
+
+// QC grid picker list height inside its Modal overlay — ~60% of screen (it owns the
+// overlay now, vs the old 200px inline dropdown).
+const GRID_LIST_MAX_H = Math.round(Dimensions.get('window').height * 0.6);
 
 const formatTime = (d: Date): string => {
   const hh = String(d.getHours()).padStart(2, '0');
@@ -139,6 +167,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const [statSectId, setStatSectId] = useState<number | null>(null);
   const [statSectDisplay, setStatSectDisplay] = useState('');
   const [statSectPickerOpen, setStatSectPickerOpen] = useState(false);
+  // GRID_ID (QC subform 88 only) — mirrors the stat-sect picker state trio (Rules 613x/614x)
+  const [gridId, setGridId] = useState<number | null>(null);
+  const [gridDisplay, setGridDisplay] = useState('');
+  const [gridPickerOpen, setGridPickerOpen] = useState(false);
+  const [gridSearch, setGridSearch] = useState('');
   const [catchWeight, setCatchWeight] = useState('');
   const [trapHauls, setTrapHauls] = useState('');
   const [portLanded, setPortLanded] = useState('');
@@ -200,6 +233,27 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const requiredFields = useMemo(() => new Set(fieldConfig.required), [fieldConfig]);
   const isVisible = (f: string) => visibleFields.has(f);
   const isRequired = (f: string) => requiredFields.has(f);
+
+  // GRID_ID options (QC subform 88, Rules 613x/614x): MV_GRID rows whose DESC_FRE first
+  // char equals the map digit for this FMA ("1" ≈ 3259 rows, "4" ≈ 957 — long list is correct).
+  // Memoized on [subformId, fmaId] so the 5272-row filter doesn't re-run every render.
+  const gridOptions = useMemo(() => {
+    if (subformId !== 88 || fmaId === null) return [];
+    const digit = DFO_FMA_GRID_MAP[fmaId];
+    if (!digit) return [];
+    return MV_GRID.filter(g => g.descFr.charAt(0) === digit);
+  }, [subformId, fmaId]);
+
+  // QC grid search filter (Phase 2.6): case-insensitive substring on the grid code (DESC_FRE),
+  // layered on top of gridOptions — leadchar validity is unchanged. Empty query → full list.
+  const gridOptionsFiltered = useMemo(() => {
+    const q = gridSearch.trim().toLowerCase();
+    return q ? gridOptions.filter(g => g.descFr.toLowerCase().includes(q)) : gridOptions;
+  }, [gridOptions, gridSearch]);
+
+  // LFA picker options: the per-subform FMA list, natural-sorted for display. Sorts a COPY
+  // ([...]) — never mutates the source constant. codeId-based selection is order-independent.
+  const fmaOptions = useMemo(() => [...getDfoFmaList(subformId)].sort(compareFmaLabel), [subformId]);
 
   // MAR-specific fields (Task 2)
   const [nbSpcmnBrd, setNbSpcmnBrd] = useState('');
@@ -321,6 +375,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           setLgridDisplay(d.lgridDisplay || '');
           setStatSectId(d.statSectId ? Number(d.statSectId) : null);
           setStatSectDisplay(d.statSectDisplay || '');
+          setGridId(d.gridId ? Number(d.gridId) : null);
+          setGridDisplay(d.gridDisplay || '');
           setCatchWeight(d.catchWeight || '');
           setTrapHauls(d.trapHauls || '');
           setPortLanded(d.portLanded || '');
@@ -511,6 +567,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         lgridDisplay,
         statSectId: String(statSectId ?? ''),
         statSectDisplay,
+        gridId: String(gridId ?? ''),
+        gridDisplay,
         catchWeight, trapHauls,
     portLanded, portLandedCodeId: String(portLandedCodeId ?? ''),
     crewRegistry: JSON.stringify(crewMembers),
@@ -1031,6 +1089,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       fmaId:       fmaId ? String(fmaId) : '',
       lgridCodeId: DFO_FMA_LGRID_REQUIRED.has(fmaId ?? 0) ? (lgridDisplay || '') : 'ok',
       statSectId:  DFO_FMA_STAT_SECT_REQUIRED.has(fmaId ?? 0) ? (statSectDisplay || '') : 'ok',
+      gridId:      (fmaId != null && fmaId in DFO_FMA_GRID_MAP) ? (gridDisplay || '') : 'ok',
       catchWeight,
       trapHauls,
       lgbkUid,
@@ -1050,6 +1109,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       fmaId:       'Fishing Area (LFA)',
       lgridCodeId: 'Lobster Settlement Grid',
       statSectId:  'Statistical Section',
+      gridId:      'Grid',
       catchWeight: 'Lobster Catch Weight',
       trapHauls:   'Trap Hauls',
       lgbkUid:     'Log Book UID',
@@ -1263,7 +1323,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                       </TouchableOpacity>
                       {fmaPickerOpen && (
                         <View style={styles.dropdownList}>
-                          {getDfoFmaList(subformId).map(f => (
+                          {fmaOptions.map(f => (
                             <TouchableOpacity
                               key={f.codeId}
                               style={[styles.dropdownItem, fmaId === f.codeId && styles.dropdownItemActive]}
@@ -1273,6 +1333,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                                 setLgridDisplay('');
                                 setStatSectId(null);
                                 setStatSectDisplay('');
+                                setGridId(null);
+                                setGridDisplay('');
+                                setGridSearch('');
                                 setFmaPickerOpen(false);
                               }}
                             >
@@ -1360,6 +1423,79 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                             </ScrollView>
                           </View>
                         )}
+                      </View>
+                    )}
+
+                    {/* GRID_ID Selector — QC(88) ONLY, mandatory for the Rules 613x/614x FMAs.
+                        Map-membership IS the "required, not blocked" gate: the 29 Rule-1011
+                        blocked FMAs are absent from DFO_FMA_GRID_MAP, so they never show this.
+                        Visible implies required → label always carries *. Long list is expected. */}
+                    {subformId === 88 && fmaId !== null && fmaId in DFO_FMA_GRID_MAP && (
+                      <View style={styles.fieldRow}>
+                        <Text style={styles.label}>{t('form234.gridLabel')}<Text style={{ color: '#EF4444' }}> *</Text></Text>
+                        <TouchableOpacity
+                          style={styles.timeButton}
+                          onPress={() => { if (readOnly) return; setGridSearch(''); setGridPickerOpen(true); setFmaPickerOpen(false); }}
+                        >
+                          <Text style={[styles.timeButtonText, !gridDisplay && styles.timeButtonPlaceholder]}>
+                            {gridDisplay || t('form234.selectQcGrid')}
+                          </Text>
+                          <ChevronDown size={16} color="#64748B" />
+                        </TouchableOpacity>
+                        {/* Phase 2.7: list+search live in a Modal overlay (NOT in the form
+                            ScrollView) so the FlatList is no longer a nested VirtualizedList. */}
+                        <Modal
+                          visible={gridPickerOpen}
+                          transparent
+                          animationType="slide"
+                          onRequestClose={() => { setGridPickerOpen(false); setGridSearch(''); }}
+                        >
+                          <TouchableOpacity
+                            style={styles.modalOverlay}
+                            activeOpacity={1}
+                            onPress={() => { setGridPickerOpen(false); setGridSearch(''); }}
+                          >
+                            <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+                              <View style={styles.sheetContent}>
+                                <Text style={styles.sheetTitle}>{t('form234.gridLabel')}</Text>
+                                <TextInput
+                                  style={[styles.input, { marginBottom: 12 }]}
+                                  value={gridSearch}
+                                  onChangeText={setGridSearch}
+                                  placeholder={t('form234.selectQcGrid')}
+                                  placeholderTextColor="#94A3B8"
+                                  autoCorrect={false}
+                                  autoCapitalize="characters"
+                                />
+                                <FlatList
+                                  data={gridOptionsFiltered}
+                                  keyExtractor={(g) => String(g.codeId)}
+                                  style={{ maxHeight: GRID_LIST_MAX_H }}
+                                  keyboardShouldPersistTaps="handled"
+                                  initialNumToRender={20}
+                                  windowSize={10}
+                                  maxToRenderPerBatch={20}
+                                  removeClippedSubviews={true}
+                                  renderItem={({ item: g }) => (
+                                    <TouchableOpacity
+                                      style={[styles.dropdownItem, gridId === g.codeId && styles.dropdownItemActive]}
+                                      onPress={() => {
+                                        setGridId(g.codeId);
+                                        setGridDisplay(g.descFr);
+                                        setGridPickerOpen(false);
+                                        setGridSearch('');
+                                      }}
+                                    >
+                                      <Text style={[styles.dropdownItemText, gridId === g.codeId && styles.dropdownItemTextActive]}>
+                                        {g.descFr}
+                                      </Text>
+                                    </TouchableOpacity>
+                                  )}
+                                />
+                              </View>
+                            </TouchableOpacity>
+                          </TouchableOpacity>
+                        </Modal>
                       </View>
                     )}
           {renderField(t('form234.catchWeightLabel'), catchWeight, setCatchWeight, '0', false, false, 'numeric', isRequired('catchWeight'))}

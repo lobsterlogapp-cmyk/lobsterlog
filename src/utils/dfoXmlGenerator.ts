@@ -7,8 +7,8 @@
 import forge from 'node-forge';
 import { DfoLog } from './dfoLogStorage';
 import { CaptainProfile } from './captainStorage';
-import { getDfoBaitTypeList, baitConditionState, getDfoPconsSpeciesList, DFO_SPECIE_FRM_ID, DFO_PCONS_OTHER_SIZE_ID, DFO_GEAR_ID, DFO_SOFT_VER, DFO_CIE_ID, DFO_FORM_VER_ID, DFO_HLIN_COMPANY_LIST, DFO_HLOUT_COMPANY_LIST, DFO_SUBFORM_REGISTRY, DFO_FMA_38B, DFO_FMA_NB_VNTCH, DFO_FMA_NB_VNTCH_YOU, DFO_FMA_STAT_SECT_REQUIRED, DFO_STAT_SECT_BY_FMA } from './dfoConstants';
-import { MV_PARTNERSHIP_TYPE } from '../data/reftables';
+import { getDfoBaitTypeList, baitConditionState, getDfoPconsSpeciesList, DFO_SPECIE_FRM_ID, DFO_PCONS_OTHER_SIZE_ID, DFO_GEAR_ID, DFO_SOFT_VER, DFO_CIE_ID, DFO_FORM_VER_ID, DFO_HLIN_COMPANY_LIST, DFO_HLOUT_COMPANY_LIST, DFO_SUBFORM_REGISTRY, DFO_FMA_38B, DFO_FMA_NB_VNTCH, DFO_FMA_NB_VNTCH_YOU, DFO_FMA_STAT_SECT_REQUIRED, DFO_STAT_SECT_BY_FMA, DFO_FMA_GRID_MAP, DFO_GRID_BLOCKED_FMA } from './dfoConstants';
+import { MV_PARTNERSHIP_TYPE, MV_GRID } from '../data/reftables';
 
 export function generateReportUid(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -266,6 +266,14 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   // the value-gate AND-ed in — tag() emits nothing when d.lgridCodeId is empty, so it
   // only appears on 90 when populated.
   if (subformId === 90) effort += tag('LGRID_ID', d.lgridCodeId, '          ');
+  // GRID_ID: QC(88) only, FMA-gated (NOT subform-gated like LGRID). Mandatory for required
+  // (non-blocked) QC FMAs — those in DFO_FMA_GRID_MAP (Rule 1012). The 29 Rule-1011 blocked
+  // FMAs are absent from the map, so the gate is false and nothing emits (Rule 1011). Value =
+  // stored MV_GRID code_id; value-gate AND-ed via tag(). XSD sequence: after LGRID_ID, before
+  // GEAR_GRP_NUM (EFFORT_DETAIL_SPEC). Map digit (613x="4"/614x="1") is enforced by the validator.
+  if (subformId === 88 && d.fmaId != null && (Number(d.fmaId) in DFO_FMA_GRID_MAP)) {
+    effort += tag('GRID_ID', d.gridId ?? '', '          ');
+  }
   // GEAR_GRP_NUM: sequential from 1 per EFFORT node (Rule 609x); always 1 for single-effort log
   effort += tag('GEAR_GRP_NUM', '1', '          ');
   // LAT/LONG: Rule 3059 — MAR(90) FMA 38b only (mandatory there, blocked in all other
@@ -798,6 +806,28 @@ export function validateElogXml(xml: string, subformId: number): { valid: boolea
           // only for 90 when populated; optional there, so no mandatory check.
           if (subformId !== 90 && get(ed, 'LGRID_ID').length > 0) {
             errors.push(`${dp}: LGRID_ID is blocked for subform ${subformId}`);
+          }
+          // GRID_ID (Rules 1011 / 1012 / 613x-614x): QC(88) only, FMA-gated (mirrors the emit).
+          // Rule 1011 — blocked (must be absent) when the FMA is in DFO_GRID_BLOCKED_FMA.
+          // Rule 1012 — mandatory (must be present) when the FMA is in DFO_FMA_GRID_MAP.
+          // Rule 613x/614x — when present, the grid's MV_GRID DESC_FRE first char must equal the
+          // FMA's map digit DFO_FMA_GRID_MAP[FMA] ("4" → 613x, "1" → 614x).
+          const gridNode = get(ed, 'GRID_ID')[0];
+          if (subformId === 88) {
+            const gridReqDigit = DFO_FMA_GRID_MAP[efFma];
+            if (DFO_GRID_BLOCKED_FMA.has(efFma) && gridNode) {
+              errors.push(`${dp}: GRID_ID is blocked for this FMA (Rule 1011)`);
+            }
+            if (gridReqDigit && !gridNode) {
+              errors.push(`${dp}: GRID_ID is mandatory for this FMA (Rule 1012)`);
+            }
+            if (gridReqDigit && gridNode) {
+              const grid = MV_GRID.find(g => String(g.codeId) === gridNode.text);
+              const ruleNo = gridReqDigit === '4' ? '613x' : '614x';
+              if (!grid || grid.descFr.charAt(0) !== gridReqDigit) {
+                errors.push(`${dp}: GRID_ID ${gridNode.text} is not valid for this FMA (Rule ${ruleNo})`);
+              }
+            }
           }
           // STAT_SECT_ID (Rules 621 + 622): FMA-gated, NOT subform-gated (mirrors the emit).
           // Rule 621 — mandatory when the effort FMA is in DFO_FMA_STAT_SECT_REQUIRED, blocked

@@ -123,6 +123,8 @@
     "selectGrid": "Sélectionne une grille…",
     "statSectLabel": "SECTION STATISTIQUE",
     "selectStatSect": "Sélectionner une section...",
+    "gridLabel": "GRILLE",
+    "selectQcGrid": "Sélectionner une grille...",
     "catchWeightLabel": "POIDS DES CAPTURES (LBS)",
     "trapHaulsLabel": "LEVÉES DE CASIERS",
     "vnotchLabel": "ENCOCHES EN V / COMPTAGES",
