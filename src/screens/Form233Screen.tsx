@@ -25,6 +25,7 @@ import {
   INACTIVITY_REASONS,
 } from '../utils/dfoForm233Generator';
 import { submitDfoXml, isValidFormVrn } from '../utils/submitDfoXml';
+import { triggerBackup } from '../utils/dfoBackup';
 import { generateDfoXmlFileName } from '../utils/dfoXmlGenerator';
 import { loadCaptainProfile, CaptainProfile, EMPTY_PROFILE } from '../utils/captainStorage';
 
@@ -178,6 +179,7 @@ export default function Form233Screen({ onClose }: Props) {
               entry.sentToDfo = true;
               entry.sentAt = Date.now();
               await saveForm233Entry(entry);
+              triggerBackup(); // best-effort cloud backup; fire-and-forget, never blocks the send
 
               Alert.alert('Submitted', 'Form 233 has been sent to DFO.', [{ text: 'OK', onPress: onClose }]);
             } catch (e: any) {

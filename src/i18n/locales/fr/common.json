@@ -246,6 +246,10 @@
     "whereBody": "Sur les serveurs sécurisés de LobsterLog au Canada, dans ton propre compte privé. Toi seul, une fois connecté, peux lire ou écrire ta sauvegarde — personne d'autre ne peut la voir.",
     "controlTitle": "Tu gardes le contrôle",
     "controlBody": "La sauvegarde reste désactivée jusqu'à ce que tu l'actives, et tu peux la désactiver à tout moment sur cet écran. La désactiver arrête les nouvelles sauvegardes; elle ne supprime pas ce qui se trouve déjà sur ton téléphone.",
-    "closeButton": "Compris"
+    "closeButton": "Compris",
+    "backupNow": "Sauvegarder maintenant",
+    "backingUp": "Sauvegarde en cours…",
+    "backupOk": "Sauvegardé à l'instant",
+    "backupFail": "Impossible de joindre le nuage — tes données sont en sécurité sur cet appareil. Réessaie plus tard."
   }
 }

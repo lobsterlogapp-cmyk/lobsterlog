@@ -30,6 +30,7 @@ import {
 } from '../utils/dfoForm222Generator';
 import { loadLastLog } from '../utils/dfoLogStorage';
 import { submitDfoXml, isValidFormVrn } from '../utils/submitDfoXml';
+import { triggerBackup } from '../utils/dfoBackup';
 import { generateDfoXmlFileName } from '../utils/dfoXmlGenerator';
 import { loadCaptainProfile, CaptainProfile, EMPTY_PROFILE } from '../utils/captainStorage';
 
@@ -291,6 +292,7 @@ export default function Form222Screen({ onClose }: Props) {
               entry.sentToDfo = true;
               entry.sentAt = Date.now();
               await saveForm222Entry(entry);
+              triggerBackup(); // best-effort cloud backup; fire-and-forget, never blocks the send
 
               Alert.alert('Submitted', t('form222.submitSuccess'), [{ text: 'OK', onPress: onClose }]);
             } catch (e: any) {

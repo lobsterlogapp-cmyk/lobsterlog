@@ -22,7 +22,7 @@ import {
   saveCaptainProfile,
 } from '../utils/captainStorage';
 import { DFO_FMA_LIST } from '../utils/dfoConstants';
-import { loadBackupConsent, saveBackupConsent } from '../utils/dfoBackup';
+import { loadBackupConsent, saveBackupConsent, backupNow } from '../utils/dfoBackup';
 import BackupExplainerModal from './BackupExplainerModal';
 import { changeLanguage } from '../i18n';
 
@@ -60,6 +60,8 @@ export default function CaptainProfileScreen({ onClose }: Props) {
   const [vrnError, setVrnError] = useState('');
   const [backupConsent, setBackupConsent] = useState(false);
   const [explainerOpen, setExplainerOpen] = useState(false);
+  const [backingUp, setBackingUp] = useState(false);
+  const [backupResult, setBackupResult] = useState<'success' | 'failure' | null>(null);
 
   useEffect(() => {
     loadCaptainProfile().then(setProfile);
@@ -72,6 +74,16 @@ export default function CaptainProfileScreen({ onClose }: Props) {
   const handleBackupConsentChange = async (value: boolean) => {
     setBackupConsent(value);
     await saveBackupConsent(value);
+  };
+
+  // Manual "Back up now". backupNow() is best-effort and never throws — it returns
+  // a result we surface inline. The button is disabled while a backup is in flight.
+  const handleBackupNow = async () => {
+    setBackingUp(true);
+    setBackupResult(null);
+    const result = await backupNow();
+    setBackupResult(result.ok ? 'success' : 'failure');
+    setBackingUp(false);
   };
 
   const handleSave = async () => {
@@ -271,6 +283,26 @@ export default function CaptainProfileScreen({ onClose }: Props) {
             />
           </View>
           <Text style={styles.backupHelp}>{t('backup.toggleHelp')}</Text>
+          {backupConsent && (
+            <>
+              <TouchableOpacity
+                style={[styles.backupNowButton, backingUp && styles.backupNowButtonDisabled]}
+                onPress={handleBackupNow}
+                disabled={backingUp}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.backupNowButtonText}>
+                  {backingUp ? t('backup.backingUp') : t('backup.backupNow')}
+                </Text>
+              </TouchableOpacity>
+              {backupResult === 'success' && (
+                <Text style={styles.backupResultOk}>{t('backup.backupOk')}</Text>
+              )}
+              {backupResult === 'failure' && (
+                <Text style={styles.backupResultFail}>{t('backup.backupFail')}</Text>
+              )}
+            </>
+          )}
           <TouchableOpacity onPress={() => setExplainerOpen(true)} activeOpacity={0.7}>
             <Text style={styles.backupLearnMore}>{t('backup.learnMore')}</Text>
           </TouchableOpacity>
@@ -520,5 +552,36 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1E40AF',
     marginTop: 12,
+  },
+  backupNowButton: {
+    marginTop: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#1E40AF',
+    backgroundColor: '#EFF6FF',
+  },
+  backupNowButtonDisabled: {
+    opacity: 0.5,
+  },
+  backupNowButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1E40AF',
+  },
+  backupResultOk: {
+    fontSize: 12,
+    color: '#15803D',
+    fontWeight: '600',
+    marginTop: 8,
+  },
+  backupResultFail: {
+    fontSize: 12,
+    color: '#B45309',
+    lineHeight: 18,
+    fontWeight: '500',
+    marginTop: 8,
   },
 });

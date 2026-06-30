@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { Plus, FileText, Send, Edit3, Eye, Play, Trash2, CheckCircle, User, Shield, RotateCcw, Archive } from 'lucide-react-native';
 import { loadAllLogs, deleteLog, markSentToDfo, DfoLog, saveTransmissionRecord, TransmissionRecord, saveXmlArchiveEntry, loadTransmissionRegister, transmissionKind } from '../utils/dfoLogStorage';
+import { triggerBackup } from '../utils/dfoBackup';
 import { SentLogCard, SentLogDetailModal, indexSuccessRecords, indexFailureRecords } from '../components/SentLogCard';
 import { FormSentCard } from '../components/FormSentCard';
 import { generateElogXml, generateSoapEnvelope, generateReportUid, validateElogXml, generateDfoXmlFileName, findEffortOverlap, DFO_SOAP_ACTION_SAVE, DFO_UAT_ENDPOINT } from '../utils/dfoXmlGenerator';
@@ -315,6 +316,7 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
       await saveTransmissionRecord(record);
       await saveXmlArchiveEntry({ logId: log.id, savedAt: Date.now(), xml });
       await markSentToDfo(log.id);
+      triggerBackup(); // best-effort cloud backup; fire-and-forget, never blocks the send
       setFailedSends(prev => { const n = { ...prev }; delete n[log.id]; return n; });
       Alert.alert(t('logs.submittedTitle'), t('logs.submittedBody', { id: log.id }), [{ text: tc('nav.ok') }]);
       refresh();

@@ -245,6 +245,10 @@
     "whereBody": "On LobsterLog's secure servers in Canada, inside your own private account. Only you, signed in, can read or write your backup — no one else can see it.",
     "controlTitle": "It's yours to control",
     "controlBody": "Backup stays off until you turn it on, and you can turn it off again any time on this screen. Turning it off stops new backups; it does not delete what's already on your phone.",
-    "closeButton": "Got it"
+    "closeButton": "Got it",
+    "backupNow": "Back up now",
+    "backingUp": "Backing up…",
+    "backupOk": "Backed up just now",
+    "backupFail": "Couldn't reach the cloud — your data's safe on this device. Try again later."
   }
 }

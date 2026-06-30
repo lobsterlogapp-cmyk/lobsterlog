@@ -44,6 +44,7 @@ import {
   DfoLog,
   LogRemarks,
 } from '../utils/dfoLogStorage';
+import { triggerBackup } from '../utils/dfoBackup';
 import {
   DFO_FMA_LIST,
   DFO_LGRID_BY_FMA,
@@ -1168,6 +1169,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
 
     const ok = await saveLog(log);
     if (ok) {
+      triggerBackup(); // best-effort cloud backup; fire-and-forget, never blocks save
       onSaved();
     } else {
       Alert.alert(tc('settings.errorTitle'), t('form234.saveError'));

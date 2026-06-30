@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApp } from '@react-native-firebase/app';
-import { getFirestore } from '@react-native-firebase/firestore';
+import { getFirestore, doc, setDoc } from '@react-native-firebase/firestore';
+import { auth } from '../../firebaseConfig';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DFO backup/restore — foundation module (Session 84, Phase 1).
@@ -99,5 +100,77 @@ export async function saveBackupConsent(enabled: boolean): Promise<void> {
     await AsyncStorage.setItem(BACKUP_CONSENT_KEY, enabled ? 'true' : 'false');
   } catch {
     /* best-effort; a failed write just leaves the prior value in place */
+  }
+}
+
+// ── Cloud write (Phase 2 Step A) ─────────────────────────────────────────────
+// NON-NEGOTIABLE: a backup cloud-write failure must NEVER propagate into a save
+// or a send. Every entry point below either swallows its own errors (returns a
+// flag, never throws) or is fire-and-forget with a terminal .catch().
+
+// Full snapshot: read all 7 DFO stores from AsyncStorage and write each one's
+// raw blob VERBATIM to backups/{uid}/stores/{storeId} in the dfo-elog database.
+// The raw string is stored untouched (or null when the store is empty) — never
+// parsed/reconstructed — so the data round-trips byte-for-byte on restore.
+// Wrapped whole in try/catch → { ok: false } on any error; never throws.
+export async function backupAllStores(uid: string): Promise<{ ok: boolean }> {
+  try {
+    const db = getDfoBackupDb();
+    const now = Date.now();
+    for (const store of DFO_BACKUP_STORES) {
+      const raw = await AsyncStorage.getItem(store.asyncStorageKey); // string | null
+      const docData: DfoBackupStoreDoc = {
+        storeId: store.id,
+        key: store.asyncStorageKey,
+        raw,            // VERBATIM — exact AsyncStorage value, not re-serialized
+        updatedAt: now,
+      };
+      await setDoc(doc(db, backupDocPath(uid, store.id)), docData);
+    }
+    return { ok: true };
+  } catch (err) {
+    console.warn('[dfoBackup] backupAllStores failed (swallowed):', err);
+    return { ok: false };
+  }
+}
+
+// Fire-and-forget hook entry point. Called from DFO save/send sites. Returns
+// void synchronously; the actual work runs detached. It can NOT throw and can
+// NOT surface a rejected promise — the terminal .catch() guarantees that even if
+// something unexpected rejected, nothing in a save/send path ever sees it.
+//   (a) consent OFF  → do nothing
+//   (b) no Firebase uid (signed out) → do nothing
+//   (c) otherwise back up; log success/failure to console only.
+export function triggerBackup(): void {
+  (async () => {
+    const consent = await loadBackupConsent();
+    if (!consent) return;                         // (a) OFF
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;                             // (b) no account
+    const result = await backupAllStores(uid);    // (c) never throws
+    if (result.ok) console.log('[dfoBackup] write-through backup complete');
+    else console.warn('[dfoBackup] write-through backup failed (swallowed)');
+  })().catch(() => { /* unreachable by design — belt-and-suspenders */ });
+}
+
+// MANUAL path for the "Back up now" button. Same gates as triggerBackup, but
+// AWAITED and it RETURNS a result so the button can show feedback. This is the
+// ONLY place a backup result surfaces to the UI. Still never throws.
+export async function backupNow(): Promise<{ ok: boolean; reason?: string }> {
+  try {
+    const consent = await loadBackupConsent();
+    if (!consent) return { ok: false, reason: 'consent-off' };
+    const uid = auth.currentUser?.uid;
+    if (!uid) return { ok: false, reason: 'no-account' };
+    const result = await backupAllStores(uid);
+    if (result.ok) {
+      console.log('[dfoBackup] manual backup complete');
+      return { ok: true };
+    }
+    console.warn('[dfoBackup] manual backup failed');
+    return { ok: false, reason: 'offline' };
+  } catch (err) {
+    console.warn('[dfoBackup] backupNow failed (swallowed):', err);
+    return { ok: false, reason: 'offline' };
   }
 }
