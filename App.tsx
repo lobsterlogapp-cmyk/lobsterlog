@@ -87,6 +87,7 @@ import LogHistoryScreen from './src/screens/LogHistoryScreen';
 import TripStartConfirmScreen from './src/screens/TripStartConfirmScreen';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loadCaptainProfile, saveCaptainProfile } from './src/utils/captainStorage';
+import { isDfoLocalEmpty, restoreAllStores } from './src/utils/dfoBackup';
 import { changeLanguage } from './src/i18n';
 import LanguagePickerScreen from './src/components/LanguagePickerScreen';
 
@@ -126,6 +127,9 @@ export default function App() {
 
   const { t } = useTranslation('common');
   const [view, setView] = useState<AppView>('log');
+  // Cloud Backup restore (Phase 3): brief notice + a once-per-sign-in guard.
+  const [restoreNotice, setRestoreNotice] = useState(false);
+  const restoredUidRef = useRef<string | null>(null);
   const [tutorialVisible, setTutorialVisible] = useState(false);
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
   const [tripStartTime, setTripStartTime] = useState<string>('');
@@ -193,6 +197,31 @@ const isAdmin = useMemo(() => {
   useEffect(() => {
     setSelectedHistoryDate(new Date(currentDate));
   }, [currentDate]);
+
+  // Phase 3 RESTORE — once per sign-in, if there's NO local DFO data, pull this
+  // UID's backup down from the dfo-elog DB. Best-effort + non-blocking: the app
+  // renders normally and restored data appears as the DFO screens mount (recon
+  // confirmed mount-reads; fresh device needs no restart). Guarded by a ref so it
+  // fires once per uid, not on every render. restoreAllStores/isDfoLocalEmpty
+  // never throw; the try is belt-and-suspenders.
+  useEffect(() => {
+    const uid = user?.uid;
+    if (!uid) return;
+    if (restoredUidRef.current === uid) return; // already attempted this sign-in
+    restoredUidRef.current = uid;
+    (async () => {
+      try {
+        if (!(await isDfoLocalEmpty())) return;   // local already has DFO data
+        const result = await restoreAllStores(uid);
+        if (result.ok && (result.restoredCount ?? 0) > 0) {
+          setRestoreNotice(true);
+          setTimeout(() => setRestoreNotice(false), 4000);
+        }
+      } catch {
+        /* best-effort: restore never blocks the app or surfaces an error */
+      }
+    })();
+  }, [user?.uid]);
 
   useEffect(() => {
     loadFormData(logs, dateId);
@@ -394,6 +423,20 @@ const isAdmin = useMemo(() => {
   return (
       <TimerProvider>
       <View style={styles.masterContainer}>
+      {restoreNotice && (
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute', top: 0, left: 0, right: 0,
+            backgroundColor: '#1E40AF', paddingTop: 48, paddingBottom: 12,
+            paddingHorizontal: 16, alignItems: 'center', zIndex: 9999,
+          }}
+        >
+          <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>
+            {t('backup.restoredNotice')}
+          </Text>
+        </View>
+      )}
       <StatusBar barStyle="light-content" backgroundColor="#1E3A8A" />
       <View style={styles.header}>
         <View style={styles.headerContent}>

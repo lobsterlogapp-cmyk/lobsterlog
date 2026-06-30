@@ -253,6 +253,7 @@
     "backupFail": "Impossible de joindre le nuage — tes données sont en sécurité sur cet appareil. Réessaie plus tard.",
     "oneOffTitle": "Sauvegarder maintenant?",
     "oneOffBody": "Cela enregistre une copie de ton journal sur les serveurs canadiens sécurisés de LobsterLog. La sauvegarde automatique reste désactivée — ton téléphone conserve tout comme avant.",
-    "oneOffConfirm": "Sauvegarder une fois"
+    "oneOffConfirm": "Sauvegarder une fois",
+    "restoredNotice": "_todo Restored your logbook from backup"
   }
 }

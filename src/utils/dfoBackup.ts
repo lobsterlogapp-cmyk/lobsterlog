@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApp } from '@react-native-firebase/app';
-import { getFirestore, doc, setDoc } from '@react-native-firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc } from '@react-native-firebase/firestore';
 import { auth } from '../../firebaseConfig';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -131,6 +131,83 @@ export async function backupAllStores(uid: string): Promise<{ ok: boolean }> {
   } catch (err) {
     console.warn('[dfoBackup] backupAllStores failed (swallowed):', err);
     return { ok: false };
+  }
+}
+
+// Full restore: read all 7 cloud docs at backups/{uid}/stores/{storeId} and write
+// each one's raw blob VERBATIM back to its local AsyncStorage key. Two per-store
+// outcomes are kept DISTINCT: a read that THROWS (network/permission) is a hard
+// failure; a read that SUCCEEDS but finds no doc / no raw is a valid "this store
+// is empty". ANY hard read failure aborts the whole restore with NOTHING written
+// locally — we never apply a partial download. Only when all 7 reads succeed do we
+// write. Never throws — catches and returns the failure shape.
+export async function restoreAllStores(
+  uid: string,
+): Promise<{ ok: boolean; reason?: string; restoredCount?: number }> {
+  // Phase A — fetch all 7 first. Collect into memory only; write nothing yet, so a
+  // mid-way read error leaves local untouched. raw is the verbatim string, or null
+  // when the cloud doc is absent/empty (a successful read with no data).
+  const fetched: { store: DfoBackupStore; raw: string | null }[] = [];
+  try {
+    const db = getDfoBackupDb();
+    for (const store of DFO_BACKUP_STORES) {
+      const snap = await getDoc(doc(db, backupDocPath(uid, store.id)));
+      if (!snap.exists()) {
+        fetched.push({ store, raw: null });   // successful read, no doc → empty
+        continue;
+      }
+      const data = snap.data() as DfoBackupStoreDoc | undefined;
+      fetched.push({ store, raw: data && typeof data.raw === 'string' ? data.raw : null });
+    }
+  } catch (err) {
+    console.warn('[dfoBackup] restoreAllStores fetch failed (swallowed):', err);
+    return { ok: false, reason: 'fetch_failed' };
+  }
+
+  // Phase B — all 7 reads succeeded; apply locally. Apply in TWO batched ops, the
+  // closest AsyncStorage gives us to all-or-nothing: one multiSet for the stores
+  // that carry data, one multiRemove for the stores that came back empty (removes
+  // keep an empty store in the same absent state it would naturally have).
+  // restoredCount counts only the stores that actually carried data (pairs.length).
+  //
+  // HONEST GUARANTEE: multiSet and multiRemove are EACH an individually batched op,
+  // but the two TOGETHER are NOT transactional — AsyncStorage has no real
+  // transaction. We do the multiSet (data) first, then the multiRemove (empties); a
+  // failure BETWEEN the two batches is the residual non-atomic window (data keys
+  // written, empty keys not yet cleared). This SHRINKS the torn-write window versus
+  // the old per-store setItem/removeItem loop; it does NOT eliminate it. What bounds
+  // the residue: the empty-local gate (auto-restore only fires when local is fully
+  // empty) and the future manual-restore guard, both of which must account for a
+  // half-applied set rather than assume restore is atomic.
+  try {
+    const pairs: [string, string][] = [];
+    const removeKeys: string[] = [];
+    for (const { store, raw } of fetched) {
+      if (raw === null) removeKeys.push(store.asyncStorageKey);
+      else pairs.push([store.asyncStorageKey, raw]); // VERBATIM, not re-serialized
+    }
+    if (pairs.length) await AsyncStorage.multiSet(pairs);
+    if (removeKeys.length) await AsyncStorage.multiRemove(removeKeys);
+    return { ok: true, restoredCount: pairs.length };
+  } catch (err) {
+    console.warn('[dfoBackup] restoreAllStores apply failed (swallowed):', err);
+    return { ok: false, reason: 'apply_failed' };
+  }
+}
+
+// Cheap new-device probe: ONE multiGet of the 7 backup keys. Returns true ONLY
+// when every one is absent (null) — i.e. there is no local DFO data at all. Reads
+// the captain_profile RAW key directly (it's in DFO_BACKUP_STORES), NOT
+// loadCaptainProfile — which falls back to EMPTY_PROFILE and would never look
+// empty. On any error returns false (unknown state → do NOT auto-restore). Never
+// throws.
+export async function isDfoLocalEmpty(): Promise<boolean> {
+  try {
+    const keys = DFO_BACKUP_STORES.map(s => s.asyncStorageKey);
+    const pairs = await AsyncStorage.multiGet(keys);
+    return pairs.every(([, value]) => value == null);
+  } catch {
+    return false;
   }
 }
 
