@@ -1,6 +1,6 @@
 # LobsterLog — CLAUDE.md
 App version: 1.8.6 (versionCode 76)
-Last updated: June 30, 2026 (Sessions 84–85 complete — DFO cloud backup Phase 1 + Phase 2; Session 86 next)
+Last updated: June 30, 2026 (Session 86 complete — DFO cloud backup Phase 3 restore + reauth-gated delete-wipes-cloud; Session 87 next)
 
 ## What this app is
 React Native / Expo mobile app. DFO-qualified electronic logbook for lobster harvesters.
@@ -552,17 +552,43 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
     BOTH toggle states; OFF-state tap shows a per-tap confirm (oneOff* i18n keys) → on confirm
     calls handleBackupNow(true) → backupNow(true). The consent toggle is NEVER flipped by the
     one-off; auto-backup stays off. tsc 33/0-new across all of S84–85.
+  • PHASE 3 RESTORE (51e962e, S86) — restoreAllStores(uid) + isDfoLocalEmpty() in dfoBackup.ts.
+    Auto-fires after sign-in (App.tsx effect, once-per-uid guard) ONLY when all 7 local DFO
+    stores are empty. Two-phase: fetch all 7 cloud docs first, then write — ANY fetch error
+    aborts with ZERO local writes (never a partial download); absent/empty cloud docs restore
+    as empty. Phase B hardened to batched AsyncStorage.multiSet (data) + multiRemove (empties);
+    the window BETWEEN the two batches is a documented residual non-atomic gap, bounded by the
+    empty-local gate — NOT eliminated (AsyncStorage has no transaction). Quiet success banner on
+    restoredCount>0, silent otherwise. Verbatim round-trip proven on real device data (5 MAR-90
+    logs; sentToDfo + lgridCodeId/lgridDisplay survived byte-for-byte).
+  • DELETE-WIPES-CLOUD + REAUTH (737ee5d, S86) — wipeAllStores(uid) enumerates + deletes all 7
+    store docs (no Firestore cascade) then the parent backups/{uid} doc; block-and-retry —
+    SURFACES failure (returns {ok:false}) rather than swallowing. Delete Account handler reworked:
+    confirm → password prompt → reauthenticateWithCredential → ONLY on success → wipeAllStores →
+    deleteDoc(users/{uid}) → deleteUser → clearLocalDfoStores(). Fixes a real torn-delete bug
+    (deleteUser bounced on auth/requires-recent-login AFTER profile + cloud were already gone).
+    Cross-platform: replaced the iOS-only Alert.prompt with a generic reusable
+    src/screens/ReauthPasswordModal.tsx (props-driven, no feature copy inside, inline error +
+    stays open on wrong password). Verified iOS sim AND physical Android: reauth-fail destroys
+    nothing + retries clean; correct password sweeps account + cloud + profile + local. Gating
+    re-verified line-by-line after every handler change.
 
 ---
 
 ## Not yet built
-- DFO Cloud Backup PHASE 3 — RESTORE (not started). On a fresh sign-in with empty local DFO
-  stores, offer "Restore your logbook"; plus a manual "Restore from backup" in settings.
-  Restore reads `backups/{uid}/stores/*` and writes each store's raw blob back into its
-  AsyncStorage key, PRESERVING each log's status (a sent log comes back sent + read-only, a
-  draft comes back a draft — nothing flips to re-sendable). If local DFO data already exists,
-  require explicit confirmation — never silently overwrite. Phases 1/2 (foundation + opt-in
-  write-through + manual backup) are done and pushed; this is the read-back half.
+- DFO storage NAMESPACING — uid-scope the 7 DFO store keys (CARRIED INTO S87, the big
+  remaining isolation piece; NOT started). Today the 7 keys are fixed (@lobsterlog:dfo_logs
+  etc.), so two accounts on one device would share one set of logs/settings. Goal: per-uid
+  keys (@lobsterlog:{uid}:...) so accounts COEXIST on one device — each sees only its own data,
+  free sign-in/out, NO data loss (coexistence, NOT clear-on-mismatch). Needs a READ-ONLY RECON
+  FIRST: every DFO store read/write call site across the app (form save, logs list, 222/233,
+  transmission register, captain profile), what's on-device under today's fixed keys (migration),
+  and where sign-out lives. Heavy multi-call-site build — a missed call site is a silent
+  isolation hole. Recon-only first; build is its own session.
+- FR proofreader pile — _todo French stubs accumulated across S84–86, awaiting the reviewer:
+  backup.* (oneOff* + restoredNotice), account.* (reauthTitle/reauthPrompt/reauthConfirm/
+  reauthFailed) + the ReauthPasswordModal copy, and the reworded privacy notice FR. (The S39
+  "zero _todo" record below predates these additions.)
 - Real DFO PRODUCTION endpoint URL — still pending from DFO. In-app transmission to the UAT
   .asmx is now LIVE on BOTH paths (Session 54): DFO_UAT_ENDPOINT in dfoXmlGenerator.ts (single
   source of truth), wired into per-log doSubmit + harness handleFire; both empty
@@ -705,12 +731,14 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 | Session 83 | June 29 2026 | QC-88 GRID_ID ("A2") end-to-end — Rules 1011/1012/613x/614x. P1 constants (dfoConstants.ts): DFO_GRID_BLOCKED_FMA (29 Rule-1011 blocked QC FMAs) + DFO_FMA_GRID_MAP (11 required QC FMAs → map "4" = LFA 22 / "1" = the twelve 18-series); 29 + 11 = 40 QC LFAs, zero overlap (recon docs/RECON_grid_id_S83.md + docs/RECON_grid_orphan_check_S83.md). P2 UI (FullDfoForm.tsx / dfoLogStorage.ts / en+fr dfo.json): FMA-gated GRID_ID picker (subform 88 && fmaId ∈ DFO_FMA_GRID_MAP — map-membership = required-&-not-blocked, so the 29 blocked FMAs never show it, Rule 1011); options = MV_GRID rows whose DESC_FRE leadchar = the map digit ("1" ≈ 3259); search box + Modal overlay w/ virtualized FlatList (kills the nested-VirtualizedList warning); save-gate (gridId in FULL_DFO_REQUIRED_FIELDS[88] + fieldCheckMap + fieldLabels); i18n gridLabel/selectQcGrid (FR pending proofread). ALSO folded in: LFA picker natural-sort (compareFmaLabel + fmaOptions, all four region lists, display-time, reorder-safe — selection stores codeId) so "20a10" sorts after "20a9a"; recon docs/RECON_lfa_picker_S83.md. P3 generator + validator (dfoXmlGenerator.ts): emit <GRID_ID> in EFFORT_DETAIL after LGRID_ID before GEAR_GRP_NUM (gated subform 88 && fmaId ∈ map); validator Rule 1011 (blocked → absent) / 1012 (required → present) / 613x/614x (present value's MV_GRID leadchar must = FMA map digit). Guard test gridId.oneoff.test.ts (5 cases: present-valid, blocked-absent, wrong-digit→613x, required-absent→1012, blocked-present→1011 [injected]). tsc 33/0-new, jest 17 suites/55 tests. Committed 3c9a77d (bare subject, no Co-Authored-By), pushed origin/main — 7 files (dfoConstants/FullDfoForm/dfoLogStorage/dfoXmlGenerator/en+fr dfo.json/gridId.oneoff). LIVE: two WS0000 vs UAT — CONF 163015 (grid present, LFA 22 map "4") + CONF 163016 (grid absent, LFA 17b blocked). Recon docs left untracked (separate housekeeping). NOTE: the S73 "QC GRID_ID diagnosed optional + data-blocked" conclusion is SUPERSEDED — S83 recon found GRID_ID mandatory (Rule 1012) for non-blocked QC FMAs, blocked (Rule 1011) for the 29-FMA cluster. |
 | Session 84 | June 29–30 2026 | DFO Cloud Backup — RECON (docs/RECON_dfo_backup_S84.md: DFO side is local-only AsyncStorage + SOAP, no Firebase; the 7 DFO stores + their key conventions; identity = Firebase auth UID but DFO data is unkeyed to it) + PHASE 1 foundation. NEW src/utils/dfoBackup.ts (DFO_BACKUP_STORES, backups/{uid}/stores/{storeId} path on the dfo-elog DB, types, getDfoBackupDb, loadBackupConsent/saveBackupConsent key @lobsterlog:dfo_backup_consent default OFF) — NO cloud I/O wired. Consent toggle card + NEW BackupExplainerModal on CaptainProfileScreen; backup.* i18n (en+fr common.json). NEW firestore.rules + firebase.json (backups/{uid}/** read/write only when request.auth.uid==uid; scoped to dfo-elog so (default) untouched — Jonathon deploys). Committed c761acb. Then PRIVACY reword (bfd8a1e): privacy.section2/3/4Body (en+fr dfo.json) updated to disclose optional Cloud Backup + name Google Firebase as processor + cloud-copy deletion contact; FR curly U+2019 + «» preserved. tsc 33/0-new. Both pushed origin/main. |
 | Session 85 | June 30 2026 | DFO Cloud Backup PHASE 2 Step A — write-through + manual button. RECON docs/RECON_writethrough_S85.md (save choke point = saveLog dfoLogStorage.ts:76; logbook send success = DfoLogsListScreen doSubmit after markSentToDfo; forms persist+send via submitDfoXml; every site already in try/catch). dfoBackup.ts gained backupAllStores(uid) (raw VERBATIM via setDoc), triggerBackup() (fire-and-forget, consent+uid gated, terminal .catch — never throws/rejects into a caller), backupNow() (manual, awaited, {ok,reason}). FOUR triggerBackup() hooks AFTER local persist: FullDfoForm complete-save (in `if (ok)`), DfoLogsListScreen doSubmit (after markSentToDfo), Form222/Form233 (after saveForm22x/23x Entry); saveLog itself NOT hooked (shared w/ legacy proposal form). "Back up now" button on CaptainProfile + backup.* keys. Verified best-effort via a temp throw stub (added+removed, never committed) — save/send unaffected. Committed 8a2fe00. Then ONE-OFF-FROM-OFF (61b71a3): backupNow(alreadyConsented=false) wraps the consent gate in `if (!alreadyConsented)`; "Back up now" now visible in both toggle states; OFF-state tap → per-tap confirm (oneOff* i18n) → handleBackupNow(true) → bypass; toggle NEVER flipped, auto path untouched. tsc 33/0-new. Both pushed origin/main. RESTORE = Phase 3, not started. |
+| Session 86 | June 30 2026 | DFO Cloud Backup PHASE 3 (restore) + Delete Account hardening. RESTORE (51e962e): restoreAllStores(uid) + isDfoLocalEmpty() in dfoBackup.ts; auto-fires after sign-in (App.tsx effect, once-per-uid ref guard) ONLY when all 7 local DFO stores are empty; two-phase (fetch-all-then-write — any fetch error aborts with ZERO local writes; absent/empty cloud docs restore as empty); Phase B hardened to batched multiSet/multiRemove (residual non-atomic window BETWEEN the two batches documented + bounded by the empty-local gate, NOT eliminated — AsyncStorage has no transaction); quiet success banner on restoredCount>0, silent otherwise; verbatim round-trip proven on real device data (5 MAR-90 logs, sentToDfo + lgridCodeId/lgridDisplay survived). DELETE-WIPES-CLOUD + REAUTH (737ee5d): wipeAllStores(uid) enumerates+deletes all 7 store docs (no Firestore cascade) then the parent backups/{uid} doc, block-and-retry (surfaces failure, not swallowed). Delete handler reworked: confirm → password prompt → reauthenticateWithCredential → ONLY on success → wipeAllStores → deleteDoc(users/{uid}) → deleteUser → clearLocalDfoStores(). Closes a real torn-delete bug (deleteUser bounced on auth/requires-recent-login AFTER profile/cloud already destroyed). Cross-platform: replaced iOS-only Alert.prompt with generic reusable src/screens/ReauthPasswordModal.tsx (props-driven, no feature copy inside, inline error + stays open on wrong password). Verified iOS sim AND physical Android: reauth-fail destroys nothing + retries clean; correct password sweeps account/cloud/profile/local. Gating re-verified line-by-line after each handler change. tsc 33/0-new. Both pushed origin/main. GOTCHAS banked: useAuth.ts is at src/Hooks/ (capital H) — stage by full path or git add aborts the stage (same class as FullDfoForm-in-components); when git commit opens vim the message is pre-filled — :wq, don't type git into the buffer. CARRIED INTO S87: DFO storage namespacing (uid-scope the 7 keys for multi-account coexistence; recon-only first — see Not yet built). |
 
 ---
 
 ## Current session goals
 > Update this section at the start of each session.
 
-SESSION 86 — TBD. (Sessions 84–85 delivered DFO Cloud Backup Phase 1 + Phase 2 Step A —
-opt-in write-through + manual backup, all pushed. Next candidate: Phase 3 RESTORE — see
-Not yet built.)
+SESSION 87 — TBD. (Session 86 delivered DFO Cloud Backup Phase 3 restore + reauth-gated
+delete-wipes-cloud, all pushed. Next candidate: DFO storage NAMESPACING — uid-scope the 7
+keys for multi-account coexistence; recon-only first, then its own build session — see Not
+yet built.)
