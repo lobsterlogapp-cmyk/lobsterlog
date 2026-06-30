@@ -156,10 +156,15 @@ export function triggerBackup(): void {
 // MANUAL path for the "Back up now" button. Same gates as triggerBackup, but
 // AWAITED and it RETURNS a result so the button can show feedback. This is the
 // ONLY place a backup result surfaces to the UI. Still never throws.
-export async function backupNow(): Promise<{ ok: boolean; reason?: string }> {
+export async function backupNow(alreadyConsented = false): Promise<{ ok: boolean; reason?: string }> {
   try {
-    const consent = await loadBackupConsent();
-    if (!consent) return { ok: false, reason: 'consent-off' };
+    // alreadyConsented = the caller just got explicit per-tap consent in a dialog
+    // (the OFF-state one-off). In that case skip the standing-consent gate. The
+    // default false preserves the standing-consent check for every other caller.
+    if (!alreadyConsented) {
+      const consent = await loadBackupConsent();
+      if (!consent) return { ok: false, reason: 'consent-off' };
+    }
     const uid = auth.currentUser?.uid;
     if (!uid) return { ok: false, reason: 'no-account' };
     const result = await backupAllStores(uid);

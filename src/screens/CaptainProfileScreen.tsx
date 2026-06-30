@@ -78,12 +78,32 @@ export default function CaptainProfileScreen({ onClose }: Props) {
 
   // Manual "Back up now". backupNow() is best-effort and never throws — it returns
   // a result we surface inline. The button is disabled while a backup is in flight.
-  const handleBackupNow = async () => {
+  const handleBackupNow = async (alreadyConsented = false) => {
     setBackingUp(true);
     setBackupResult(null);
-    const result = await backupNow();
+    const result = await backupNow(alreadyConsented);
     setBackupResult(result.ok ? 'success' : 'failure');
     setBackingUp(false);
+  };
+
+  // The "Back up now" button is visible in BOTH consent states. With auto-backup
+  // ON we run the one-off immediately. With it OFF we ask for a per-tap confirm
+  // first — this is a one-time copy that must NOT flip any persistent state (the
+  // toggle stays OFF, auto-backup stays off). The dialog shows on every OFF-state
+  // tap; Alert is not remembered.
+  const handleBackupNowPress = () => {
+    if (backupConsent) {
+      handleBackupNow();
+      return;
+    }
+    Alert.alert(
+      t('backup.oneOffTitle'),
+      t('backup.oneOffBody'),
+      [
+        { text: t('nav.cancel'), style: 'cancel' },
+        { text: t('backup.oneOffConfirm'), onPress: () => handleBackupNow(true) },
+      ]
+    );
   };
 
   const handleSave = async () => {
@@ -283,25 +303,21 @@ export default function CaptainProfileScreen({ onClose }: Props) {
             />
           </View>
           <Text style={styles.backupHelp}>{t('backup.toggleHelp')}</Text>
-          {backupConsent && (
-            <>
-              <TouchableOpacity
-                style={[styles.backupNowButton, backingUp && styles.backupNowButtonDisabled]}
-                onPress={handleBackupNow}
-                disabled={backingUp}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.backupNowButtonText}>
-                  {backingUp ? t('backup.backingUp') : t('backup.backupNow')}
-                </Text>
-              </TouchableOpacity>
-              {backupResult === 'success' && (
-                <Text style={styles.backupResultOk}>{t('backup.backupOk')}</Text>
-              )}
-              {backupResult === 'failure' && (
-                <Text style={styles.backupResultFail}>{t('backup.backupFail')}</Text>
-              )}
-            </>
+          <TouchableOpacity
+            style={[styles.backupNowButton, backingUp && styles.backupNowButtonDisabled]}
+            onPress={handleBackupNowPress}
+            disabled={backingUp}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.backupNowButtonText}>
+              {backingUp ? t('backup.backingUp') : t('backup.backupNow')}
+            </Text>
+          </TouchableOpacity>
+          {backupResult === 'success' && (
+            <Text style={styles.backupResultOk}>{t('backup.backupOk')}</Text>
+          )}
+          {backupResult === 'failure' && (
+            <Text style={styles.backupResultFail}>{t('backup.backupFail')}</Text>
           )}
           <TouchableOpacity onPress={() => setExplainerOpen(true)} activeOpacity={0.7}>
             <Text style={styles.backupLearnMore}>{t('backup.learnMore')}</Text>
