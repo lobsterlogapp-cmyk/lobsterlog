@@ -8,10 +8,13 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
-  deleteUser
+  deleteUser,
+  reauthenticateWithCredential,
+  EmailAuthProvider
 } from '@react-native-firebase/auth';
 import { doc, deleteDoc } from '@react-native-firebase/firestore';
 import { db } from '../../firebaseConfig';
+import { wipeAllStores, clearLocalDfoStores } from '../utils/dfoBackup';
 
 export function useAuth() {
   const [user, setUser] = useState<any>(null);
@@ -22,6 +25,9 @@ export function useAuth() {
   const [authLoading, setAuthLoading] = useState(false);
   const [verificationPending, setVerificationPending] = useState(false);
   const [pendingEmail, setPendingEmail] = useState('');
+  // Delete Account reauth modal (cross-platform; replaces the iOS-only Alert.prompt).
+  const [reauthVisible, setReauthVisible] = useState(false);
+  const [reauthError, setReauthError] = useState('');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
@@ -84,6 +90,10 @@ export function useAuth() {
   const handleSignOut = () => signOut(auth);
 
   const handleDeleteAccount = async () => {
+    // 1. Confirm dialog still gates entry. Its destructive button opens the
+    //    cross-platform reauth modal (replaces the iOS-only Alert.prompt), which
+    //    collects the password. The actual reauth + destructive sequence runs in
+    //    confirmReauthDelete below — invoked by the modal's Confirm button.
     Alert.alert(
       i18next.t('settings.deleteAccountTitle'),
       i18next.t('settings.deleteAccountConfirm'),
@@ -92,18 +102,58 @@ export function useAuth() {
         {
           text: i18next.t('settings.deleteAccountButton'),
           style: 'destructive',
-          onPress: async () => {
-            try {
-              const userRef = doc(db, 'users', user.uid);
-              await deleteDoc(userRef);
-              await deleteUser(auth.currentUser!);
-            } catch (error: any) {
-              Alert.alert(i18next.t('settings.errorTitle'), error.message);
-            }
-          }
-        }
+          onPress: () => {
+            setReauthError('');
+            setReauthVisible(true);
+          },
+        },
       ]
     );
+  };
+
+  // Invoked by ReauthPasswordModal's Confirm with the entered password.
+  const confirmReauthDelete = async (password: string) => {
+    // 3. REAUTHENTICATE FIRST. On failure, show the error INLINE in the modal and
+    //    keep it open for a retry — destroy NOTHING. Nothing destructive below runs
+    //    unless reauthenticateWithCredential resolves successfully.
+    try {
+      const credential = EmailAuthProvider.credential(user.email, password);
+      await reauthenticateWithCredential(auth.currentUser!, credential);
+    } catch {
+      setReauthError(i18next.t('account.reauthFailed')); // inline; modal stays open
+      return;
+    }
+
+    // 4. Reauth succeeded — dismiss the modal, then run the destructive sequence.
+    setReauthVisible(false);
+    setReauthError('');
+    try {
+      // Cloud wipe FIRST, while still signed in (block-and-retry): if the cloud
+      // copy can't be removed, ABORT before deleting the profile/account so the
+      // account stays intact and the harvester can retry. Once deleteUser runs the
+      // uid is gone and the dfo-elog backup is permanently unreachable (rules
+      // require request.auth.uid == uid).
+      const wipe = await wipeAllStores(user.uid);
+      if (!wipe.ok) {
+        Alert.alert(
+          i18next.t('settings.errorTitle'),
+          i18next.t('backup.wipeFailedRetry')
+        );
+        return; // account left fully intact; nothing deleted
+      }
+      const userRef = doc(db, 'users', user.uid);
+      await deleteDoc(userRef);
+      await deleteUser(auth.currentUser!);
+      // 5. Clear THIS account's local DFO data on-device, last.
+      await clearLocalDfoStores();
+    } catch (error: any) {
+      Alert.alert(i18next.t('settings.errorTitle'), error.message);
+    }
+  };
+
+  const cancelReauthDelete = () => {
+    setReauthVisible(false);
+    setReauthError('');
   };
 
   return {
@@ -121,6 +171,10 @@ export function useAuth() {
     pendingEmail,
     handleLoginSubmit,
     handleSignOut,
-    handleDeleteAccount
+    handleDeleteAccount,
+    reauthVisible,
+    reauthError,
+    confirmReauthDelete,
+    cancelReauthDelete
   };
 }

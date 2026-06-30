@@ -85,6 +85,7 @@ import FullDfoForm from './src/components/FullDfoForm';
 import DfoLogsListScreen from './src/screens/DfoLogsListScreen';
 import LogHistoryScreen from './src/screens/LogHistoryScreen';
 import TripStartConfirmScreen from './src/screens/TripStartConfirmScreen';
+import ReauthPasswordModal from './src/screens/ReauthPasswordModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loadCaptainProfile, saveCaptainProfile } from './src/utils/captainStorage';
 import { isDfoLocalEmpty, restoreAllStores } from './src/utils/dfoBackup';
@@ -123,6 +124,10 @@ export default function App() {
     handleLoginSubmit,
     handleSignOut,
     handleDeleteAccount,
+    reauthVisible,
+    reauthError,
+    confirmReauthDelete,
+    cancelReauthDelete,
   } = useAuth();
 
   const { t } = useTranslation('common');
@@ -437,6 +442,16 @@ const isAdmin = useMemo(() => {
           </Text>
         </View>
       )}
+      <ReauthPasswordModal
+        visible={reauthVisible}
+        title={t('account.reauthTitle')}
+        message={t('account.reauthPrompt')}
+        confirmLabel={t('account.reauthConfirm')}
+        cancelLabel={t('nav.cancel')}
+        error={reauthError}
+        onConfirm={confirmReauthDelete}
+        onCancel={cancelReauthDelete}
+      />
       <StatusBar barStyle="light-content" backgroundColor="#1E3A8A" />
       <View style={styles.header}>
         <View style={styles.headerContent}>

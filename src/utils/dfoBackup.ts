@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApp } from '@react-native-firebase/app';
-import { getFirestore, doc, setDoc, getDoc } from '@react-native-firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc, deleteDoc } from '@react-native-firebase/firestore';
 import { auth } from '../../firebaseConfig';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -192,6 +192,51 @@ export async function restoreAllStores(
   } catch (err) {
     console.warn('[dfoBackup] restoreAllStores apply failed (swallowed):', err);
     return { ok: false, reason: 'apply_failed' };
+  }
+}
+
+// Wipe this UID's ENTIRE cloud backup: delete each of the 7 store docs at
+// backups/{uid}/stores/{storeId}, then the parent backups/{uid} doc. Firestore
+// does NOT cascade, so every doc is deleted explicitly.
+//
+// BLOCK-AND-RETRY shaped — the OPPOSITE of the best-effort backup paths. A wipe
+// failure MUST be surfaced (returned as { ok: false }), never hidden: the caller
+// (Delete Account) aborts deletion on a failure so the account is never deleted
+// while a cloud copy survives. This matters because once deleteUser runs the uid
+// is gone and the dfo-elog rules (request.auth.uid == uid) make the backup
+// permanently unreachable. Any delete throwing returns { ok: false,
+// reason: 'wipe_failed' } immediately. Never throws — catches and returns the shape.
+export async function wipeAllStores(uid: string): Promise<{ ok: boolean; reason?: string }> {
+  try {
+    const db = getDfoBackupDb();
+    // The 7 store docs — explicit, no cascade. First throw exits to the catch.
+    for (const store of DFO_BACKUP_STORES) {
+      await deleteDoc(doc(db, backupDocPath(uid, store.id)));
+    }
+    // The parent backups/{uid} doc, after the 7. deleteDoc on an absent doc is a
+    // successful no-op, so this also covers the "delete it if one exists" case.
+    await deleteDoc(doc(db, 'backups', uid));
+    return { ok: true };
+  } catch (err) {
+    console.warn('[dfoBackup] wipeAllStores failed (surfaced, NOT swallowed):', err);
+    return { ok: false, reason: 'wipe_failed' };
+  }
+}
+
+// Clear THIS account's local DFO data: ONE multiRemove of the 7 DFO store keys.
+// Runs as the FINAL step of a successful Delete Account so deletion actually
+// removes the on-device copy — not just the cloud backup + the auth account.
+// NOTE: these are deliberately the SAME 7 keys that namespacing will later make
+// uid-scoped. Writing the clear against DFO_BACKUP_STORES (not a hardcoded list)
+// keeps THIS call site correct once those keys become per-uid — it always clears
+// "the current account's stores". Best-effort + never throws: by the time this
+// runs the account is already deleted, so a failure only leaves stale local data,
+// not an inconsistent account.
+export async function clearLocalDfoStores(): Promise<void> {
+  try {
+    await AsyncStorage.multiRemove(DFO_BACKUP_STORES.map(s => s.asyncStorageKey));
+  } catch (err) {
+    console.warn('[dfoBackup] clearLocalDfoStores failed (swallowed):', err);
   }
 }
 

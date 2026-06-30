@@ -253,6 +253,13 @@
     "oneOffTitle": "Back up now?",
     "oneOffBody": "This saves one copy of your logbook to LobsterLog's secure Canadian servers. Automatic backup stays off — your phone keeps everything as before.",
     "oneOffConfirm": "Back up once",
-    "restoredNotice": "Restored your logbook from backup"
+    "restoredNotice": "Restored your logbook from backup",
+    "wipeFailedRetry": "Couldn't reach the server to delete your backup — check your connection and try again."
+  },
+  "account": {
+    "reauthTitle": "Confirm account deletion",
+    "reauthPrompt": "Enter your password to confirm account deletion.",
+    "reauthConfirm": "Delete account",
+    "reauthFailed": "Couldn't verify your password — nothing was deleted. Please try again."
   }
 }
