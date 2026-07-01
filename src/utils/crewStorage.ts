@@ -1,6 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const CREW_KEY = '@lobsterlog:saved_crew';
+import { dfoKey, DFO_STORE_BASES } from './dfoStorageKeys';
 
 export interface CrewMember {
   id: string;         // unique, generated on creation
@@ -10,7 +9,7 @@ export interface CrewMember {
 
 export async function loadCrew(): Promise<CrewMember[]> {
   try {
-    const raw = await AsyncStorage.getItem(CREW_KEY);
+    const raw = await AsyncStorage.getItem(dfoKey(DFO_STORE_BASES.saved_crew));
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
@@ -19,7 +18,7 @@ export async function loadCrew(): Promise<CrewMember[]> {
 
 export async function saveCrew(crew: CrewMember[]): Promise<void> {
   try {
-    await AsyncStorage.setItem(CREW_KEY, JSON.stringify(crew));
+    await AsyncStorage.setItem(dfoKey(DFO_STORE_BASES.saved_crew), JSON.stringify(crew));
   } catch {}
 }
 

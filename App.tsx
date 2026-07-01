@@ -139,7 +139,7 @@ export default function App() {
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
   const [tripStartTime, setTripStartTime] = useState<string>('');
   const [readOnlyLog, setReadOnlyLog] = useState(false);
-  const [dfoActivated, setDfoActivated] = useState(false);
+  const [dfoActivated, setDfoActivated] = useState<boolean | null>(null);
   const [prefLanguage, setPrefLanguage] = useState<'en' | 'fr'>('en');
   const [prefUnits, setPrefUnits] = useState<'lbs' | 'kg'>('lbs');
   const [captainLocalProfile, setCaptainLocalProfile] = useState<any>({});
@@ -216,7 +216,7 @@ const isAdmin = useMemo(() => {
     restoredUidRef.current = uid;
     (async () => {
       try {
-        if (!(await isDfoLocalEmpty())) return;   // local already has DFO data
+        if (!(await isDfoLocalEmpty(uid))) return;   // this account's namespace already has DFO data
         const result = await restoreAllStores(uid);
         if (result.ok && (result.restoredCount ?? 0) > 0) {
           setRestoreNotice(true);
@@ -237,13 +237,32 @@ const isAdmin = useMemo(() => {
       loadCaptainProfile(),
       AsyncStorage.getItem('language_picker_shown'),
     ]).then(([p, pickerShown]) => {
-      setDfoActivated(p.dfoActivated ?? false);
       setPrefLanguage(p.language ?? 'en');
       setPrefUnits(p.units ?? 'lbs');
-      setCaptainLocalProfile(p);
       setLanguagePickerShown(!!pickerShown);
     });
   }, []);
+
+  // Phase 1b — re-sync the DFO setup-vs-list routing gate to the ACTIVE uid. dfoActivated
+  // and captainLocalProfile live in the per-uid captain_profile store, so they must be
+  // (re)read whenever identity changes, NOT once on mount (which could read the pre-auth
+  // __anon__ namespace or a previously-signed-in account). Mirrors the restore hook shape.
+  // dfoActivated is held at null (undetermined) until the load for THIS uid resolves, so
+  // the routing never flashes the paywall on a stale/anon read (see the dfo nav handler).
+  useEffect(() => {
+    const uid = user?.uid;
+    if (!uid) {
+      setDfoActivated(false);
+      setCaptainLocalProfile({});
+      return;
+    }
+    setDfoActivated(null); // undetermined for this uid until the load resolves
+    (async () => {
+      const p = await loadCaptainProfile();
+      setDfoActivated(p.dfoActivated ?? false);
+      setCaptainLocalProfile(p);
+    })();
+  }, [user?.uid]);
 
   const stats = useMemo(() => {
     if (!profile || !profile.seasons) {
@@ -485,6 +504,7 @@ const isAdmin = useMemo(() => {
                         onPress={() => {
                           const isInDfoArea = view === 'dfo-list' || view === 'dfo-demo' || view === 'dfo-setup' || view === 'dfo-trip' || view === 'dfo-history';
                           if (isInDfoArea) { setView('log'); return; }
+                          if (dfoActivated === null) return; // undetermined for this uid — hold; never flash setup
                           setView(dfoActivated ? 'dfo-list' : 'dfo-setup');
                         }}
                         style={[

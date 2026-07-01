@@ -15,6 +15,7 @@ import {
 import { doc, deleteDoc } from '@react-native-firebase/firestore';
 import { db } from '../../firebaseConfig';
 import { wipeAllStores, clearLocalDfoStores } from '../utils/dfoBackup';
+import { setActiveDfoUid } from '../utils/dfoStorageKeys';
 
 export function useAuth() {
   const [user, setUser] = useState<any>(null);
@@ -32,6 +33,10 @@ export function useAuth() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
+      // Namespacing: keep the ambient DFO uid in lockstep with identity so every DFO
+      // storage accessor reads/writes this account's namespace (null on sign-out →
+      // accessors fall to the fail-closed __anon__ namespace, never legacy bare keys).
+      setActiveDfoUid(u?.uid ?? null);
 
       if (u) {
         setTimeout(async () => {
@@ -127,13 +132,18 @@ export function useAuth() {
     // 4. Reauth succeeded — dismiss the modal, then run the destructive sequence.
     setReauthVisible(false);
     setReauthError('');
+    // Capture the uid BEFORE anything destructive: deleteUser fires
+    // onAuthStateChanged(null), which nulls the ambient active DFO uid, so the local
+    // clear below must be told which namespace to wipe explicitly (it can no longer
+    // read the ambient uid).
+    const deletedUid = user.uid;
     try {
       // Cloud wipe FIRST, while still signed in (block-and-retry): if the cloud
       // copy can't be removed, ABORT before deleting the profile/account so the
       // account stays intact and the harvester can retry. Once deleteUser runs the
       // uid is gone and the dfo-elog backup is permanently unreachable (rules
       // require request.auth.uid == uid).
-      const wipe = await wipeAllStores(user.uid);
+      const wipe = await wipeAllStores(deletedUid);
       if (!wipe.ok) {
         Alert.alert(
           i18next.t('settings.errorTitle'),
@@ -141,11 +151,12 @@ export function useAuth() {
         );
         return; // account left fully intact; nothing deleted
       }
-      const userRef = doc(db, 'users', user.uid);
+      const userRef = doc(db, 'users', deletedUid);
       await deleteDoc(userRef);
       await deleteUser(auth.currentUser!);
-      // 5. Clear THIS account's local DFO data on-device, last.
-      await clearLocalDfoStores();
+      // 5. Clear THIS account's local DFO data on-device, last — the captured uid's
+      //    namespace only, so a coexisting account on this device is untouched.
+      await clearLocalDfoStores(deletedUid);
     } catch (error: any) {
       Alert.alert(i18next.t('settings.errorTitle'), error.message);
     }

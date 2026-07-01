@@ -1,6 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const CAPTAIN_KEY = '@lobsterlog:captain_profile';
+import { dfoKey, DFO_STORE_BASES } from './dfoStorageKeys';
 
 export interface CaptainProfile {
   operatorName: string;
@@ -42,7 +41,7 @@ export const EMPTY_PROFILE: CaptainProfile = {
 
 export async function loadCaptainProfile(): Promise<CaptainProfile> {
   try {
-    const raw = await AsyncStorage.getItem(CAPTAIN_KEY);
+    const raw = await AsyncStorage.getItem(dfoKey(DFO_STORE_BASES.captain_profile));
     return raw ? { ...EMPTY_PROFILE, ...JSON.parse(raw) } : EMPTY_PROFILE;
   } catch {
     return EMPTY_PROFILE;
@@ -51,7 +50,7 @@ export async function loadCaptainProfile(): Promise<CaptainProfile> {
 
 export async function saveCaptainProfile(profile: CaptainProfile): Promise<void> {
   try {
-    await AsyncStorage.setItem(CAPTAIN_KEY, JSON.stringify(profile));
+    await AsyncStorage.setItem(dfoKey(DFO_STORE_BASES.captain_profile), JSON.stringify(profile));
   } catch {}
 }
 

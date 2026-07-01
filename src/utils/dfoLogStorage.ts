@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { generateLgbkUid } from './dfoUids';
+import { dfoKey, DFO_STORE_BASES } from './dfoStorageKeys';
 import {
   DFO_FMA_LIST,
   DFO_LGRID_BY_FMA,
@@ -45,14 +46,12 @@ export interface DfoLog {
   remarks?: LogRemarks;          // optional per-section REM notes (T1); rides along, no migration
 }
 
-const STORAGE_KEY = '@lobsterlog:dfo_logs';
-
 // --- CORE HELPERS ---
 
 // Load every saved log, newest first
 export const loadAllLogs = async (): Promise<DfoLog[]> => {
   try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
+    const raw = await AsyncStorage.getItem(dfoKey(DFO_STORE_BASES.dfo_logs));
     if (!raw) return [];
     const logs: DfoLog[] = JSON.parse(raw);
     // Back-fill status and sentToDfo for any logs saved before these fields existed
@@ -78,7 +77,7 @@ export const saveLog = async (log: DfoLog): Promise<boolean> => {
     const existing = await loadAllLogs();
     const withoutThisId = existing.filter((l) => l.id !== log.id);
     const updated = [...withoutThisId, log];
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    await AsyncStorage.setItem(dfoKey(DFO_STORE_BASES.dfo_logs), JSON.stringify(updated));
     return true;
   } catch (err) {
     console.error('Failed to save DFO log:', err);
@@ -97,7 +96,7 @@ export const deleteLog = async (id: string): Promise<boolean> => {
   try {
     const existing = await loadAllLogs();
     const filtered = existing.filter((l) => l.id !== id);
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+    await AsyncStorage.setItem(dfoKey(DFO_STORE_BASES.dfo_logs), JSON.stringify(filtered));
     return true;
   } catch (err) {
     console.error('Failed to delete DFO log:', err);
@@ -110,7 +109,7 @@ export const markSentToDfo = async (id: string): Promise<boolean> => {
   try {
     const existing = await loadAllLogs();
     const updated = existing.map(l => l.id === id ? { ...l, sentToDfo: true } : l);
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    await AsyncStorage.setItem(dfoKey(DFO_STORE_BASES.dfo_logs), JSON.stringify(updated));
     return true;
   } catch (err) {
     console.error('Failed to mark log as sent:', err);
@@ -221,7 +220,6 @@ export const loadLastLog = async (): Promise<DfoLog | null> => {
 
 // --- TRANSMISSION REGISTER (DFO Standard: 3-year retention) ---
 
-const TRANSMISSION_REGISTER_KEY = '@lobsterlog_transmission_register';
 const THREE_YEARS_MS = 94608000000;
 
 export interface TransmissionRecord {
@@ -246,12 +244,12 @@ export interface TransmissionRecord {
 
 export async function saveTransmissionRecord(record: TransmissionRecord): Promise<void> {
   try {
-    const raw = await AsyncStorage.getItem(TRANSMISSION_REGISTER_KEY);
+    const raw = await AsyncStorage.getItem(dfoKey(DFO_STORE_BASES.transmission_register));
     const existing: TransmissionRecord[] = raw ? JSON.parse(raw) : [];
     const cutoff = Date.now() - THREE_YEARS_MS;
     const pruned = existing.filter(r => r.attemptedAt >= cutoff);
     pruned.push(record);
-    await AsyncStorage.setItem(TRANSMISSION_REGISTER_KEY, JSON.stringify(pruned));
+    await AsyncStorage.setItem(dfoKey(DFO_STORE_BASES.transmission_register), JSON.stringify(pruned));
   } catch (err) {
     console.error('Failed to save transmission record:', err);
   }
@@ -259,7 +257,7 @@ export async function saveTransmissionRecord(record: TransmissionRecord): Promis
 
 export async function loadTransmissionRegister(): Promise<TransmissionRecord[]> {
   try {
-    const raw = await AsyncStorage.getItem(TRANSMISSION_REGISTER_KEY);
+    const raw = await AsyncStorage.getItem(dfoKey(DFO_STORE_BASES.transmission_register));
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
@@ -280,8 +278,6 @@ export function transmissionKind(
 
 // --- XML ARCHIVE (DFO Standard: 3-year retention) ---
 
-const XML_ARCHIVE_KEY = '@lobsterlog_xml_archive';
-
 export interface XmlArchiveEntry {
   logId: string;
   savedAt: number;  // Date.now()
@@ -290,12 +286,12 @@ export interface XmlArchiveEntry {
 
 export async function saveXmlArchiveEntry(entry: XmlArchiveEntry): Promise<void> {
   try {
-    const raw = await AsyncStorage.getItem(XML_ARCHIVE_KEY);
+    const raw = await AsyncStorage.getItem(dfoKey(DFO_STORE_BASES.xml_archive));
     const existing: XmlArchiveEntry[] = raw ? JSON.parse(raw) : [];
     const cutoff = Date.now() - THREE_YEARS_MS;
     const pruned = existing.filter(e => e.logId !== entry.logId && e.savedAt >= cutoff);
     pruned.push(entry);
-    await AsyncStorage.setItem(XML_ARCHIVE_KEY, JSON.stringify(pruned));
+    await AsyncStorage.setItem(dfoKey(DFO_STORE_BASES.xml_archive), JSON.stringify(pruned));
   } catch (err) {
     console.error('Failed to save XML archive entry:', err);
   }
@@ -303,7 +299,7 @@ export async function saveXmlArchiveEntry(entry: XmlArchiveEntry): Promise<void>
 
 export async function loadXmlArchive(): Promise<XmlArchiveEntry[]> {
   try {
-    const raw = await AsyncStorage.getItem(XML_ARCHIVE_KEY);
+    const raw = await AsyncStorage.getItem(dfoKey(DFO_STORE_BASES.xml_archive));
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];

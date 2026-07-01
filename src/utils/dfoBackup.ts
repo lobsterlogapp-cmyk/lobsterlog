@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApp } from '@react-native-firebase/app';
 import { getFirestore, doc, setDoc, getDoc, deleteDoc } from '@react-native-firebase/firestore';
 import { auth } from '../../firebaseConfig';
+import { dfoKey, DFO_STORE_BASES } from './dfoStorageKeys';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DFO backup/restore — foundation module (Session 84, Phase 1).
@@ -14,12 +15,15 @@ import { auth } from '../../firebaseConfig';
 // calls to Firestore here. Phase 2 adds best-effort write-through; Phase 3 adds
 // restore. The store list + path shape are fixed here so both later phases agree.
 //
-// Source of truth for the store list: docs/RECON_dfo_backup_S84.md. The keys use
-// THREE different naming conventions (`@lobsterlog:`, `@lobsterlog_`, and bare
-// `@form222_entries`), so the set is hardcoded — a prefix filter would silently
-// miss the two form stores. Deliberately EXCLUDED, per the recon + the Phase-1
-// brief: `@lobsterlog:saved_ports` (legacy free-app store) and
-// `@lobsterlog:privacy_accepted` (device-local UX state, not DFO data).
+// Source of truth for the store list: docs/RECON_dfo_backup_S84.md. Each entry pairs a
+// stable id with the un-namespaced BASE key from DFO_STORE_BASES (dfoStorageKeys.ts — the
+// one place key strings are defined). The bases use THREE naming conventions
+// (`@lobsterlog:`, `@lobsterlog_`, bare `@form…`), so the set is enumerated, not
+// prefix-filtered. The real per-uid AsyncStorage key is derived at call time via
+// dfoKey(base, uid) — this module ALWAYS passes uid EXPLICITLY (it can run while the
+// ambient uid is being torn down, e.g. clear-on-delete after deleteUser). Deliberately
+// EXCLUDED, per the recon + the Phase-1 brief: `@lobsterlog:saved_ports` (legacy free-app
+// store) and `@lobsterlog:privacy_accepted` (device-local UX state, not DFO data).
 // ─────────────────────────────────────────────────────────────────────────────
 
 // The named Firestore database that holds DFO backup data: dfo-elog
@@ -32,19 +36,21 @@ export const DFO_BACKUP_DB_ID = 'dfo-elog';
 export interface DfoBackupStore {
   /** stable id — the Firestore document id under the user's backup path */
   id: string;
-  /** the AsyncStorage key, verbatim from docs/RECON_dfo_backup_S84.md */
-  asyncStorageKey: string;
+  /** the un-namespaced BASE AsyncStorage key (from DFO_STORE_BASES); the real per-uid
+   *  key is derived at call time via dfoKey(base, uid) */
+  base: string;
 }
 
-// The exact 7 DFO-side stores, in a fixed order. Keys are verbatim from the recon.
+// The exact 7 DFO-side stores, in a fixed order. Bases come from DFO_STORE_BASES so there
+// is no second definition of the key strings anywhere.
 export const DFO_BACKUP_STORES: DfoBackupStore[] = [
-  { id: 'dfo_logs',              asyncStorageKey: '@lobsterlog:dfo_logs' },
-  { id: 'xml_archive',           asyncStorageKey: '@lobsterlog_xml_archive' },
-  { id: 'transmission_register', asyncStorageKey: '@lobsterlog_transmission_register' },
-  { id: 'captain_profile',       asyncStorageKey: '@lobsterlog:captain_profile' },
-  { id: 'form222_entries',       asyncStorageKey: '@form222_entries' },
-  { id: 'form233_entries',       asyncStorageKey: '@form233_entries' },
-  { id: 'saved_crew',            asyncStorageKey: '@lobsterlog:saved_crew' },
+  { id: 'dfo_logs',              base: DFO_STORE_BASES.dfo_logs },
+  { id: 'xml_archive',           base: DFO_STORE_BASES.xml_archive },
+  { id: 'transmission_register', base: DFO_STORE_BASES.transmission_register },
+  { id: 'captain_profile',       base: DFO_STORE_BASES.captain_profile },
+  { id: 'form222_entries',       base: DFO_STORE_BASES.form222_entries },
+  { id: 'form233_entries',       base: DFO_STORE_BASES.form233_entries },
+  { id: 'saved_crew',            base: DFO_STORE_BASES.saved_crew },
 ];
 
 // What one backed-up store looks like as a Firestore document. `raw` is the
@@ -118,10 +124,11 @@ export async function backupAllStores(uid: string): Promise<{ ok: boolean }> {
     const db = getDfoBackupDb();
     const now = Date.now();
     for (const store of DFO_BACKUP_STORES) {
-      const raw = await AsyncStorage.getItem(store.asyncStorageKey); // string | null
+      const localKey = dfoKey(store.base, uid);
+      const raw = await AsyncStorage.getItem(localKey); // string | null
       const docData: DfoBackupStoreDoc = {
         storeId: store.id,
-        key: store.asyncStorageKey,
+        key: localKey,
         raw,            // VERBATIM — exact AsyncStorage value, not re-serialized
         updatedAt: now,
       };
@@ -183,8 +190,9 @@ export async function restoreAllStores(
     const pairs: [string, string][] = [];
     const removeKeys: string[] = [];
     for (const { store, raw } of fetched) {
-      if (raw === null) removeKeys.push(store.asyncStorageKey);
-      else pairs.push([store.asyncStorageKey, raw]); // VERBATIM, not re-serialized
+      const localKey = dfoKey(store.base, uid);
+      if (raw === null) removeKeys.push(localKey);
+      else pairs.push([localKey, raw]); // VERBATIM, not re-serialized
     }
     if (pairs.length) await AsyncStorage.multiSet(pairs);
     if (removeKeys.length) await AsyncStorage.multiRemove(removeKeys);
@@ -223,32 +231,33 @@ export async function wipeAllStores(uid: string): Promise<{ ok: boolean; reason?
   }
 }
 
-// Clear THIS account's local DFO data: ONE multiRemove of the 7 DFO store keys.
-// Runs as the FINAL step of a successful Delete Account so deletion actually
-// removes the on-device copy — not just the cloud backup + the auth account.
-// NOTE: these are deliberately the SAME 7 keys that namespacing will later make
-// uid-scoped. Writing the clear against DFO_BACKUP_STORES (not a hardcoded list)
-// keeps THIS call site correct once those keys become per-uid — it always clears
-// "the current account's stores". Best-effort + never throws: by the time this
-// runs the account is already deleted, so a failure only leaves stale local data,
-// not an inconsistent account.
-export async function clearLocalDfoStores(): Promise<void> {
+// Clear the given account's local DFO data: ONE multiRemove of that uid's 7 namespaced
+// DFO store keys. Runs as the FINAL step of a successful Delete Account so deletion
+// actually removes the on-device copy — not just the cloud backup + the auth account.
+// uid is passed EXPLICITLY (not read from the ambient active uid) because by the time
+// this runs deleteUser has already fired and nulled the ambient uid — the caller captures
+// the uid before deletion and hands it in, so we clear the RIGHT namespace and never touch
+// a coexisting account's data. Best-effort + never throws: by the time this runs the
+// account is already deleted, so a failure only leaves stale local data, not an
+// inconsistent account.
+export async function clearLocalDfoStores(uid: string): Promise<void> {
   try {
-    await AsyncStorage.multiRemove(DFO_BACKUP_STORES.map(s => s.asyncStorageKey));
+    await AsyncStorage.multiRemove(DFO_BACKUP_STORES.map(s => dfoKey(s.base, uid)));
   } catch (err) {
     console.warn('[dfoBackup] clearLocalDfoStores failed (swallowed):', err);
   }
 }
 
-// Cheap new-device probe: ONE multiGet of the 7 backup keys. Returns true ONLY
-// when every one is absent (null) — i.e. there is no local DFO data at all. Reads
-// the captain_profile RAW key directly (it's in DFO_BACKUP_STORES), NOT
-// loadCaptainProfile — which falls back to EMPTY_PROFILE and would never look
-// empty. On any error returns false (unknown state → do NOT auto-restore). Never
-// throws.
-export async function isDfoLocalEmpty(): Promise<boolean> {
+// Cheap new-device probe: ONE multiGet of this uid's 7 namespaced backup keys. Returns
+// true ONLY when every one is absent (null) — i.e. there is no local DFO data for THIS
+// account at all. uid is passed EXPLICITLY so the probe is per-account (a coexisting
+// account's data must not make this uid's namespace look non-empty). Reads the
+// captain_profile RAW key directly (it's in DFO_BACKUP_STORES), NOT loadCaptainProfile —
+// which falls back to EMPTY_PROFILE and would never look empty. On any error returns false
+// (unknown state → do NOT auto-restore). Never throws.
+export async function isDfoLocalEmpty(uid: string): Promise<boolean> {
   try {
-    const keys = DFO_BACKUP_STORES.map(s => s.asyncStorageKey);
+    const keys = DFO_BACKUP_STORES.map(s => dfoKey(s.base, uid));
     const pairs = await AsyncStorage.multiGet(keys);
     return pairs.every(([, value]) => value == null);
   } catch {

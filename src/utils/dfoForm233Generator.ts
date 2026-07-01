@@ -5,9 +5,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CaptainProfile } from './captainStorage';
 import { buildSaveIncomingFileEnvelope, toCloseTimestamp } from './dfoXmlGenerator';
 import { DFO_CIE_ID, DFO_SOFT_VER } from './dfoConstants';
+import { dfoKey, DFO_STORE_BASES } from './dfoStorageKeys';
 
 const THREE_YEARS_MS = 94608000000;
-const STORAGE_KEY = '@form233_entries';
 
 // XSD 43792.233 (xsd_start_date 2022-06-13): FORM_VER_ID for the Inactivity Report
 export const DFO_FORM_VER_ID_233 = 233;
@@ -38,12 +38,12 @@ export async function saveForm233Entry(entry: Form233Entry): Promise<void> {
   const existing = await loadForm233Entries();
   const cutoff = Date.now() - THREE_YEARS_MS;
   const filtered = existing.filter(e => e.uid !== entry.uid && e.savedAt > cutoff);
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([...filtered, entry]));
+  await AsyncStorage.setItem(dfoKey(DFO_STORE_BASES.form233_entries), JSON.stringify([...filtered, entry]));
 }
 
 export async function loadForm233Entries(): Promise<Form233Entry[]> {
   try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
+    const raw = await AsyncStorage.getItem(dfoKey(DFO_STORE_BASES.form233_entries));
     if (!raw) return [];
     return JSON.parse(raw) as Form233Entry[];
   } catch {

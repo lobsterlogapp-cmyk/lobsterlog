@@ -6,9 +6,9 @@ import { CaptainProfile } from './captainStorage';
 import { buildSaveIncomingFileEnvelope, toCloseTimestamp } from './dfoXmlGenerator';
 import { DFO_CIE_ID, DFO_SOFT_VER } from './dfoConstants';
 import { MV_NOAA_MM_SPECIES, MV_INCIDENT_TYPE } from '../data/reftables';
+import { dfoKey, DFO_STORE_BASES } from './dfoStorageKeys';
 
 const THREE_YEARS_MS = 94608000000;
-const STORAGE_KEY = '@form222_entries';
 
 // XSD 39588.222: FORM_VER_ID for the Marine Mammal Interaction form
 export const DFO_FORM_VER_ID_222 = 222;
@@ -72,12 +72,12 @@ export async function saveForm222Entry(entry: Form222Entry): Promise<void> {
   const existing = await loadForm222Entries();
   const cutoff = Date.now() - THREE_YEARS_MS;
   const filtered = existing.filter(e => e.uid !== entry.uid && e.savedAt > cutoff);
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([...filtered, entry]));
+  await AsyncStorage.setItem(dfoKey(DFO_STORE_BASES.form222_entries), JSON.stringify([...filtered, entry]));
 }
 
 export async function loadForm222Entries(): Promise<Form222Entry[]> {
   try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
+    const raw = await AsyncStorage.getItem(dfoKey(DFO_STORE_BASES.form222_entries));
     if (!raw) return [];
     return JSON.parse(raw) as Form222Entry[];
   } catch {
