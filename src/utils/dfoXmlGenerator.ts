@@ -7,7 +7,7 @@
 import forge from 'node-forge';
 import { DfoLog } from './dfoLogStorage';
 import { CaptainProfile } from './captainStorage';
-import { getDfoBaitTypeList, baitConditionState, getDfoPconsSpeciesList, DFO_SPECIE_FRM_ID, DFO_PCONS_OTHER_SIZE_ID, DFO_GEAR_ID, DFO_SOFT_VER, DFO_CIE_ID, DFO_FORM_VER_ID, DFO_HLIN_COMPANY_LIST, DFO_HLOUT_COMPANY_LIST, DFO_SUBFORM_REGISTRY, DFO_FMA_38B, DFO_FMA_NB_VNTCH, DFO_FMA_NB_VNTCH_YOU, DFO_FMA_STAT_SECT_REQUIRED, DFO_STAT_SECT_BY_FMA, DFO_FMA_GRID_MAP, DFO_GRID_BLOCKED_FMA } from './dfoConstants';
+import { getDfoBaitTypeList, baitConditionState, getDfoPconsSpeciesList, DFO_SPECIE_FRM_ID, DFO_PCONS_OTHER_SIZE_ID, DFO_GEAR_ID, DFO_SOFT_VER, DFO_CIE_ID, DFO_FORM_VER_ID, DFO_HLIN_COMPANY_LIST, DFO_HLOUT_COMPANY_LIST, DFO_SUBFORM_REGISTRY, DFO_FMA_38B, DFO_FMA_NB_VNTCH, DFO_FMA_NB_VNTCH_YOU, DFO_FMA_STAT_SECT_REQUIRED, DFO_STAT_SECT_BY_FMA, DFO_FMA_GRID_MAP, DFO_GRID_BLOCKED_FMA, clampCoord4 } from './dfoConstants';
 import { MV_PARTNERSHIP_TYPE, MV_GRID } from '../data/reftables';
 
 export function generateReportUid(): string {
@@ -83,10 +83,14 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   const subformId = log.subformId ?? 90;
   const regId = log.regId ?? 1004;
 
-  const startDt     = localToUtcIso(log.dateFished, d.timeSailed);
-  const haulStartDt = localToUtcIso(log.dateFished, d.timeStartedHauling);
-  const haulEndDt   = localToUtcIso(log.dateFished, d.timeStoppedHauling);
-  const landDt      = localToUtcIso(log.dateFished, d.timeOfLanding);
+  // Multi-day trips (S90): each timestamp uses its OWN date so a trip can span midnight.
+  // The per-field date falls back to log.dateFished when absent — old (pre-S90) logs,
+  // quick-capture (time set, date never picked), and same-day trips all resolve to the
+  // trip's nominal date, so existing single-day logs emit byte-identically.
+  const startDt     = localToUtcIso(d.sailDate || log.dateFished, d.timeSailed);
+  const haulStartDt = localToUtcIso(d.haulStartDate || log.dateFished, d.timeStartedHauling);
+  const haulEndDt   = localToUtcIso(d.haulEndDate || log.dateFished, d.timeStoppedHauling);
+  const landDt      = localToUtcIso(d.landingDate || log.dateFished, d.timeOfLanding);
 
   let crewNb = '';
   try {
@@ -281,8 +285,10 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   // entry/edit (open question 3 resolution; d.gpsSrc tracked by FullDfoForm).
   if (subformId === 90 && Number(d.fmaId) === DFO_FMA_38B && d.gpsLat && d.gpsLng) {
     const coordMode = d.gpsSrc === 'gps' ? 'G' : 'M';
-    effort += `          <LAT MODE="${coordMode}">${xmlEscape(d.gpsLat)}</LAT>\n`;
-    effort += `          <LONG MODE="${coordMode}">${xmlEscape(d.gpsLng)}</LONG>\n`;
+    // Clamp to the XSD's ≤4-decimal LAT/LONG limit at emit (shared clampCoord4), matching
+    // the 222 form path — a high-precision GPS read would otherwise draw WS1038. Emit-only.
+    effort += `          <LAT MODE="${coordMode}">${xmlEscape(clampCoord4(d.gpsLat))}</LAT>\n`;
+    effort += `          <LONG MODE="${coordMode}">${xmlEscape(clampCoord4(d.gpsLng))}</LONG>\n`;
   }
   // TRP_SZ_ID: Mandatory for NL(91), Blocked for QC/GLF/MAR (88/89/90) per
   // Subforms_requirements_234.xlsx row 79. Values constrained to 39682=Standard /

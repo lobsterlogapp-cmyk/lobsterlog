@@ -4,8 +4,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CaptainProfile } from './captainStorage';
 import { buildSaveIncomingFileEnvelope, toCloseTimestamp } from './dfoXmlGenerator';
-import { DFO_CIE_ID, DFO_SOFT_VER } from './dfoConstants';
-import { MV_NOAA_MM_SPECIES, MV_INCIDENT_TYPE } from '../data/reftables';
+import { DFO_CIE_ID, DFO_SOFT_VER, clampCoord4 } from './dfoConstants';
+import { MV_NOAA_MM_SPECIES, MV_INCIDENT_TYPE, MV_CONFIDENCE_LEVEL, MV_MM_SPECIMENS_CONDITION, MV_MM_LENGTH_CATEGORY } from '../data/reftables';
 import { dfoKey, DFO_STORE_BASES } from './dfoStorageKeys';
 
 const THREE_YEARS_MS = 94608000000;
@@ -26,6 +26,22 @@ export const INTERACTION_TYPES: { label: string; codeId: string }[] =
   MV_INCIDENT_TYPE.map(t => ({ label: t.descEn, codeId: String(t.codeId) }));
 
 export const INTERACTION_TYPE_LABELS: string[] = INTERACTION_TYPES.map(t => t.label);
+
+// Species-identification confidence — MV_CONFIDENCE_LEVEL → MM_INTER.ID_CNFDNCE_ID (opt).
+export const CONFIDENCE_LEVELS: { label: string; codeId: string }[] =
+  MV_CONFIDENCE_LEVEL.map(c => ({ label: c.descEn, codeId: String(c.codeId) }));
+export const CONFIDENCE_LEVEL_LABELS: string[] = CONFIDENCE_LEVELS.map(c => c.label);
+
+// Specimen condition — MV_MM_SPECIMENS_CONDITION → MM_INTER.SPCMN_COND_ID (opt). NOTE: this
+// is the marine-mammal condition table, NOT the SAR-side MV_SPECIMENS_CONDITION.
+export const SPECIMEN_CONDITIONS: { label: string; codeId: string }[] =
+  MV_MM_SPECIMENS_CONDITION.map(c => ({ label: c.descEn, codeId: String(c.codeId) }));
+export const SPECIMEN_CONDITION_LABELS: string[] = SPECIMEN_CONDITIONS.map(c => c.label);
+
+// Body length category — MV_MM_LENGTH_CATEGORY → MM_INTER.BDY_LEN_ID (opt).
+export const LENGTH_CATEGORIES: { label: string; codeId: string }[] =
+  MV_MM_LENGTH_CATEGORY.map(c => ({ label: c.descEn, codeId: String(c.codeId) }));
+export const LENGTH_CATEGORY_LABELS: string[] = LENGTH_CATEGORIES.map(c => c.label);
 
 // MV_INCIDENT_TYPE codes the legacy Y/N indicator fields map onto
 const INCDNT_DEAD_ANIMAL = '39609';
@@ -54,6 +70,11 @@ export interface Form222Entry {
   observerNm: string;
   contactInfo: string;
   remarks: string;           // optional free-text
+  // Optional MM_INTER detail (XSD minOccurs=0) — human-readable labels resolved to codeIds
+  // via CONFIDENCE_LEVELS / SPECIMEN_CONDITIONS / LENGTH_CATEGORIES at emit.
+  confidenceLabel?: string;   // → ID_CNFDNCE_ID
+  specimenCondLabel?: string; // → SPCMN_COND_ID
+  lengthCatLabel?: string;    // → BDY_LEN_ID
   // XSD MM_INTER.LGBK_NUM_REF (string_15, mandatory): logbook number the marine
   // mammal interaction report refers to — prefilled with the related log's LGBK_UID
   lgbkNumRef?: string;
@@ -113,20 +134,6 @@ function toDate12(dateStr: string, timeStr: string): string {
   return d8 + hhmm;
 }
 
-// Clamp a hand-typed coordinate to the XSD's max 4 decimal places before it enters
-// the XML. The DFO 39588.222 LAT/LONG types allow at most 4 decimals; a high-precision
-// value (e.g. a 14-decimal GPS read) is rejected by DFO as WS1038 "XML content is not
-// valid against XSD". Rounds to 4 dp WITHOUT padding trailing zeros, so a value already
-// within 4 dp passes through unchanged; a finite negative keeps its leading minus.
-// Non-numeric/empty input is returned trimmed so the validator can flag it. Emit-only —
-// the stored/displayed coordinate is never mutated.
-export function clampCoord4(v: string): string {
-  const t = v.trim();
-  const n = Number(t);
-  if (t === '' || !Number.isFinite(n)) return t;
-  return String(Math.round(n * 10000) / 10000);
-}
-
 // XSD 39588.222: ELOG → GENERAL_INFO + MM_INTER[] → MM_INTER_INCDNT[].
 // The legacy INJURY/DEATH/ENTANGLE Y/N indicators have no XSD elements — they map
 // onto MM_INTER_INCDNT incident nodes; RELEASE_IND has no equivalent and is folded
@@ -165,9 +172,17 @@ export function generateForm222Xml(entry: Form222Entry, profile: CaptainProfile)
 
   if (entry.interactInd === 'Y') {
     const specie = MARINE_MAMMAL_SPECIES.find(s => s.label === entry.speciesLabel);
+    // Optional trio (XSD minOccurs=0); resolve label → codeId, tag() omits when unset.
+    // XSD sequence: NOAA_SPECIE_COD → ID_CNFDNCE_ID → SPCMN_COND_ID → NB_SPCMN_BEST → BDY_LEN_ID.
+    const conf = CONFIDENCE_LEVELS.find(c => c.label === entry.confidenceLabel);
+    const cond = SPECIMEN_CONDITIONS.find(c => c.label === entry.specimenCondLabel);
+    const len  = LENGTH_CATEGORIES.find(c => c.label === entry.lengthCatLabel);
     mm += tag('GEAR_DMG_IND', entry.gearDamageInd, '    ');
     mm += tag('NOAA_SPECIE_COD', specie?.codeId ?? '', '    ');
+    mm += tag('ID_CNFDNCE_ID', conf?.codeId ?? '', '    ');
+    mm += tag('SPCMN_COND_ID', cond?.codeId ?? '', '    ');
     mm += tag('NB_SPCMN_BEST', entry.nbAnimals, '    ');
+    mm += tag('BDY_LEN_ID', len?.codeId ?? '', '    ');
   }
 
   mm += tag('DG_CLOSE_DT', toCloseTimestamp(), '    ');

@@ -27,6 +27,9 @@ import {
   MARINE_MAMMAL_SPECIES_LABELS,
   INTERACTION_TYPES,
   INTERACTION_TYPE_LABELS,
+  CONFIDENCE_LEVEL_LABELS,
+  SPECIMEN_CONDITION_LABELS,
+  LENGTH_CATEGORY_LABELS,
 } from '../utils/dfoForm222Generator';
 import { loadLastLog } from '../utils/dfoLogStorage';
 import { submitDfoXml, isValidFormVrn } from '../utils/submitDfoXml';
@@ -56,6 +59,9 @@ interface FormState {
   observerNm: string;
   contactInfo: string;
   remarks: string;
+  confidenceLabel: string;   // → ID_CNFDNCE_ID (optional)
+  specimenCondLabel: string; // → SPCMN_COND_ID (optional)
+  lengthCatLabel: string;    // → BDY_LEN_ID (optional)
   lgbkNumRef: string;
 }
 
@@ -79,6 +85,9 @@ const EMPTY_FORM: FormState = {
   observerNm: '',
   contactInfo: '',
   remarks: '',
+  confidenceLabel: '',
+  specimenCondLabel: '',
+  lengthCatLabel: '',
   lgbkNumRef: '',
 };
 
@@ -117,6 +126,9 @@ export default function Form222Screen({ onClose }: Props) {
   const [profile, setProfile] = useState<CaptainProfile>(EMPTY_PROFILE);
   const [speciesOpen, setSpeciesOpen] = useState(false);
   const [interactionTypeOpen, setInteractionTypeOpen] = useState(false);
+  const [confidenceOpen, setConfidenceOpen] = useState(false);
+  const [specimenCondOpen, setSpecimenCondOpen] = useState(false);
+  const [lengthCatOpen, setLengthCatOpen] = useState(false);
   const [latError, setLatError] = useState('');
   const [lonError, setLonError] = useState('');
   const [sending, setSending] = useState(false);
@@ -253,6 +265,9 @@ export default function Form222Screen({ onClose }: Props) {
                 observerNm: form.observerNm,
                 contactInfo: form.contactInfo,
                 remarks: form.remarks,
+                confidenceLabel: form.confidenceLabel,
+                specimenCondLabel: form.specimenCondLabel,
+                lengthCatLabel: form.lengthCatLabel,
                 lgbkNumRef: form.lgbkNumRef,
                 sentToDfo: false,
               };
@@ -323,6 +338,9 @@ export default function Form222Screen({ onClose }: Props) {
         onPress={() => {
           setSpeciesOpen(false);
           setInteractionTypeOpen(false);
+          setConfidenceOpen(false);
+          setSpecimenCondOpen(false);
+          setLengthCatOpen(false);
           setOpen(!isOpen);
         }}
         activeOpacity={0.8}
@@ -560,6 +578,37 @@ export default function Form222Screen({ onClose }: Props) {
                 setInteractionTypeOpen,
                 set('interactionTypeLabel'),
                 t('form222.interactionTypePlaceholder'),
+              )}
+
+              {/* Optional specimen detail (XSD minOccurs=0) → ID_CNFDNCE_ID / SPCMN_COND_ID / BDY_LEN_ID */}
+              {renderDropdown(
+                t('form222.confidenceLabel'),
+                form.confidenceLabel,
+                CONFIDENCE_LEVEL_LABELS,
+                confidenceOpen,
+                setConfidenceOpen,
+                set('confidenceLabel'),
+                t('form222.confidencePlaceholder'),
+              )}
+
+              {renderDropdown(
+                t('form222.specimenCondLabel'),
+                form.specimenCondLabel,
+                SPECIMEN_CONDITION_LABELS,
+                specimenCondOpen,
+                setSpecimenCondOpen,
+                set('specimenCondLabel'),
+                t('form222.specimenCondPlaceholder'),
+              )}
+
+              {renderDropdown(
+                t('form222.lengthCatLabel'),
+                form.lengthCatLabel,
+                LENGTH_CATEGORY_LABELS,
+                lengthCatOpen,
+                setLengthCatOpen,
+                set('lengthCatLabel'),
+                t('form222.lengthCatPlaceholder'),
                 true,
               )}
             </View>

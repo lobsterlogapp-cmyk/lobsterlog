@@ -8,6 +8,22 @@
 import { MV_PORT, MV_PROVINCE } from '../data/reftables';
 import { MV_STAT_SECTION_VS_FMA, type DfoStatSectionVsFma } from '../data/reftables';
 
+// Clamp a hand-typed / high-precision coordinate to the XSD's max 4 decimal places before
+// it enters the XML. Both the 234 (39673) and 222 (39588) LAT/LONG types allow at most 4
+// decimals; a higher-precision value (e.g. a 14-decimal GPS read) is rejected by DFO as
+// WS1038 "XML content is not valid against XSD". Rounds to 4 dp WITHOUT padding trailing
+// zeros, so a value already within 4 dp passes through unchanged; a finite negative keeps
+// its leading minus. Non-numeric/empty input is returned trimmed so the validator can flag
+// it. Emit-only — the stored/displayed coordinate is never mutated. Shared by both
+// generators (dfoXmlGenerator + dfoForm222Generator); the single definition lives here to
+// avoid a circular import between the two generator modules.
+export function clampCoord4(v: string): string {
+  const t = v.trim();
+  const n = Number(t);
+  if (t === '' || !Number.isFinite(n)) return t;
+  return String(Math.round(n * 10000) / 10000);
+}
+
 // ─── Hardcoded header values ────────────────────────────────
 export const DFO_FORM_VER_ID = 234;
 export const DFO_REG_ID = 1004;        // Maritimes

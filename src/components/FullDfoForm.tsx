@@ -188,6 +188,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const [timeStartedHauling, setTimeStartedHauling] = useState('');
   const [timeStoppedHauling, setTimeStoppedHauling] = useState('');
   const [timeOfLanding, setTimeOfLanding] = useState('');
+  // Per-field trip dates (S90, multi-day trips). Each timestamp carries its own date so a
+  // trip can span midnight. Blank → the generator falls back to dateFished (same-day / old
+  // logs / quick-capture). dateFished stays the trip's nominal date (= sail-start's date).
+  const [sailDate, setSailDate] = useState('');
+  const [haulStartDate, setHaulStartDate] = useState('');
+  const [haulEndDate, setHaulEndDate] = useState('');
+  const [landingDate, setLandingDate] = useState('');
   const [soakDuration, setSoakDuration] = useState('');
 
   const [baitEntries, setBaitEntries] = useState<BaitEntry[]>([]);
@@ -392,6 +399,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           setTimeStartedHauling(d.timeStartedHauling || '');
           setTimeStoppedHauling(d.timeStoppedHauling || '');
           setTimeOfLanding(d.timeOfLanding || '');
+          // Per-field dates: absent on old (pre-S90) logs → left blank, generator falls
+          // back to dateFished, so an existing single-day log re-saves byte-identically.
+          setSailDate(d.sailDate || '');
+          setHaulStartDate(d.haulStartDate || '');
+          setHaulEndDate(d.haulEndDate || '');
+          setLandingDate(d.landingDate || '');
           setSoakDuration(d.soakDuration || '');
           setGpsLat(d.gpsLat || '');
           setGpsLng(d.gpsLng || '');
@@ -576,6 +589,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     departurePort, departurePortCodeId: String(departurePortCodeId ?? ''),
     timeSailed, timeStartedHauling, timeStoppedHauling,
     timeOfLanding, soakDuration,
+    sailDate, haulStartDate, haulEndDate, landingDate,
     baitEntries: JSON.stringify(baitEntries),
     bycatchYes: String(bycatchYes),
     bycatchEntries: JSON.stringify(bycatchEntries),
@@ -679,21 +693,31 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
 
   const handleSailPress = async () => {
     if (!sailActive) {
+      const now = new Date();
       await startSail();
-      // timeSailed synced via useEffect on sailStartTime
+      // timeSailed synced via useEffect on sailStartTime; stamp its companion date now.
+      // Sail-start drives the trip's nominal date, same as the picker path.
+      setSailDate(formatDate(now));
+      setDateFished(formatDate(now));
     } else {
+      const now = new Date();
       const { time } = stopSail();
       setTimeOfLanding(time); // Stop Sail = landed
+      setLandingDate(formatDate(now)); // companion date for the landing time
     }
   };
 
   const handleHaulPress = async () => {
       if (!haulActive) {
+        const now = new Date();
         await startHaul();
-        // timeStartedHauling synced via useEffect on haulStartTime
+        // timeStartedHauling synced via useEffect on haulStartTime; stamp companion date now.
+        setHaulStartDate(formatDate(now));
       } else {
+        const now = new Date();
         stopHaul();
-        // timeStoppedHauling synced via useEffect on haulEndTime
+        // timeStoppedHauling synced via useEffect on haulEndTime; stamp companion date now.
+        setHaulEndDate(formatDate(now));
         await captureGps(setGpsLat, setGpsLng);
         setGpsSrc('gps'); // §11.3: GPS-read coordinates → MODE="G"
       }
@@ -749,10 +773,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const openPicker = (field: PickerField) => {
     let current: Date;
     switch (field) {
-      case 'sailed':      current = parseDateTime(dateFished, timeSailed); break;
-      case 'startHaul':  current = parseDateTime(dateFished, timeStartedHauling); break;
-      case 'stopHaul':   current = parseDateTime(dateFished, timeStoppedHauling); break;
-      case 'landing':    current = parseDateTime(dateFished, timeOfLanding); break;
+      case 'sailed':      current = parseDateTime(sailDate || dateFished, timeSailed); break;
+      case 'startHaul':  current = parseDateTime(haulStartDate || dateFished, timeStartedHauling); break;
+      case 'stopHaul':   current = parseDateTime(haulEndDate || dateFished, timeStoppedHauling); break;
+      case 'landing':    current = parseDateTime(landingDate || dateFished, timeOfLanding); break;
       case 'mmTime':     current = parseDateTime(mmDate, mmTime); break;
       case 'sarTime':    current = parseDateTime(sarDate, sarTime); break;
       case 'lostGearTime': current = parseDateTime(lostGearDate, lostGearTime); break;
@@ -782,13 +806,14 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       }
       switch (pickerField) {
         case 'sailed':
-          setDateFished(formatDate(d)); setTimeSailed(formatTime(d)); break;
+          // Sail-start owns the trip's nominal date: keep its own date AND drive dateFished.
+          setSailDate(formatDate(d)); setDateFished(formatDate(d)); setTimeSailed(formatTime(d)); break;
         case 'startHaul':
-          setDateFished(formatDate(d)); setTimeStartedHauling(formatTime(d)); break;
+          setHaulStartDate(formatDate(d)); setTimeStartedHauling(formatTime(d)); break;
         case 'stopHaul':
-          setDateFished(formatDate(d)); setTimeStoppedHauling(formatTime(d)); break;
+          setHaulEndDate(formatDate(d)); setTimeStoppedHauling(formatTime(d)); break;
         case 'landing':
-          setDateFished(formatDate(d)); setTimeOfLanding(formatTime(d)); break;
+          setLandingDate(formatDate(d)); setTimeOfLanding(formatTime(d)); break;
         case 'mmTime':
           setMmDate(formatDate(d)); setMmTime(formatTime(d)); break;
         case 'sarTime':
@@ -1142,9 +1167,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     }
 
     // Rule 980: WARNING (non-blocking) when the landing date/time is more than
-    // 24 hours in the future — alert the user to a likely input error, then proceed
-    if (dateFished && timeOfLanding) {
-      const [ly, lm, ld] = dateFished.split('-').map(Number);
+    // 24 hours in the future — alert the user to a likely input error, then proceed.
+    // Use the landing field's own date (S90 multi-day), falling back to dateFished.
+    const landDateStr = landingDate || dateFished;
+    if (landDateStr && timeOfLanding) {
+      const [ly, lm, ld] = landDateStr.split('-').map(Number);
       const [lh, lmin] = timeOfLanding.split(':').map(Number);
       const landMs = new Date(ly, (lm ?? 1) - 1, ld ?? 1, lh ?? 0, lmin ?? 0).getTime();
       if (!isNaN(landMs) && landMs > Date.now() + 24 * 3600 * 1000) {
