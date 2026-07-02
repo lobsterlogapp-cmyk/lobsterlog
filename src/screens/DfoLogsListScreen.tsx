@@ -719,7 +719,7 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
         animationType="slide"
         onRequestClose={() => setForm222Visible(false)}
       >
-        <Form222Screen onClose={() => setForm222Visible(false)} />
+        <Form222Screen onClose={() => { setForm222Visible(false); refresh(); }} />
       </Modal>
 
       {/* ── Form 233 · Inactivity Modal ── */}
@@ -728,7 +728,7 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
         animationType="slide"
         onRequestClose={() => setForm233Visible(false)}
       >
-        <Form233Screen onClose={() => setForm233Visible(false)} />
+        <Form233Screen onClose={() => { setForm233Visible(false); refresh(); }} />
       </Modal>
 
       {/* ── Privacy Notice — one-time before DFO access ── */}
