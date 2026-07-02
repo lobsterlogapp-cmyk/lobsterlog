@@ -1,7 +1,8 @@
 // Form-path hardenings (222/233): Rule 528 VRN gate + LAT/LONG emit-time clamp.
-// Neither touches the 234 logbook path.
+// isValidFormVrn is form-only; clampCoord4 is now the shared coordinate clamp used by BOTH
+// the 222 form path and the 234 logbook path (S90 Phase C), so it lives in dfoConstants.
 import { isValidFormVrn } from '../submitDfoXml';
-import { clampCoord4 } from '../dfoForm222Generator';
+import { clampCoord4 } from '../dfoConstants';
 
 describe('isValidFormVrn — Rule 528 (4-6 digits, digits only)', () => {
   it('accepts 4, 5 and 6 digit values', () => {
