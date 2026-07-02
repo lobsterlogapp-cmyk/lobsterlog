@@ -1521,6 +1521,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                                     </TouchableOpacity>
                                   )}
                                 />
+                                <TouchableOpacity style={styles.sheetCancelBtn} onPress={() => { setGridPickerOpen(false); setGridSearch(''); }}>
+                                  <Text style={styles.sheetCancelText}>{tc('nav.cancel')}</Text>
+                                </TouchableOpacity>
                               </View>
                             </TouchableOpacity>
                           </TouchableOpacity>
@@ -1882,15 +1885,6 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         )}
 
         {!readOnly && (
-          <View style={styles.countBox}>
-            <Text style={styles.countText}>
-              <Text style={{ fontWeight: '700', color: '#B91C1C' }}>22 fields</Text> {t('form234.requiredPerTrip')}
-            </Text>
-            <Text style={styles.countSubtext}>{t('form234.oldPaperLog')}</Text>
-          </View>
-        )}
-
-        {!readOnly && (
           <TouchableOpacity style={styles.submitButton} onPress={handleSave}>
             <Save size={18} color="#FFFFFF" />
             <Text style={styles.submitText}>{t('form234.saveButton')}</Text>
@@ -2177,12 +2171,6 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#E2E8F0',
   },
   gpsRow: { flexDirection: 'row', marginBottom: 10 },
-  countBox: {
-    backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA',
-    borderRadius: 10, padding: 14, marginTop: 4, marginBottom: 16, alignItems: 'center',
-  },
-  countText: { fontSize: 15, color: '#1E293B' },
-  countSubtext: { fontSize: 12, color: '#64748B', marginTop: 2 },
   submitButton: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 8, backgroundColor: '#1E3A8A', paddingVertical: 14, borderRadius: 10,

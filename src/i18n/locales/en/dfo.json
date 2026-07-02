@@ -175,8 +175,6 @@
     "etaPlaceholder": "e.g. 14:00",
     "totalWeightLabel": "TOTAL WEIGHT (LBS)",
     "hloutSection": "HLOUT — Haul-Out (Dealer)",
-    "requiredPerTrip": "required per trip",
-    "oldPaperLog": "(Old paper log: 7 fields)",
     "backToLogs": "← Back to Logs",
     "captureGpsButton": "Capture GPS",
     "capturingGps": "Locating…",
