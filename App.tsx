@@ -89,6 +89,7 @@ import ReauthPasswordModal from './src/screens/ReauthPasswordModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loadCaptainProfile, saveCaptainProfile } from './src/utils/captainStorage';
 import { isDfoLocalEmpty, restoreAllStores } from './src/utils/dfoBackup';
+import { migrateBareKeysToUid } from './src/utils/dfoStorageKeys';
 import { changeLanguage } from './src/i18n';
 import LanguagePickerScreen from './src/components/LanguagePickerScreen';
 
@@ -135,6 +136,18 @@ export default function App() {
   // Cloud Backup restore (Phase 3): brief notice + a once-per-sign-in guard.
   const [restoreNotice, setRestoreNotice] = useState(false);
   const restoredUidRef = useRef<string | null>(null);
+  // Phase 2 migration once-guard — mirrors restoredUidRef but stores the uid AND the single
+  // migrateBareKeysToUid promise, so the dfoActivated re-read AND the restore gate (two
+  // separate uid-keyed effects) await the SAME migration: exactly one call per uid, never a
+  // concurrent double-run. ensureBareKeyMigration() creates the promise once per uid; every
+  // caller for that uid gets the same (eventually-resolved) promise back.
+  const migratedUidRef = useRef<{ uid: string; promise: Promise<unknown> } | null>(null);
+  const ensureBareKeyMigration = (uid: string): Promise<unknown> => {
+    if (migratedUidRef.current?.uid !== uid) {
+      migratedUidRef.current = { uid, promise: migrateBareKeysToUid(uid) };
+    }
+    return migratedUidRef.current.promise;
+  };
   const [tutorialVisible, setTutorialVisible] = useState(false);
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
   const [tripStartTime, setTripStartTime] = useState<string>('');
@@ -216,6 +229,10 @@ const isAdmin = useMemo(() => {
     restoredUidRef.current = uid;
     (async () => {
       try {
+        // Phase 2 FIRST — adopt any pre-namespacing bare-key data into this uid's namespace
+        // BEFORE the empty-probe runs, so isDfoLocalEmpty sees migrated data and we don't
+        // trigger a redundant cloud restore over data that was already local.
+        await ensureBareKeyMigration(uid);
         if (!(await isDfoLocalEmpty(uid))) return;   // this account's namespace already has DFO data
         const result = await restoreAllStores(uid);
         if (result.ok && (result.restoredCount ?? 0) > 0) {
@@ -258,6 +275,10 @@ const isAdmin = useMemo(() => {
     }
     setDfoActivated(null); // undetermined for this uid until the load resolves
     (async () => {
+      // Await the SAME one-time migration the restore effect kicks off (shared promise via
+      // ensureBareKeyMigration), so this read sees the adopted captain_profile rather than the
+      // still-empty ::uid namespace — otherwise dfoActivated resolves false and shows setup.
+      await ensureBareKeyMigration(uid);
       const p = await loadCaptainProfile();
       setDfoActivated(p.dfoActivated ?? false);
       setCaptainLocalProfile(p);
