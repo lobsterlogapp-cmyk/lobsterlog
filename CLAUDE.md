@@ -1,6 +1,6 @@
 # LobsterLog — CLAUDE.md
 App version: 1.8.6 (versionCode 76)
-Last updated: June 30, 2026 (Session 86 complete — DFO cloud backup Phase 3 restore + reauth-gated delete-wipes-cloud; Session 87 next)
+Last updated: July 2, 2026 (Session 90 complete — multi-day trip timestamps + shared coord clamp on the 234 path + 222 reftable trio; DFO UAT 234 regression documented [server-side WS1038]; Session 91 next. Sessions 87–89 not individually logged: 87/88 = DFO storage namespacing build [dfoStorageKeys.ts], 89 = multi-day/222 recon)
 
 ## What this app is
 React Native / Expo mobile app. DFO-qualified electronic logbook for lobster harvesters.
@@ -9,6 +9,14 @@ Built by Jonathon Nickerson, Cape Sable Island NS (LFA 34). Solo indie dev.
 ---
 
 ## Pending / waiting on
+- ⚠️ DFO UAT 234 REGRESSION (Session 90, Ticket #2126) — as of 2026-07-02 ALL 234 logbook
+  sends return WS1038 ("XML content not valid against XSD"). PROVEN server-side, NOT the app:
+  a byte-identical re-send of content DFO accepted 07-01 (CONF 163045) was rejected WS1038
+  (CONF 163055); a document validates against our on-disk XSD (39673.234…20260130). 222/233
+  paths UNAFFECTED (222 WS0000 CONF 163057/163060, 233 works). Reported to Kane; triage
+  acknowledged. Blocked pending DFO's updated 234 XSD / new package — obtain it, xmllint a sent
+  doc against it to find the newly-invalid element, then adjust the generator. Full evidence in
+  docs/WS1038_S90.md. CARRIED OPEN: cross-midnight LIVE 234 send banked until UAT recovers.
 - DFO test endpoint URL (Ticket #2126) — confirm exact test URL from DFO email
 - Garmin Box repo access (re-requested from Aldo cc Mauro, Session 47; still awaiting)
 - Aldo's answers (Session 47): chart rendering via native view vs tile URL template; Navionics token via URL query param vs X-navionics-developer-token header
@@ -572,6 +580,65 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
     stays open on wrong password). Verified iOS sim AND physical Android: reauth-fail destroys
     nothing + retries clean; correct password sweeps account + cloud + profile + local. Gating
     re-verified line-by-line after every handler change.
+- Multi-day (cross-midnight) trip timestamps — DONE (Session 90). Root cause (S89 recon,
+  docs/RECON_multiday_S89.md): the four EFFORT/TRIP/LANDING timestamps shared ONE trip date
+  (dateFished) at UI, storage, and generator layers, so a sail-late-Day-1 / haul-Day-2 trip
+  was unrepresentable and the ordering validators (Rules 29/32/45/46) fired false "before"
+  errors. FIX (Design A, per-field companion dates): FullDfoForm carries sailDate/haulStartDate/
+  haulEndDate/landingDate as companion keys in the existing `data` map (NO DfoLog interface
+  change — same pattern as trapSize/gridId/statSectId); the datetime picker's applyPickerValue
+  writes each field's OWN date (sail-start additionally drives dateFished, the trip's nominal
+  date); openPicker seeds each wheel from its own date `|| dateFished`. Generator combines
+  `d.<field>Date || log.dateFished` per field (dfoXmlGenerator.ts:90–93) — the fallback makes
+  same-day trips, quick-capture, and OLD pre-S90 logs emit byte-identically (proven via
+  launderSweep/blankTimestampGate + a temp cross-midnight harness: sail 23:30 D1 / haul 02:00
+  D2 → valid ordered date_12, validator passes). Phase 1b: Quick Capture handlers stamp each
+  field's companion date from the same now() at button-press; the Rule 980 >24h-landing warning
+  repointed to `landingDate || dateFished`. Blank-timestamp save-gate UNCHANGED (still keyed on
+  the HH:MM time fields → a blank time still blocks). tsc 33/0-new, jest 55/55. Committed 6834bd8.
+  CARRIED OPEN: cross-midnight LIVE 234 send banked until UAT recovers (see Pending). Reports:
+  docs/GATE1b_S90.md.
+- Shared coordinate clamp on the 234 path — DONE (Session 90, closes the S70 divergence). The
+  222/233 path clamped LAT/LONG to the XSD's ≤4-decimal limit (clampCoord4) but the 234 logbook
+  emitted them RAW, so a MAR FMA-38b log with a high-precision GPS read could draw WS1038. Moved
+  the single clampCoord4 definition (body byte-identical) into dfoConstants.ts — cycle-safe
+  (importing it into dfoXmlGenerator from dfoForm222Generator would have been circular, since the
+  222 generator already imports from the 234 generator); both generators + the oneoff test now
+  import from dfoConstants (no second copy). Applied to the 234 LAT/LONG emit
+  (dfoXmlGenerator.ts:288–289), matching the form path exactly (43.8237491→43.8237, minus
+  preserved, ≤4dp unchanged). Emit-only; only MAR FMA-38b logs emit LAT/LONG. tsc 33/0-new, jest
+  formVrnAndCoordClamp 6/6. Committed 6834bd8. Report: docs/GATE_C_S90.md.
+- Form 222 marine-mammal reference trio (ID_CNFDNCE_ID / SPCMN_COND_ID / BDY_LEN_ID) — DONE
+  (Session 90; gates Mammals TRG T1/T3, wired per docs/RECON_222_reftables_S89.md). The three
+  MV_* tables (MV_CONFIDENCE_LEVEL → ID_CNFDNCE_ID, MV_MM_SPECIMENS_CONDITION → SPCMN_COND_ID [the
+  MM table, NOT the SAR-side MV_SPECIMENS_CONDITION], MV_MM_LENGTH_CATEGORY → BDY_LEN_ID) were
+  generated-but-dead; now wired end-to-end. dfoForm222Generator: 3 label lists (CONFIDENCE_LEVELS/
+  SPECIMEN_CONDITIONS/LENGTH_CATEGORIES + *_LABELS mirroring MARINE_MAMMAL_SPECIES), 3 OPTIONAL
+  Form222Entry fields, emit label→codeId via tag() (omits when unset) in verified XSD sequence
+  order (NOAA_SPECIE_COD → ID_CNFDNCE_ID → SPCMN_COND_ID → NB_SPCMN_BEST → BDY_LEN_ID, 39588.222
+  lines 247–259). Form222Screen: 3 renderDropdown pickers in the Species card (only when
+  INTERACT_IND=Y), own open-states wired into the mutual-exclusion close logic; option rows are
+  bilingual free (reftable descFr). i18n: 6 EN keys (no `*`, optional); 6 FR _todo stubs.
+  Verified: xmllint validates WITH trio set AND with it fully omitted; codeId resolution correct;
+  tsc 33/0-new, jest 55/55. LIVE-PROVEN: set-trio 222 → WS0000 CONF 163057 (codeIds 39600/39622/
+  39602 confirmed in the archived sent XML via on-device AsyncStorage grep); blank-trio 222 →
+  WS0000 CONF 163060 with clean omission. Committed 6834bd8. Report: docs/GATE2_S90.md. CARRIED
+  OPEN: confirm the confidence codeId (39600=Uncertain observed vs 39598=Probable) matched the
+  actual on-device pick; 222 FR labels still stubs (see FR pile).
+- DFO UAT 234 regression — DOCUMENTED (Session 90; recon/debug, no app fault). As of 2026-07-02
+  every 234 logbook send returns WS1038. Proven server-side: a byte-identical re-send (fresh
+  filename) of content DFO accepted 07-01 (CONF 163045) was rejected WS1038 (CONF 163055); the
+  document validates against our on-disk XSD and is structurally identical to the 07-01 success;
+  the S90 timestamp change emits byte-identical XML for these same-day trips; a 07-02 Form 233
+  send returned WS0000 (DFO UAT is up). Conclusion: DFO deployed a stricter 234 XSD/validation on
+  ~07-02. Reported to Kane (Ticket #2126), triage acknowledged. NEW ERROR CODE banked: WS1034 =
+  "same file name already received by DFO" — checked BEFORE content validation, so a byte-exact
+  resend never revalidates (always use a fresh filename to test content). NEW AUTHORITY
+  TECHNIQUE banked: a FAILED send's XML lives in the register record's `xmlSnapshot`
+  (@lobsterlog_xml_archive is success-only); read via `xcrun simctl get_app_container booted
+  com.Nickerson.LobsterLog data` → Library/Application Support/<bundle>/RCTAsyncLocalStorage_V1/
+  (manifest.json + md5(key) files, keys uid-namespaced <base>::<uid>). Full evidence:
+  docs/WS1038_S90.md. See Pending for the blocker.
 
 ---
 
@@ -585,10 +652,13 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
   transmission register, captain profile), what's on-device under today's fixed keys (migration),
   and where sign-out lives. Heavy multi-call-site build — a missed call site is a silent
   isolation hole. Recon-only first; build is its own session.
-- FR proofreader pile — _todo French stubs accumulated across S84–86, awaiting the reviewer:
-  backup.* (oneOff* + restoredNotice), account.* (reauthTitle/reauthPrompt/reauthConfirm/
-  reauthFailed) + the ReauthPasswordModal copy, and the reworded privacy notice FR. (The S39
-  "zero _todo" record below predates these additions.)
+- FR proofreader pile — _todo French stubs accumulated across S84–86 (and now S90), awaiting
+  the reviewer: backup.* (oneOff* + restoredNotice), account.* (reauthTitle/reauthPrompt/
+  reauthConfirm/reauthFailed) + the ReauthPasswordModal copy, the reworded privacy notice FR,
+  and (S90) the 222 trio field labels form222.confidenceLabel/confidencePlaceholder/
+  specimenCondLabel/specimenCondPlaceholder/lengthCatLabel/lengthCatPlaceholder in fr/dfo.json
+  (English text + " _todo" marker; the picker OPTION rows are already FR from the reftables'
+  descFr — only the labels need translating). (The S39 "zero _todo" record below predates these.)
 - Real DFO PRODUCTION endpoint URL — still pending from DFO. In-app transmission to the UAT
   .asmx is now LIVE on BOTH paths (Session 54): DFO_UAT_ENDPOINT in dfoXmlGenerator.ts (single
   source of truth), wired into per-log doSubmit + harness handleFire; both empty
@@ -732,13 +802,17 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 | Session 84 | June 29–30 2026 | DFO Cloud Backup — RECON (docs/RECON_dfo_backup_S84.md: DFO side is local-only AsyncStorage + SOAP, no Firebase; the 7 DFO stores + their key conventions; identity = Firebase auth UID but DFO data is unkeyed to it) + PHASE 1 foundation. NEW src/utils/dfoBackup.ts (DFO_BACKUP_STORES, backups/{uid}/stores/{storeId} path on the dfo-elog DB, types, getDfoBackupDb, loadBackupConsent/saveBackupConsent key @lobsterlog:dfo_backup_consent default OFF) — NO cloud I/O wired. Consent toggle card + NEW BackupExplainerModal on CaptainProfileScreen; backup.* i18n (en+fr common.json). NEW firestore.rules + firebase.json (backups/{uid}/** read/write only when request.auth.uid==uid; scoped to dfo-elog so (default) untouched — Jonathon deploys). Committed c761acb. Then PRIVACY reword (bfd8a1e): privacy.section2/3/4Body (en+fr dfo.json) updated to disclose optional Cloud Backup + name Google Firebase as processor + cloud-copy deletion contact; FR curly U+2019 + «» preserved. tsc 33/0-new. Both pushed origin/main. |
 | Session 85 | June 30 2026 | DFO Cloud Backup PHASE 2 Step A — write-through + manual button. RECON docs/RECON_writethrough_S85.md (save choke point = saveLog dfoLogStorage.ts:76; logbook send success = DfoLogsListScreen doSubmit after markSentToDfo; forms persist+send via submitDfoXml; every site already in try/catch). dfoBackup.ts gained backupAllStores(uid) (raw VERBATIM via setDoc), triggerBackup() (fire-and-forget, consent+uid gated, terminal .catch — never throws/rejects into a caller), backupNow() (manual, awaited, {ok,reason}). FOUR triggerBackup() hooks AFTER local persist: FullDfoForm complete-save (in `if (ok)`), DfoLogsListScreen doSubmit (after markSentToDfo), Form222/Form233 (after saveForm22x/23x Entry); saveLog itself NOT hooked (shared w/ legacy proposal form). "Back up now" button on CaptainProfile + backup.* keys. Verified best-effort via a temp throw stub (added+removed, never committed) — save/send unaffected. Committed 8a2fe00. Then ONE-OFF-FROM-OFF (61b71a3): backupNow(alreadyConsented=false) wraps the consent gate in `if (!alreadyConsented)`; "Back up now" now visible in both toggle states; OFF-state tap → per-tap confirm (oneOff* i18n) → handleBackupNow(true) → bypass; toggle NEVER flipped, auto path untouched. tsc 33/0-new. Both pushed origin/main. RESTORE = Phase 3, not started. |
 | Session 86 | June 30 2026 | DFO Cloud Backup PHASE 3 (restore) + Delete Account hardening. RESTORE (51e962e): restoreAllStores(uid) + isDfoLocalEmpty() in dfoBackup.ts; auto-fires after sign-in (App.tsx effect, once-per-uid ref guard) ONLY when all 7 local DFO stores are empty; two-phase (fetch-all-then-write — any fetch error aborts with ZERO local writes; absent/empty cloud docs restore as empty); Phase B hardened to batched multiSet/multiRemove (residual non-atomic window BETWEEN the two batches documented + bounded by the empty-local gate, NOT eliminated — AsyncStorage has no transaction); quiet success banner on restoredCount>0, silent otherwise; verbatim round-trip proven on real device data (5 MAR-90 logs, sentToDfo + lgridCodeId/lgridDisplay survived). DELETE-WIPES-CLOUD + REAUTH (737ee5d): wipeAllStores(uid) enumerates+deletes all 7 store docs (no Firestore cascade) then the parent backups/{uid} doc, block-and-retry (surfaces failure, not swallowed). Delete handler reworked: confirm → password prompt → reauthenticateWithCredential → ONLY on success → wipeAllStores → deleteDoc(users/{uid}) → deleteUser → clearLocalDfoStores(). Closes a real torn-delete bug (deleteUser bounced on auth/requires-recent-login AFTER profile/cloud already destroyed). Cross-platform: replaced iOS-only Alert.prompt with generic reusable src/screens/ReauthPasswordModal.tsx (props-driven, no feature copy inside, inline error + stays open on wrong password). Verified iOS sim AND physical Android: reauth-fail destroys nothing + retries clean; correct password sweeps account/cloud/profile/local. Gating re-verified line-by-line after each handler change. tsc 33/0-new. Both pushed origin/main. GOTCHAS banked: useAuth.ts is at src/Hooks/ (capital H) — stage by full path or git add aborts the stage (same class as FullDfoForm-in-components); when git commit opens vim the message is pre-filled — :wq, don't type git into the buffer. CARRIED INTO S87: DFO storage namespacing (uid-scope the 7 keys for multi-account coexistence; recon-only first — see Not yet built). |
+| Session 90 | July 2 2026 | Multi-day trip timestamps + shared 234 coord clamp + 222 reftable trio; DFO UAT 234 regression documented. Built on S89 recon (docs/RECON_multiday_S89.md + RECON_222_reftables_S89.md). MULTI-DAY (Phase 1/1b, 6834bd8): per-field companion dates sailDate/haulStartDate/haulEndDate/landingDate ride the existing `data` map (NO DfoLog interface change — same pattern as trapSize/gridId/statSectId); applyPickerValue writes each field's OWN date (sail-start also drives dateFished, the trip's nominal date); generator combines `d.<field>Date || log.dateFished` (fallback → same-day + quick-capture + OLD pre-S90 logs emit byte-identically, proven via launderSweep/blankTimestampGate + a temp cross-midnight harness); Quick Capture handlers stamp companion dates from the same now() at press; Rule 980 >24h-landing warning repointed to landingDate||dateFished; blank-time save-gate UNCHANGED (still keyed on HH:MM). COORD CLAMP (Phase C, 6834bd8): moved clampCoord4 → dfoConstants.ts (cycle-safe single def — importing 222→234 would cycle) + both generators + oneoff import it; applied to the 234 LAT/LONG emit (dfoXmlGenerator.ts:288–289) — closes the S70 divergence; emit-only, MAR FMA-38b only. 222 TRIO (Phase 2, 6834bd8): wired ID_CNFDNCE_ID/SPCMN_COND_ID/BDY_LEN_ID from MV_CONFIDENCE_LEVEL/MV_MM_SPECIMENS_CONDITION/MV_MM_LENGTH_CATEGORY (the MM tables, NOT the SAR-side MV_SPECIMENS_CONDITION) — 3 optional Form222Entry fields + 3 label lists + 3 Species-card pickers + emit label→codeId in verified XSD sequence order (247–259); xmllint validates WITH trio set AND fully omitted; LIVE WS0000 CONF 163057 (trio, codeIds 39600/39622/39602 confirmed in archived sent XML via on-device AsyncStorage grep) + CONF 163060 (blank, clean omission). 234 UAT REGRESSION: all 234 sends WS1038 as of 07-02 — PROVEN server-side, NOT the app: byte-identical re-send (fresh filename) of content DFO accepted 07-01 (CONF 163045) rejected WS1038 (CONF 163055); doc validates vs our on-disk XSD + is structurally identical to the 07-01 success; a 07-02 Form 233 send returned WS0000 (UAT up); 222/233 unaffected; reported to Kane (Ticket #2126), triage acknowledged; full evidence docs/WS1038_S90.md. BANKED: WS1034 = "same file name already received by DFO" (checked BEFORE content validation → byte-exact resends never revalidate; always fresh filename to test content); a FAILED send's XML lives in the register record's xmlSnapshot (@lobsterlog_xml_archive is success-only) — read via xcrun simctl get_app_container booted → Library/Application Support/<bundle>/RCTAsyncLocalStorage_V1 (manifest.json + md5(key) files; keys uid-namespaced <base>::<uid>). tsc 33/0-new, jest 17 suites/55 tests. Reports: docs/GATE1b_S90.md / GATE_C_S90.md / GATE2_S90.md. Commits 6834bd8 (code) / 7fdbac3 (recon+gate docs) / 5bf6275 (coord-clamp test repoint) — all pushed origin/main; this CLAUDE.md closeout is its own separate commit. CARRIED OPEN: cross-midnight LIVE 234 send banked until UAT recovers; confidence codeId 39600(Uncertain)-vs-39598(Probable) check if Probable was the actual on-device pick; 222 FR labels still _todo stubs; Android coexistence test; S91 UI batch (222/233 register refresh, 22-fields banner removal, picker exit button, header DFO ELOG button); NO live DFO POST by Claude Code ever — steps only. NOTE: sessions 87–89 not individually logged in this table (87/88 = DFO storage namespacing build per dfoStorageKeys.ts; 89 = multi-day + 222 recon; pre-existing gap, not reconstructed). |
 
 ---
 
 ## Current session goals
 > Update this section at the start of each session.
 
-SESSION 87 — TBD. (Session 86 delivered DFO Cloud Backup Phase 3 restore + reauth-gated
-delete-wipes-cloud, all pushed. Next candidate: DFO storage NAMESPACING — uid-scope the 7
-keys for multi-account coexistence; recon-only first, then its own build session — see Not
-yet built.)
+SESSION 91 — TBD. (Session 90 delivered multi-day trip timestamps, the shared 234 coord
+clamp, and the 222 reftable trio — all committed + pushed [6834bd8 / 7fdbac3 / 5bf6275]. The
+big open item is the DFO UAT 234 regression [server-side WS1038 as of 07-02] — blocked on
+DFO's updated XSD/package via Kane, Ticket #2126; not an app fix. Candidate S91 work: the UI
+batch [222/233 register refresh, 22-fields banner removal, picker exit button, header DFO ELOG
+button]; DFO storage NAMESPACING [carried since S87, still recon-first]; Android coexistence
+test. No live DFO POST by Claude Code — steps only.)
