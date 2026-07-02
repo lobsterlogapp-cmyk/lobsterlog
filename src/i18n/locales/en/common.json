@@ -10,7 +10,8 @@
     "delete": "Delete",
     "edit": "Edit",
     "confirm": "Confirm",
-    "ok": "OK"
+    "ok": "OK",
+    "dfoElog": "DFO ELOG"
   },
   "settings": {
     "title": "Settings",

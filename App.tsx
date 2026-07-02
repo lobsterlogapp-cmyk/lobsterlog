@@ -499,7 +499,7 @@ const isAdmin = useMemo(() => {
             <View style={styles.headerIcon}>
               <Image
                 source={require('./assets/lobster-icon.png')}
-                style={{ width: 45, height: 45, resizeMode: 'contain' }}
+                style={{ width: 60, height: 60, resizeMode: 'contain' }}
               />
             </View>
             <View>
@@ -509,6 +509,7 @@ const isAdmin = useMemo(() => {
               ) : null}
             </View>
           </View>
+          <View style={styles.headerRightStack}>
           <View style={styles.headerRight}>
                       <TouchableOpacity
                         onPress={() => setView(view === 'pro' ? 'log' : 'pro')}
@@ -518,25 +519,6 @@ const isAdmin = useMemo(() => {
                           <X size={24} color="#FBBF24" />
                         ) : (
                           <Crown size={24} color="#FBBF24" />
-                        )}
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        onPress={() => {
-                          const isInDfoArea = view === 'dfo-list' || view === 'dfo-demo' || view === 'dfo-setup' || view === 'dfo-trip' || view === 'dfo-history';
-                          if (isInDfoArea) { setView('log'); return; }
-                          if (dfoActivated === null) return; // undetermined for this uid — hold; never flash setup
-                          setView(dfoActivated ? 'dfo-list' : 'dfo-setup');
-                        }}
-                        style={[
-                          styles.navButton,
-                          (view === 'dfo-list' || view === 'dfo-demo' || view === 'dfo-setup' || view === 'dfo-trip' || view === 'dfo-history') && styles.navButtonActive,
-                        ]}
-                      >
-                        {view === 'dfo-list' || view === 'dfo-demo' || view === 'dfo-setup' || view === 'dfo-trip' || view === 'dfo-history' ? (
-                          <X size={24} color="#F87171" />
-                        ) : (
-                          <ClipboardList size={24} color="#F87171" />
                         )}
                       </TouchableOpacity>
 
@@ -561,6 +543,25 @@ const isAdmin = useMemo(() => {
                         )}
                       </TouchableOpacity>
                     </View>
+          <View style={styles.dfoPillRow}>
+            <TouchableOpacity
+              style={styles.dfoPill}
+              onPress={() => {
+                const isInDfoArea = view === 'dfo-list' || view === 'dfo-demo' || view === 'dfo-setup' || view === 'dfo-trip' || view === 'dfo-history';
+                if (isInDfoArea) { setView('log'); return; }
+                if (dfoActivated === null) return; // undetermined for this uid — hold; never flash setup
+                setView(dfoActivated ? 'dfo-list' : 'dfo-setup');
+              }}
+            >
+              {(view === 'dfo-list' || view === 'dfo-demo' || view === 'dfo-setup' || view === 'dfo-trip' || view === 'dfo-history') ? (
+                <X size={16} color="#FFFFFF" />
+              ) : (
+                <ClipboardList size={16} color="#FFFFFF" />
+              )}
+              <Text style={styles.dfoPillLabel}>{t('nav.dfoElog')}</Text>
+            </TouchableOpacity>
+          </View>
+          </View>
         </View>
       </View>
 

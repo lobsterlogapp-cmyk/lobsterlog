@@ -11,7 +11,8 @@
     "delete": "Supprimer",
     "edit": "Modifier",
     "confirm": "Confirmer",
-    "ok": "OK"
+    "ok": "OK",
+    "dfoElog": "ELOG MPO _todo"
   },
   "settings": {
     "title": "Paramètres",
