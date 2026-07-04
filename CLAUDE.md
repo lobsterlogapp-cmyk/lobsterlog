@@ -1,6 +1,6 @@
 # LobsterLog — CLAUDE.md
 App version: 1.8.6 (versionCode 76)
-Last updated: July 2, 2026 (Session 90 complete — multi-day trip timestamps + shared coord clamp on the 234 path + 222 reftable trio; DFO UAT 234 regression documented [server-side WS1038]; Session 91 next)
+Last updated: July 2, 2026 (Session 91 complete — pre-ship UI batch: register refresh on form-modal close, 22-fields banner removed, GRID picker Cancel, header DFO ELOG pill; 234.12 package received from Kane [LOST_GEAR_IND maxOccurs=0 → root cause of the 07-02 234 WS1038 regression; prod cutover 2026-08-27; UAT enforcing since 07-02]; Session 92 next — absorb 234.12)
 
 ## What this app is
 React Native / Expo mobile app. DFO-qualified electronic logbook for lobster harvesters.
@@ -639,6 +639,24 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
   com.Nickerson.LobsterLog data` → Library/Application Support/<bundle>/RCTAsyncLocalStorage_V1/
   (manifest.json + md5(key) files, keys uid-namespaced <base>::<uid>). Full evidence:
   docs/WS1038_S90.md. See Pending for the blocker.
+- Pre-ship UI batch — DONE (Session 91, July 2 evening). Four device-gated fixes shipped ahead
+  of the 234.12 absorption. PHASE 1 (register refresh, commit 0aeff52): the transmission register
+  now refreshes on the Form 222/233 modal's onClose, so a just-sent form row appears without a
+  manual reload; device-gated live 233 → WS0000 CONF 163061. PHASES 2+3 (combined commit 2581e5e):
+  removed the "22 fields" banner (the block + 2 i18n keys EN/FR + 3 orphaned styles) and added a
+  bottom Cancel to the GRID_ID picker modal (sheet pattern); the STAT_SECT picker was confirmed
+  correct as-is (no change). PHASE 4+4b (commit 1994bd2): the header clipboard control replaced
+  with a labeled "DFO ELOG" pill (#DC2626, glyph toggles, routing preserved verbatim), identity
+  block enlarged; three device-gated iterations; new key common.nav.dfoElog (FR _todo). Confidence-
+  mapping check CLOSED — string-keyed lookup confirmed, CONF 163057 = Uncertain (settles the S90
+  CARRIED-OPEN 39600-Uncertain-vs-39598-Probable question). Recon docs committed 869208c.
+- 234.12 DFO package received from Kane — root cause of the S90 234 UAT regression NAMED
+  (Session 91). LOST_GEAR_IND flipped Mandatory→Blocked (maxOccurs=0) in the 234.12 XSD, so every
+  234 logbook send since 07-02 bounces WS1038. Production cutover 2026-08-27; UAT already enforcing
+  since 07-02. Absorption (de-emit LOST_GEAR_IND + UI removal, xmllint-gated before any generator
+  edit, then a live recovery 234 send) is the Session 92 work — see Current session goals. NEW HARD
+  RULE established this session: Claude Code runs NO state-changing git (add/commit/amend/push/reset)
+  and NO live DFO POST — it hands over vetted literal commands and Jonny runs them.
 
 ---
 
@@ -806,16 +824,21 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 | Session 88 | July 1–2 2026 | DFO storage uid-namespacing SHIPPED (Phase 1 + Phase 2) — four commits pushed origin/main. Phase 1 (bde42db — uid-namespace DFO storage keys, plumbing + routing re-sync): new src/utils/dfoStorageKeys.ts as the ONE source of truth — dfoKey(base,uid?) = `${base}::${uid}` (ambient activeDfoUid via setActiveDfoUid, fail-closed `::__anon__` when signed out) + DFO_STORE_BASES (the 7 bases); all store accessors repointed through it (captainStorage / crewStorage / dfoLogStorage / dfoBackup / dfoForm222Generator / dfoForm233Generator). Phase 2 (ce36f28 — migration adopt-on-sign-in, empty-slot guard): migrateBareKeysToUid(uid) copy-verify-clear, EMPTY-SLOT-ONLY per-key (skips any store whose ::uid target already holds data → never overwrites), wired into App.tsx post-sign-in. Docs committed bbd5b11 (RECON_namespacing_S87 + prior recon/audit backlog, 16 files); ios/Podfile.lock synced 9b344a4 (ExpoClipboard 8.0.8). iOS multi-account coexistence device-verified. |
 | Session 89 | July 2 2026 | RECON-only — two investigations for the S90 build (no code; both docs later committed in S90's 7fdbac3). docs/RECON_multiday_S89.md — the cross-midnight timestamp bug: the four EFFORT/TRIP/LANDING timestamps share ONE trip date (dateFished) across the UI (FullDfoForm), storage (DfoLog), and generator (dfoXmlGenerator:86–89) layers, so a sail-late-D1 / haul-D2 trip is unrepresentable and the ordering validators (Rules 29/32/45/46) fire false "before" errors — the validators are themselves confirmed chronologically correct (would PASS if the underlying dates were right); root cause + every file:line + 3 candidate fix designs (per-field companion dates / +1-day toggle / full datetime), chose none. docs/RECON_222_reftables_S89.md — the 3 marine-mammal reftables (MV_CONFIDENCE_LEVEL / MV_MM_LENGTH_CATEGORY / MV_MM_SPECIMENS_CONDITION) are generated but wired NOWHERE; the matching 222 fields are ABSENT (not free-text, not hardcoded); XSD elements ID_CNFDNCE_ID / SPCMN_COND_ID / BDY_LEN_ID all minOccurs=0; sized small. Both landed as S90 builds. |
 | Session 90 | July 2 2026 | Multi-day trip timestamps + shared 234 coord clamp + 222 reftable trio; DFO UAT 234 regression documented. Built on S89 recon (docs/RECON_multiday_S89.md + RECON_222_reftables_S89.md). MULTI-DAY (Phase 1/1b, 6834bd8): per-field companion dates sailDate/haulStartDate/haulEndDate/landingDate ride the existing `data` map (NO DfoLog interface change — same pattern as trapSize/gridId/statSectId); applyPickerValue writes each field's OWN date (sail-start also drives dateFished, the trip's nominal date); generator combines `d.<field>Date || log.dateFished` (fallback → same-day + quick-capture + OLD pre-S90 logs emit byte-identically, proven via launderSweep/blankTimestampGate + a temp cross-midnight harness); Quick Capture handlers stamp companion dates from the same now() at press; Rule 980 >24h-landing warning repointed to landingDate||dateFished; blank-time save-gate UNCHANGED (still keyed on HH:MM). COORD CLAMP (Phase C, 6834bd8): moved clampCoord4 → dfoConstants.ts (cycle-safe single def — importing 222→234 would cycle) + both generators + oneoff import it; applied to the 234 LAT/LONG emit (dfoXmlGenerator.ts:288–289) — closes the S70 divergence; emit-only, MAR FMA-38b only. 222 TRIO (Phase 2, 6834bd8): wired ID_CNFDNCE_ID/SPCMN_COND_ID/BDY_LEN_ID from MV_CONFIDENCE_LEVEL/MV_MM_SPECIMENS_CONDITION/MV_MM_LENGTH_CATEGORY (the MM tables, NOT the SAR-side MV_SPECIMENS_CONDITION) — 3 optional Form222Entry fields + 3 label lists + 3 Species-card pickers + emit label→codeId in verified XSD sequence order (247–259); xmllint validates WITH trio set AND fully omitted; LIVE WS0000 CONF 163057 (trio, codeIds 39600/39622/39602 confirmed in archived sent XML via on-device AsyncStorage grep) + CONF 163060 (blank, clean omission). 234 UAT REGRESSION: all 234 sends WS1038 as of 07-02 — PROVEN server-side, NOT the app: byte-identical re-send (fresh filename) of content DFO accepted 07-01 (CONF 163045) rejected WS1038 (CONF 163055); doc validates vs our on-disk XSD + is structurally identical to the 07-01 success; a 07-02 Form 233 send returned WS0000 (UAT up); 222/233 unaffected; reported to Kane (Ticket #2126), triage acknowledged; full evidence docs/WS1038_S90.md. BANKED: WS1034 = "same file name already received by DFO" (checked BEFORE content validation → byte-exact resends never revalidate; always fresh filename to test content); a FAILED send's XML lives in the register record's xmlSnapshot (@lobsterlog_xml_archive is success-only) — read via xcrun simctl get_app_container booted → Library/Application Support/<bundle>/RCTAsyncLocalStorage_V1 (manifest.json + md5(key) files; keys uid-namespaced <base>::<uid>). tsc 33/0-new, jest 17 suites/55 tests. Reports: docs/GATE1b_S90.md / GATE_C_S90.md / GATE2_S90.md. Commits 6834bd8 (code) / 7fdbac3 (recon+gate docs) / 5bf6275 (coord-clamp test repoint) — all pushed origin/main; this CLAUDE.md closeout is its own separate commit. CARRIED OPEN: cross-midnight LIVE 234 send banked until UAT recovers; confidence codeId 39600(Uncertain)-vs-39598(Probable) check if Probable was the actual on-device pick; 222 FR labels still _todo stubs; Android coexistence test; S91 UI batch (222/233 register refresh, 22-fields banner removal, picker exit button, header DFO ELOG button); NO live DFO POST by Claude Code ever — steps only. |
+| Session 91 | July 2 2026 | Pre-ship UI batch (four device-gated fixes) + 234.12 package absorbed as intel; no generator/source change to the 234 emit yet. PHASE 1 (0aeff52): transmission register refreshes on the Form 222/233 modal onClose (a just-sent row appears without a manual reload); device-gated live 233 → WS0000 CONF 163061. PHASES 2+3 (2581e5e): "22 fields" banner removed (block + 2 i18n keys EN/FR + 3 orphaned styles); GRID_ID picker modal given a bottom Cancel (sheet pattern); STAT_SECT picker confirmed correct as-is. PHASE 4+4b (1994bd2): header clipboard → labeled "DFO ELOG" pill (#DC2626, glyph toggles, routing verbatim), identity block enlarged, three device-gated iterations; new key common.nav.dfoElog (FR _todo). Confidence-mapping check CLOSED (string-keyed lookup, CONF 163057 = Uncertain — settles the S90 39600-vs-39598 carried-open). Recon docs committed 869208c. 234.12 PACKAGE received from Kane — root cause of the S90 234 UAT regression NAMED: LOST_GEAR_IND Mandatory→Blocked (maxOccurs=0) in the 234.12 XSD → every 234 send since 07-02 bounces WS1038; prod cutover 2026-08-27; UAT enforcing since 07-02. NEW HARD RULE: Claude Code runs NO state-changing git (add/commit/amend/push/reset) + NO live DFO POST — steps only, Jonny runs them. Absorption (de-emit LOST_GEAR_IND + UI removal, xmllint-gated, then live recovery send) deferred to S92. This CLAUDE.md closeout is its own commit, authored at the top of S92 — S91's context closed before the dictated entry landed in the file. CARRIED OPEN: cross-midnight LIVE 234 send still banked until UAT/absorption clears; 222 FR labels still _todo stubs; Android coexistence test; DFO storage namespacing (carried since S87). |
 
 ---
 
 ## Current session goals
 > Update this section at the start of each session.
 
-SESSION 91 — TBD. (Session 90 delivered multi-day trip timestamps, the shared 234 coord
-clamp, and the 222 reftable trio — all committed + pushed [6834bd8 / 7fdbac3 / 5bf6275]. The
-big open item is the DFO UAT 234 regression [server-side WS1038 as of 07-02] — blocked on
-DFO's updated XSD/package via Kane, Ticket #2126; not an app fix. Candidate S91 work: the UI
-batch [222/233 register refresh, 22-fields banner removal, picker exit button, header DFO ELOG
-button]; DFO storage NAMESPACING [carried since S87, still recon-first]; Android coexistence
-test. No live DFO POST by Claude Code — steps only.)
+SESSION 92 — Absorb 234.12. DFO's 234.12 package (received from Kane in S91) names the root
+cause of the 07-02 UAT regression: LOST_GEAR_IND went Mandatory→Blocked (maxOccurs=0), so every
+234 logbook send bounces WS1038. Plan (artifact-before-edit, xmllint-gated): (1) file the 234.12
+package to ~/Desktop/DFO/ELOGS_F234_2026-08-27/ with the old ELOGS_F234/ folder left byte-
+untouched; (2) xmllint a 07-02 REJECTED doc and the 07-01 ACCEPTED doc against the NEW XSD —
+expect BOTH to fail on LOST_GEAR_IND, and confirm the rejected doc still PASSES the OLD XSD
+(proves the server changed, not us); (3) de-emit LOST_GEAR_IND from dfoXmlGenerator + remove its
+UI, with xmllint green before any generator edit; (4) live recovery 234 send (doubles as the
+banked cross-midnight trip). Production cutover 2026-08-27; UAT enforcing since 07-02; Ticket
+#2126. HARD RULES: Claude Code runs NO state-changing git and NO live DFO POST — vetted literal
+commands only, Jonny runs them. Reports to docs/*.md.
