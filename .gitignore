@@ -85,3 +85,6 @@ GoogleService-Info.plist
 
 # Google Play service account key — never commit this file
 google-services-account.json
+
+# S92 234.12 recon — raw ELOG artifacts (carry LIC_NO/VRN; reproducible from the on-device register)
+docs/s92_*.xml
