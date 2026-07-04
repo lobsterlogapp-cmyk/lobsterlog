@@ -39,7 +39,7 @@ Built by Jonathon Nickerson, Cape Sable Island NS (LFA 34). Solo indie dev.
 
 Session 48 stopped mid-Phase-1 after a blocking structural discovery. **Read this before
 touching the DFO XML generator.** Authority for all claims below: the on-file XSD
-`Desktop/DFO/ELOGS_F234/39673.234.…Homard_20260130 000000.xsd`, validated with
+`Desktop/DFO/ELOG_F234_old_234-11/39673.234.…Homard_20260130 000000.xsd` (234.11 package relocated here in S92 — `ELOG_F234` now holds the NEW 234.12 XSD `…20260624`; disambiguate by XSD filename date, not folder name), validated with
 `xmllint --noout --schema`.
 
 📄 **FULL RESTRUCTURE PLAN: `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md`** — complete target tree,
@@ -833,12 +833,22 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 
 SESSION 92 — Absorb 234.12. DFO's 234.12 package (received from Kane in S91) names the root
 cause of the 07-02 UAT regression: LOST_GEAR_IND went Mandatory→Blocked (maxOccurs=0), so every
-234 logbook send bounces WS1038. Plan (artifact-before-edit, xmllint-gated): (1) file the 234.12
-package to ~/Desktop/DFO/ELOGS_F234_2026-08-27/ with the old ELOGS_F234/ folder left byte-
-untouched; (2) xmllint a 07-02 REJECTED doc and the 07-01 ACCEPTED doc against the NEW XSD —
-expect BOTH to fail on LOST_GEAR_IND, and confirm the rejected doc still PASSES the OLD XSD
-(proves the server changed, not us); (3) de-emit LOST_GEAR_IND from dfoXmlGenerator + remove its
-UI, with xmllint green before any generator edit; (4) live recovery 234 send (doubles as the
-banked cross-midnight trip). Production cutover 2026-08-27; UAT enforcing since 07-02; Ticket
-#2126. HARD RULES: Claude Code runs NO state-changing git and NO live DFO POST — vetted literal
-commands only, Jonny runs them. Reports to docs/*.md.
+234 logbook send bounces WS1038. PACKAGE LAYOUT (filed S92 — folder names FLIPPED from the
+original plan):
+
+| Package | Folder | XSD |
+|---|---|---|
+| NEW (234.12) | `~/Desktop/DFO/ELOG_F234/` | `…Homard_20260624 000000.xsd` |
+| OLD (234.11) | `~/Desktop/DFO/ELOG_F234_old_234-11/` | `…Homard_20260130 000000.xsd` |
+
+DISAMBIGUATE BY XSD FILENAME DATE, NEVER FOLDER NAME: 20260130 = OLD (234.11), 20260624 = NEW
+(234.12). `ELOG_F234` (no S) now holds the NEW schema; the old 234.11 package was relocated to
+`ELOG_F234_old_234-11/`, byte-preserved. Plan (artifact-before-edit, xmllint-gated): (1) ✓ package
+filed + inventories verified (S92); (2) xmllint a 07-02 REJECTED doc and the 07-01 ACCEPTED doc
+(LL-20260701-001, CONF 163045) against the NEW XSD (…20260624) — expect BOTH to fail on
+LOST_GEAR_IND; confirm the rejected doc still PASSES the OLD XSD (…20260130), proving the server
+changed, not us; (3) de-emit LOST_GEAR_IND from dfoXmlGenerator + remove its UI, with xmllint
+green before any generator edit; (4) live recovery 234 send (doubles as the banked cross-midnight
+trip). Production cutover 2026-08-27; UAT enforcing since 07-02; Ticket #2126. HARD RULES: Claude
+Code runs NO state-changing git and NO live DFO POST — vetted literal commands only, Jonny runs
+them. Recon/reports to docs/*.md (Step 2 → docs/RECON_234_12_xmllint_S92.md).
