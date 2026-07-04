@@ -1,6 +1,6 @@
 # LobsterLog — CLAUDE.md
 App version: 1.8.6 (versionCode 76)
-Last updated: July 2, 2026 (Session 91 complete — pre-ship UI batch: register refresh on form-modal close, 22-fields banner removed, GRID picker Cancel, header DFO ELOG pill; 234.12 package received from Kane [LOST_GEAR_IND maxOccurs=0 → root cause of the 07-02 234 WS1038 regression; prod cutover 2026-08-27; UAT enforcing since 07-02]; Session 92 next — absorb 234.12)
+Last updated: July 4, 2026 (Session 92 complete — 234.12 package filed [NEW ELOG_F234/…20260624, OLD preserved ELOG_F234_old_234-11/…20260130; disambiguate by XSD filename date, not folder]; stale CLAUDE.md XSD paths fixed; xmllint recon CONFIRMED LOST_GEAR_IND maxOccurs 1→0 is the SOLE breaking change [rejected+accepted FAIL new XSD, rejected PASSES old, surgical removal validates clean]; integer renames non-breaking; NO source touched; Session 93 next — de-emit LOST_GEAR_IND)
 
 ## What this app is
 React Native / Expo mobile app. DFO-qualified electronic logbook for lobster harvesters.
@@ -112,9 +112,10 @@ XSD line 294)**, NOT in `EFFORT_DETAIL`. The generator currently emits BOTH a fl
   integer `PORT_ID` codes (QC/NL); HLIN/HLOUT emit `COMPANY_NM` strings but XSD wants
   integer `HLIN_CIE_ID`/`HLOUT_CIE_ID`; BAIT is attr-style `<BAIT/>` but XSD wants
   `BAIT_USED` with child elements (`BT_TYP_ID`/`BT_WT`/`BT_COND_ID`/`DG_CLOSE_DT`).
-- Indicator tension: Item 8 wants indicators defaulting null, but EFFORT
-  SAR_IND/LOST_GEAR_IND/MM_INTER_IND are MANDATORY Y/N → null in state, block send if
-  unanswered, emit Y/N.
+- Indicator tension: Item 8 wants indicators defaulting null, but EFFORT SAR_IND/MM_INTER_IND
+  are MANDATORY Y/N → null in state, block send if unanswered, emit Y/N. (LOST_GEAR_IND was the
+  third mandatory indicator under 234.11; OVERTURNED — it is BLOCKED [maxOccurs=0] in 234.12,
+  de-emitted in S93. See What's built / Session log Session 92.)
 
 ### Sequencing — these Session 48 items must wait until AFTER the refactor
 5, 6, 7-emit, 10, 11, 12, 13, 14 (all touch the restructured nodes; 5/6/12 partly become
@@ -657,6 +658,24 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
   edit, then a live recovery 234 send) is the Session 92 work — see Current session goals. NEW HARD
   RULE established this session: Claude Code runs NO state-changing git (add/commit/amend/push/reset)
   and NO live DFO POST — it hands over vetted literal commands and Jonny runs them.
+- 234.12 absorption — RECON + SETUP COMPLETE, de-emit deferred to S93 (Session 92; NO source
+  file touched). Also landed the missing S91 CLAUDE.md closeout (commit 32c03ae) — it had been
+  dictated at S91's close but never written; the clean-working-tree Step-0 check caught it.
+  PACKAGE FILED: NEW 234.12 at `~/Desktop/DFO/ELOG_F234/` (XSD …20260624, instructions 234.7),
+  OLD 234.11 preserved byte-for-byte at `~/Desktop/DFO/ELOG_F234_old_234-11/` (XSD …20260130,
+  instructions 234.6) — folder names FLIPPED vs the original plan → DISAMBIGUATE BY XSD FILENAME
+  DATE, never folder name. Stale CLAUDE.md XSD path refs fixed (commit ac482bb: Session-48
+  checkpoint authority path + the S92 goals block). ARTIFACT-BEFORE-EDIT xmllint proof (commit
+  ed86b15, docs/RECON_234_12_xmllint_S92.md): extracted read-only from on-device AsyncStorage a
+  07-02 REJECTED 234 (LL-20260702-003, register xmlSnapshot) + the 07-01 ACCEPTED (LL-20260701-001,
+  CONF 163045, xml_archive). Both FAIL the NEW XSD; the rejected doc still PASSES the OLD XSD (valid
+  under 234.11 — server changed, not us); removing the single <LOST_GEAR_IND> line makes it validate
+  clean against the NEW XSD. FULL XSD DIFF — the SOLE breaking change is LOST_GEAR_IND maxOccurs
+  1→0; the SOAKED_DUR integer_5→integer_05 / NB_GEAR_HLD integer_4→integer_04 renames are
+  NON-BREAKING (min 1→0 relaxation, no width change → NO code change). GOTCHA banked: libxml2
+  blames MM_INTER_IND (the element AFTER the maxOccurs=0 one, a sequence-desync artifact) — the XSD
+  diff is the authority, don't chase MM_INTER_IND. Raw docs/s92_*.xml artifacts gitignored; the
+  recon .md is the committed evidence.
 
 ---
 
@@ -697,7 +716,7 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 - SOAKED_DUR wire unit — Session 51 finding: XML dictionary UNIT_OF_MEASURE_ID 11850
   = MINUTES (UI captures days per Rule 286; generator converts days→min). Worth a
   courtesy confirmation with Kane since Rule 165's "216 hours" phrasing is ambiguous
-- Lost Gear — RESOLVED (Kane Patterson, June 2026): LOST_GEAR_IND stays on EFFORT node until DFO August 2026 release removes it; FGRS handles actual gear reporting; no app integration required; Form 223 not building
+- Lost Gear — RESOLVED (Kane Patterson, June 2026; CONFIRMED Session 92): the DFO "August 2026 release" arrived early as 234.12 — LOST_GEAR_IND is now BLOCKED (maxOccurs=0), UAT enforcing since 07-02, prod cutover 2026-08-27. It is the SOLE root cause of the 07-02 WS1038 234 regression, xmllint-proven (docs/RECON_234_12_xmllint_S92.md). De-emit from generator + UI is the Session 93 build. FGRS handles actual gear reporting; no app integration required; Form 223 not building
 - Provider's instructions document (§17)
 - User's guide document
 - French translation — COMPLETE (Session 39); fr/common.json, fr/dfo.json, fr/map.json all wired; zero _todo values remaining
@@ -825,30 +844,25 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
 | Session 89 | July 2 2026 | RECON-only — two investigations for the S90 build (no code; both docs later committed in S90's 7fdbac3). docs/RECON_multiday_S89.md — the cross-midnight timestamp bug: the four EFFORT/TRIP/LANDING timestamps share ONE trip date (dateFished) across the UI (FullDfoForm), storage (DfoLog), and generator (dfoXmlGenerator:86–89) layers, so a sail-late-D1 / haul-D2 trip is unrepresentable and the ordering validators (Rules 29/32/45/46) fire false "before" errors — the validators are themselves confirmed chronologically correct (would PASS if the underlying dates were right); root cause + every file:line + 3 candidate fix designs (per-field companion dates / +1-day toggle / full datetime), chose none. docs/RECON_222_reftables_S89.md — the 3 marine-mammal reftables (MV_CONFIDENCE_LEVEL / MV_MM_LENGTH_CATEGORY / MV_MM_SPECIMENS_CONDITION) are generated but wired NOWHERE; the matching 222 fields are ABSENT (not free-text, not hardcoded); XSD elements ID_CNFDNCE_ID / SPCMN_COND_ID / BDY_LEN_ID all minOccurs=0; sized small. Both landed as S90 builds. |
 | Session 90 | July 2 2026 | Multi-day trip timestamps + shared 234 coord clamp + 222 reftable trio; DFO UAT 234 regression documented. Built on S89 recon (docs/RECON_multiday_S89.md + RECON_222_reftables_S89.md). MULTI-DAY (Phase 1/1b, 6834bd8): per-field companion dates sailDate/haulStartDate/haulEndDate/landingDate ride the existing `data` map (NO DfoLog interface change — same pattern as trapSize/gridId/statSectId); applyPickerValue writes each field's OWN date (sail-start also drives dateFished, the trip's nominal date); generator combines `d.<field>Date || log.dateFished` (fallback → same-day + quick-capture + OLD pre-S90 logs emit byte-identically, proven via launderSweep/blankTimestampGate + a temp cross-midnight harness); Quick Capture handlers stamp companion dates from the same now() at press; Rule 980 >24h-landing warning repointed to landingDate||dateFished; blank-time save-gate UNCHANGED (still keyed on HH:MM). COORD CLAMP (Phase C, 6834bd8): moved clampCoord4 → dfoConstants.ts (cycle-safe single def — importing 222→234 would cycle) + both generators + oneoff import it; applied to the 234 LAT/LONG emit (dfoXmlGenerator.ts:288–289) — closes the S70 divergence; emit-only, MAR FMA-38b only. 222 TRIO (Phase 2, 6834bd8): wired ID_CNFDNCE_ID/SPCMN_COND_ID/BDY_LEN_ID from MV_CONFIDENCE_LEVEL/MV_MM_SPECIMENS_CONDITION/MV_MM_LENGTH_CATEGORY (the MM tables, NOT the SAR-side MV_SPECIMENS_CONDITION) — 3 optional Form222Entry fields + 3 label lists + 3 Species-card pickers + emit label→codeId in verified XSD sequence order (247–259); xmllint validates WITH trio set AND fully omitted; LIVE WS0000 CONF 163057 (trio, codeIds 39600/39622/39602 confirmed in archived sent XML via on-device AsyncStorage grep) + CONF 163060 (blank, clean omission). 234 UAT REGRESSION: all 234 sends WS1038 as of 07-02 — PROVEN server-side, NOT the app: byte-identical re-send (fresh filename) of content DFO accepted 07-01 (CONF 163045) rejected WS1038 (CONF 163055); doc validates vs our on-disk XSD + is structurally identical to the 07-01 success; a 07-02 Form 233 send returned WS0000 (UAT up); 222/233 unaffected; reported to Kane (Ticket #2126), triage acknowledged; full evidence docs/WS1038_S90.md. BANKED: WS1034 = "same file name already received by DFO" (checked BEFORE content validation → byte-exact resends never revalidate; always fresh filename to test content); a FAILED send's XML lives in the register record's xmlSnapshot (@lobsterlog_xml_archive is success-only) — read via xcrun simctl get_app_container booted → Library/Application Support/<bundle>/RCTAsyncLocalStorage_V1 (manifest.json + md5(key) files; keys uid-namespaced <base>::<uid>). tsc 33/0-new, jest 17 suites/55 tests. Reports: docs/GATE1b_S90.md / GATE_C_S90.md / GATE2_S90.md. Commits 6834bd8 (code) / 7fdbac3 (recon+gate docs) / 5bf6275 (coord-clamp test repoint) — all pushed origin/main; this CLAUDE.md closeout is its own separate commit. CARRIED OPEN: cross-midnight LIVE 234 send banked until UAT recovers; confidence codeId 39600(Uncertain)-vs-39598(Probable) check if Probable was the actual on-device pick; 222 FR labels still _todo stubs; Android coexistence test; S91 UI batch (222/233 register refresh, 22-fields banner removal, picker exit button, header DFO ELOG button); NO live DFO POST by Claude Code ever — steps only. |
 | Session 91 | July 2 2026 | Pre-ship UI batch (four device-gated fixes) + 234.12 package absorbed as intel; no generator/source change to the 234 emit yet. PHASE 1 (0aeff52): transmission register refreshes on the Form 222/233 modal onClose (a just-sent row appears without a manual reload); device-gated live 233 → WS0000 CONF 163061. PHASES 2+3 (2581e5e): "22 fields" banner removed (block + 2 i18n keys EN/FR + 3 orphaned styles); GRID_ID picker modal given a bottom Cancel (sheet pattern); STAT_SECT picker confirmed correct as-is. PHASE 4+4b (1994bd2): header clipboard → labeled "DFO ELOG" pill (#DC2626, glyph toggles, routing verbatim), identity block enlarged, three device-gated iterations; new key common.nav.dfoElog (FR _todo). Confidence-mapping check CLOSED (string-keyed lookup, CONF 163057 = Uncertain — settles the S90 39600-vs-39598 carried-open). Recon docs committed 869208c. 234.12 PACKAGE received from Kane — root cause of the S90 234 UAT regression NAMED: LOST_GEAR_IND Mandatory→Blocked (maxOccurs=0) in the 234.12 XSD → every 234 send since 07-02 bounces WS1038; prod cutover 2026-08-27; UAT enforcing since 07-02. NEW HARD RULE: Claude Code runs NO state-changing git (add/commit/amend/push/reset) + NO live DFO POST — steps only, Jonny runs them. Absorption (de-emit LOST_GEAR_IND + UI removal, xmllint-gated, then live recovery send) deferred to S92. This CLAUDE.md closeout is its own commit, authored at the top of S92 — S91's context closed before the dictated entry landed in the file. CARRIED OPEN: cross-midnight LIVE 234 send still banked until UAT/absorption clears; 222 FR labels still _todo stubs; Android coexistence test; DFO storage namespacing (carried since S87). |
+| Session 92 | July 4 2026 | 234.12 absorption — RECON + setup only; NO source file touched (de-emit is S93). Opened by authoring the missing S91 CLAUDE.md closeout (commit 32c03ae — dictated at S91 close but never written; the clean-tree Step-0 check caught it). PACKAGE FILED: NEW 234.12 at ~/Desktop/DFO/ELOG_F234/ (XSD …20260624, instr 234.7), OLD 234.11 preserved byte-for-byte at ELOG_F234_old_234-11/ (XSD …20260130, instr 234.6) — folder names FLIPPED vs the original plan; DISAMBIGUATE BY XSD FILENAME DATE, never folder name. Stale CLAUDE.md XSD path refs fixed (ac482bb: Session-48-checkpoint authority path + S92 goals block). XMLLINT RECON (ed86b15, docs/RECON_234_12_xmllint_S92.md): extracted read-only from on-device AsyncStorage (uid FwXYZ…, register blob fcdb4703…, archive blob 2616f875…) a 07-02 REJECTED 234 (LL-20260702-003 xmlSnapshot; 6 retries differ only by regenerated timestamps) + the 07-01 ACCEPTED (LL-20260701-001, CONF 163045, xml_archive == register snapshot). Three lints keyed on XSD filename date: rejected vs NEW → FAIL, accepted vs NEW → FAIL, rejected vs OLD → PASS (valid under 234.11, server changed not us); CONFIRMATION: rejected minus the <LOST_GEAR_IND> line → validates clean vs NEW. FULL XSD DIFF (complete): SOLE breaking change = LOST_GEAR_IND maxOccurs 1→0 (Mandatory→Blocked); SOAKED_DUR integer_5→integer_05 + NB_GEAR_HLD integer_4→integer_04 renames NON-BREAKING (min 1→0 relaxation, no width change → no code change); plus an xsd_start_date comment + trailing newline. GOTCHA banked: libxml2 reports the failure at MM_INTER_IND (the element AFTER the maxOccurs=0 one) — a sequence-desync artifact; the XSD diff is the authority, not the error line. Raw docs/s92_*.xml gitignored (carry LIC_NO/VRN, reproducible), recon .md is the evidence. VERDICT: LOST_GEAR_IND theory CONFIRMED by artifacts; S93 de-emits it. CARRIED OPEN: cross-midnight LIVE 234 recovery send still banked (becomes the S93 recovery trip); 222 FR labels _todo; Android coexistence test; DFO storage namespacing (since S87). |
 
 ---
 
 ## Current session goals
 > Update this section at the start of each session.
 
-SESSION 92 — Absorb 234.12. DFO's 234.12 package (received from Kane in S91) names the root
-cause of the 07-02 UAT regression: LOST_GEAR_IND went Mandatory→Blocked (maxOccurs=0), so every
-234 logbook send bounces WS1038. PACKAGE LAYOUT (filed S92 — folder names FLIPPED from the
-original plan):
+SESSION 93 — De-emit LOST_GEAR_IND (generator + UI all four subforms), verify SAR_IND/MM_INTER_IND
+init null per modified Rule 602, xmllint gate, live recovery send = cross-midnight trip.
 
-| Package | Folder | XSD |
-|---|---|---|
-| NEW (234.12) | `~/Desktop/DFO/ELOG_F234/` | `…Homard_20260624 000000.xsd` |
-| OLD (234.11) | `~/Desktop/DFO/ELOG_F234_old_234-11/` | `…Homard_20260130 000000.xsd` |
-
-DISAMBIGUATE BY XSD FILENAME DATE, NEVER FOLDER NAME: 20260130 = OLD (234.11), 20260624 = NEW
-(234.12). `ELOG_F234` (no S) now holds the NEW schema; the old 234.11 package was relocated to
-`ELOG_F234_old_234-11/`, byte-preserved. Plan (artifact-before-edit, xmllint-gated): (1) ✓ package
-filed + inventories verified (S92); (2) xmllint a 07-02 REJECTED doc and the 07-01 ACCEPTED doc
-(LL-20260701-001, CONF 163045) against the NEW XSD (…20260624) — expect BOTH to fail on
-LOST_GEAR_IND; confirm the rejected doc still PASSES the OLD XSD (…20260130), proving the server
-changed, not us; (3) de-emit LOST_GEAR_IND from dfoXmlGenerator + remove its UI, with xmllint
-green before any generator edit; (4) live recovery 234 send (doubles as the banked cross-midnight
-trip). Production cutover 2026-08-27; UAT enforcing since 07-02; Ticket #2126. HARD RULES: Claude
-Code runs NO state-changing git and NO live DFO POST — vetted literal commands only, Jonny runs
-them. Recon/reports to docs/*.md (Step 2 → docs/RECON_234_12_xmllint_S92.md).
+Authority: docs/RECON_234_12_xmllint_S92.md (S92) — LOST_GEAR_IND maxOccurs 1→0 in the 234.12 XSD is
+the SOLE breaking change behind the 07-02 WS1038 regression; removing the emitted <LOST_GEAR_IND>
+line validates the rejected doc clean against the NEW XSD. Build: (1) drop LOST_GEAR_IND emission in
+dfoXmlGenerator.ts (all 4 subforms) + remove its form UI toggle/follow-up prompt + any validator
+min:1 gate on it; leave SAR_IND/MM_INTER_IND intact (still mandatory) and verify they init null per
+modified Rule 602. (2) xmllint GATE before trusting any generator edit: regenerate a MAR-90 doc, lint
+vs the NEW XSD (…20260624 in ELOG_F234/) → must PASS; disambiguate the XSD by filename date, never
+folder name. (3) live recovery 234 send — doubles as the banked cross-midnight trip. The integer_05/
+integer_04 renames need NO code change (non-breaking). GOTCHA: libxml2 blames MM_INTER_IND, not
+LOST_GEAR_IND — ignore the message, trust the XSD diff. HARD RULES: Claude Code runs NO state-changing
+git and NO live DFO POST — vetted literal commands only, Jonny runs them. Prod cutover 2026-08-27;
+Ticket #2126.
