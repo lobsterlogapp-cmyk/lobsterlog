@@ -181,7 +181,7 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
 
   const mammalInc = d.mmYes === 'true' ? 'Y' : (d.mmYes === 'false' ? 'N' : '');
   const sarInc    = d.sarYes === 'true' ? 'Y' : (d.sarYes === 'false' ? 'N' : '');
-  const lostGear  = d.lostGearYes === 'true' ? 'Y' : (d.lostGearYes === 'false' ? 'N' : '');
+  // LOST_GEAR_IND de-emitted in 234.12 (maxOccurs 1→0, Blocked) — no longer derived.
 
   // GENERAL_INFO — XSD general_info_type xs:sequence:
   //   CIE_ID, SOFT_VER, REG_ID, FIN, VRN, FORM_VER_ID, SUBFORM_ID
@@ -221,8 +221,9 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   trip += tag('REM', rem.trip ?? '', '    ');
 
   // EFFORT — XSD effort_type xs:sequence (single effort per log):
-  //   START_DT, END_DT, LIC_NO, FMA_ID, SAR_IND, LOST_GEAR_IND, MM_INTER_IND,
+  //   START_DT, END_DT, LIC_NO, FMA_ID, SAR_IND, MM_INTER_IND,
   //   DG_CLOSE_DT, REM?, TGT_SPECIES, EFFORT_BY_GEAR+
+  //   (LOST_GEAR_IND removed — 234.12 XSD sets it maxOccurs=0/Blocked; de-emitted S93)
   let effort = '';
   effort += `    <EFFORT>\n`;
   effort += tag('START_DT',      toDate12(haulStartDt), '      ');
@@ -230,10 +231,11 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   // LIC_NO: the XSD's only licence element (string_18, mandatory) — LICENCE_NO dropped
   effort += tag('LIC_NO',        captainProfile.fishingNumber, '      ');
   effort += tag('FMA_ID',        d.fmaId, '      ');
-  // SAR_IND/LOST_GEAR_IND/MM_INTER_IND are mandatory Y/N — empty means unanswered, the
-  // element is simply omitted here and the send must be blocked upstream (S4 validator)
+  // SAR_IND/MM_INTER_IND are mandatory Y/N — empty means unanswered, the element is
+  // simply omitted here and the send must be blocked upstream (S4 validator).
+  // LOST_GEAR_IND is NOT emitted (234.12 Blocked, maxOccurs=0) — emitting it desyncs the
+  // sequence and DFO returns WS1038 (surfacing on the next sibling MM_INTER_IND).
   effort += tag('SAR_IND',       sarInc, '      ');
-  effort += tag('LOST_GEAR_IND', lostGear, '      ');
   effort += tag('MM_INTER_IND',  mammalInc, '      ');
   effort += tag('DG_CLOSE_DT',   toCloseTimestamp(d.dgCloseEffort), '      ');
   // REM: 'haul' note fans across EFFORT, EFFORT_BY_GEAR and EFFORT_DETAIL (same text)
@@ -519,7 +521,9 @@ const EFFORT_SPEC: ChildSpec[] = [
   { name: 'LIC_NO',        min: 1, max: 1, type: 'string' },
   { name: 'FMA_ID',        min: 1, max: 1, type: 'id' },
   { name: 'SAR_IND',       min: 1, max: 1, type: 'ind_yn' },
-  { name: 'LOST_GEAR_IND', min: 1, max: 1, type: 'ind_yn' },
+  // LOST_GEAR_IND: 234.12 Blocked (XSD maxOccurs=0). min:0 lets the de-emitted doc pass;
+  // max:0 rejects it if ever present (blocked-direction guard), matching the XSD.
+  { name: 'LOST_GEAR_IND', min: 0, max: 0, type: 'ind_yn' },
   { name: 'MM_INTER_IND',  min: 1, max: 1, type: 'ind_yn' },
   { name: 'DG_CLOSE_DT',   min: 1, max: 1, type: 'date_14' },
   { name: 'REM',           min: 0, max: 1, type: 'string' },

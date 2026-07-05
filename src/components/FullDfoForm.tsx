@@ -150,7 +150,7 @@ const parseDateTime = (dateStr: string, timeStr: string): Date => {
   return d;
 };
 
-type PickerField = 'sailed' | 'startHaul' | 'stopHaul' | 'landing' | 'mmTime' | 'sarTime' | 'lostGearTime';
+type PickerField = 'sailed' | 'startHaul' | 'stopHaul' | 'landing' | 'mmTime' | 'sarTime';
 type SheetMode = 'bait' | 'bycatch' | null;
 
 const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLogId, onSaved, readOnly = false, onBack }, ref) => {
@@ -334,13 +334,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const [sarCondPickerOpen, setSarCondPickerOpen] = useState(false);
   const [sarGpsSrc, setSarGpsSrc] = useState<'gps' | 'manual'>('manual');
 
-  // Lost Gear
-  const [lostGearYes, setLostGearYes] = useState<boolean | null>(null);
-  const [lostGearType, setLostGearType] = useState('');
-  const [lostGearLat, setLostGearLat] = useState('');
-  const [lostGearLng, setLostGearLng] = useState('');
-  const [lostGearDate, setLostGearDate] = useState('');
-  const [lostGearTime, setLostGearTime] = useState('');
+  // Lost Gear — REMOVED (S93): LOST_GEAR_IND is Blocked in the 234.12 XSD (maxOccurs=0).
+  // FGRS handles lost/found gear reporting externally; no app capture.
 
   // DateTime picker
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -466,16 +461,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             setSarYes(false);
           }
 
-          if (d.lostGearYes === 'true') {
-            setLostGearYes(true);
-            setLostGearType(d.lostGearType || '');
-            setLostGearLat(d.lostGearLat || '');
-            setLostGearLng(d.lostGearLng || '');
-            setLostGearDate(d.lostGearDate || '');
-            setLostGearTime(d.lostGearTime || '');
-          } else if (d.lostGearYes === 'false') {
-            setLostGearYes(false);
-          }
+          // Lost Gear load removed (S93) — LOST_GEAR_IND Blocked in 234.12; old logs' stored
+          // lostGear* keys (if any) are simply ignored, no longer surfaced or re-emitted.
           // MAR-specific fields
           setNbSpcmnBrd(d.nbSpcmnBrd || '');
           setHlinCompany(d.hlinCompany || '');
@@ -605,8 +592,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     sarYes: String(sarYes),
     sarSpecies, sarSpeciesOther, sarWhat, sarLat, sarLng, sarDate, sarTime,
     sarNbSpcmn, sarCondId, sarGpsSrc,
-    lostGearYes: String(lostGearYes),
-    lostGearType, lostGearLat, lostGearLng, lostGearDate, lostGearTime,
+    // lostGear* write-out removed (S93) — LOST_GEAR_IND Blocked in 234.12, no longer captured.
     // MAR-specific
     nbSpcmnBrd,
     hlinCompany, hlinConfirmNo, hlinEta, hlinTotalWeight,
@@ -755,20 +741,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     }
   };
 
-  const handleLostGearYes = async (val: boolean) => {
-    setLostGearYes(val);
-    if (val) {
-      Alert.alert('', t('form234.lostGearIndPrompt'), [{ text: 'OK' }]);
-      const now = new Date();
-      setLostGearDate(formatDate(now));
-      setLostGearTime(formatTime(now));
-      await captureGps(setLostGearLat, setLostGearLng);
-    } else {
-      setLostGearType('');
-      setLostGearLat(''); setLostGearLng('');
-      setLostGearDate(''); setLostGearTime('');
-    }
-  };
+  // handleLostGearYes removed (S93) — LOST_GEAR_IND Blocked in 234.12; question deleted below.
 
   const openPicker = (field: PickerField) => {
     let current: Date;
@@ -779,7 +752,6 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       case 'landing':    current = parseDateTime(landingDate || dateFished, timeOfLanding); break;
       case 'mmTime':     current = parseDateTime(mmDate, mmTime); break;
       case 'sarTime':    current = parseDateTime(sarDate, sarTime); break;
-      case 'lostGearTime': current = parseDateTime(lostGearDate, lostGearTime); break;
     }
     setPickerDate(current);
     setTempDate(current);
@@ -818,8 +790,6 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           setMmDate(formatDate(d)); setMmTime(formatTime(d)); break;
         case 'sarTime':
           setSarDate(formatDate(d)); setSarTime(formatTime(d)); break;
-        case 'lostGearTime':
-          setLostGearDate(formatDate(d)); setLostGearTime(formatTime(d)); break;
       }
     };
 
@@ -879,6 +849,17 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       case 'bycatch': return getDfoCatchSpeciesList(subformId).map(s => ({ label: s.label }));
       default: return [];
     }
+  };
+
+  // Display-only helper (S93): render a trip-timestamp as locale-aware date + time —
+  // e.g. "Jul 5, 12:33" (EN) / "5 juill., 12:33" (FR). Combines the field's companion date
+  // (fallback dateFished) with its HH:MM time. Storage, companion-date keys, and the generator
+  // are UNTOUCHED — this only changes what the four Time Sailed/Hauling/Landing buttons render.
+  const formatDateTimeDisplay = (dateStr: string, timeStr: string): string => {
+    if (!timeStr) return '';
+    const d = parseDateTime(dateStr || dateFished, timeStr);
+    const locale = i18n.language.startsWith('fr') ? 'fr-CA' : 'en-CA';
+    return `${d.toLocaleDateString(locale, { month: 'short', day: 'numeric' })}, ${timeStr}`;
   };
 
   const renderTimestampField = (
@@ -1040,32 +1021,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     );
   };
 
-  const renderLostGearFields = () => (
-    <View style={styles.incidentBlock}>
-      {renderField(t('form234.gearTypeLabel'), lostGearType, setLostGearType, t('form234.gearTypePlaceholder'))}
-      {renderTimestampField(t('form234.dateTimeLabel'), lostGearDate && lostGearTime ? `${lostGearDate} ${lostGearTime}` : '', 'lostGearTime')}
-      <Text style={[styles.label, { marginTop: 6 }]}>{t('form234.gpsLocationLabel')}</Text>
-      <View style={styles.gpsRow}>
-        <TextInput
-          style={[styles.input, { flex: 1 }]}
-          value={lostGearLat}
-          onChangeText={setLostGearLat}
-          placeholder={t('form234.latPlaceholder')}
-          placeholderTextColor="#94A3B8"
-          keyboardType="numeric"
-        />
-        <View style={{ width: 8 }} />
-        <TextInput
-          style={[styles.input, { flex: 1 }]}
-          value={lostGearLng}
-          onChangeText={setLostGearLng}
-          placeholder={t('form234.lngPlaceholder')}
-          placeholderTextColor="#94A3B8"
-          keyboardType="numeric"
-        />
-      </View>
-    </View>
-  );
+  // renderLostGearFields removed (S93) — LOST_GEAR_IND Blocked in 234.12; question deleted below.
 
   const handleSave = async () => {
     if (isRequired('baitEntries') && baitEntries.length === 0) {
@@ -1094,10 +1050,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       Alert.alert(t('form234.missingFieldsTitle'), t('form234.missingTransferFields'), [{ text: tc('nav.ok') }]);
       return;
     }
-    // SAR_IND / LOST_GEAR_IND / MM_INTER_IND are mandatory Y/N on EFFORT for ALL four
-    // subforms (XSD effort_type, minOccurs=1) — no subform condition. validateElogXml is the
-    // send-time backstop; this catches it early with a clear message instead of a cryptic one.
-    if (mmYes === null || sarYes === null || lostGearYes === null) {
+    // SAR_IND / MM_INTER_IND are mandatory Y/N on EFFORT for ALL four subforms (XSD
+    // effort_type, minOccurs=1) — no subform condition. validateElogXml is the send-time
+    // backstop; this catches it early with a clear message instead of a cryptic one.
+    // (LOST_GEAR_IND dropped from this gate — Blocked in 234.12, no longer answered.)
+    if (mmYes === null || sarYes === null) {
       Alert.alert(t('form234.missingFieldsTitle'), t('form234.missingIndicatorsAnswer'), [{ text: tc('nav.ok') }]);
       return;
     }
@@ -1324,10 +1281,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             {renderNoteButton('landing')}
           </View>
           {renderNoteInput('landing', remarks.landing ?? '', (v) => setNote('landing', v))}
-          {isVisible('sailTime') && renderTimestampField(t('form234.timeSailedLabel'), timeSailed, 'sailed', false, isRequired('sailTime'))}
-          {isVisible('haulStartTime') && renderTimestampField(t('form234.timeStartedHaulingLabel'), timeStartedHauling, 'startHaul', false, isRequired('haulStartTime'))}
-          {isVisible('haulEndTime') && renderTimestampField(t('form234.timeStoppedHaulingLabel'), timeStoppedHauling, 'stopHaul', false, isRequired('haulEndTime'))}
-          {isVisible('landingTime') && renderTimestampField(t('form234.timeOfLandingLabel'), timeOfLanding, 'landing', false, isRequired('landingTime'))}
+          {isVisible('sailTime') && renderTimestampField(t('form234.timeSailedLabel'), formatDateTimeDisplay(sailDate, timeSailed), 'sailed', false, isRequired('sailTime'))}
+          {isVisible('haulStartTime') && renderTimestampField(t('form234.timeStartedHaulingLabel'), formatDateTimeDisplay(haulStartDate, timeStartedHauling), 'startHaul', false, isRequired('haulStartTime'))}
+          {isVisible('haulEndTime') && renderTimestampField(t('form234.timeStoppedHaulingLabel'), formatDateTimeDisplay(haulEndDate, timeStoppedHauling), 'stopHaul', false, isRequired('haulEndTime'))}
+          {isVisible('landingTime') && renderTimestampField(t('form234.timeOfLandingLabel'), formatDateTimeDisplay(landingDate, timeOfLanding), 'landing', false, isRequired('landingTime'))}
           {isVisible('soakDuration') && renderField(t('form234.soakDurationLabel'), soakDuration, setSoakDuration, t('form234.soakDurationPlaceholder'), false, false, 'decimal-pad', isRequired('soakDuration'))}
         </View>
 
@@ -1792,16 +1749,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             )}
           </View>
 
-          <View style={styles.incidentSection}>
-            <View style={styles.sectionHeader}>
-              <View style={[styles.sectionIcon, { backgroundColor: '#EDE9FE' }]}>
-                <AlertTriangle size={16} color="#7C3AED" />
-              </View>
-              <Text style={[styles.sectionTitle, { fontSize: 13 }]}>{t('form234.lostGearSubsection')}</Text>
-            </View>
-            {renderYesNoToggle(t('form234.lostGearIndLabel'), lostGearYes, handleLostGearYes)}
-            {lostGearYes === true && renderLostGearFields()}
-          </View>
+          {/* Lost / Found Gear question REMOVED (S93) — LOST_GEAR_IND is Blocked in the 234.12
+              XSD (maxOccurs=0, Rule 608). FGRS handles lost/found gear reporting externally;
+              the app no longer asks or emits it for any of the four subforms. */}
 
           {/* Carrier + Partnership + Transfers — QC(88) only; TRANSFER blocked for 89/90/91 */}
           {subformId === 88 && <View style={styles.incidentSection}>

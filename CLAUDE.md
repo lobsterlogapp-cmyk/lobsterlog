@@ -743,7 +743,11 @@ Details in `docs/archive/ELOG_RESTRUCTURE_BLUEPRINT.md` (status header updated).
   (FullDfoForm.tsx, all 4 subforms, no subform condition) mirroring the transfer Alert
   signature + new form234.missingIndicatorsAnswer key in en/dfo.json + fr/dfo.json (FR informal
   'tu'). Parity-polish: clear message at save instead of cryptic "missing required <SAR_IND>"
-  at send. Generator output UNCHANGED. tsc=33 baseline, jest 3/3
+  at send. Generator output UNCHANGED. tsc=33 baseline, jest 3/3. **S93 UPDATE:** lostGearYes is
+  NO LONGER part of this gate — LOST_GEAR_IND went Blocked (maxOccurs=0) in the 234.12 XSD, so it
+  is de-emitted (generator) and its UI question + i18n keys removed (S93); the handleSave gate now
+  checks only mmYes/sarYes. SAR_IND/MM_INTER_IND remain mandatory on all four subforms; the "all
+  three mandatory" framing above is historical (234.11)
 - Old pre-Session-53 logs (e.g. LL-20260605-001) have no portLandedCodeId and fail
   LANDING.PORT_ID validation — expected old-data artifacts (harmless dev throwaways), NOT a
   code bug; no migration planned
