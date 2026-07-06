@@ -224,6 +224,11 @@ Under edge-to-edge the window is drawn behind the system bars and the OS no long
 IME, so `android:windowSoftInputMode="adjustResize"` is effectively neutered — the manifest still says
 `adjustResize` but the keyboard now overlaps content. This is the confirmed Pixel-8 symptom.
 
+**Device-confirmed during Item 1 testing (2026-07-06, Pixel 8 release build):** the keyboard covers
+the **bait pounds** input, the **persons/crew count** input, and **bottom-of-form fields** in
+FullDfoForm. Add these three specifically to the Item 3+4 device verification checklist (each must be
+fully visible above the keyboard once the KAV fix lands).
+
 ### Proposed fix — smallest consistent
 Add real IME handling that does not depend on `adjustResize`:
 - Wrap the DFO form `ScrollView`s (FullDfoForm, Form222, Form233, CaptainProfile, DfoSetup) in a
@@ -265,8 +270,18 @@ commit** (SafeAreaProvider + insets + KAV) or two. `app.config.js` has NO `andro
 3. **Safe-area insets** (edge-to-edge) — SafeAreaProvider + `useSafeAreaInsets` on the app header +
    modal headers.
 4. **Keyboard avoidance** (edge-to-edge) — KAV on the DFO form ScrollViews; fix App.tsx Android KAV.
+5. **Extend draft crash-safety to Form 222 + Form 233** — QUEUED, build **after Items 3+4 land** (do
+   NOT build yet). Each form gets its OWN uid-namespaced scratch key via `dfoKey()` (e.g.
+   `@lobsterlog:form222_active_draft` / `@lobsterlog:form233_active_draft`), mirroring the 234 pattern
+   shipped in Item 2 (`docs/GATE_S95_ITEM2.md`): debounced write of the in-progress form state, a
+   baseline-divergence guard (pre-fill alone never prompts), an on-mount restore prompt, and clear on
+   successful save/back. Form 222/233 hold their state in a single `form` object (much simpler than
+   234's ~80 fields), so the snapshot + restore are lighter — likely a small shared helper. New i18n
+   restore keys per form (or a shared set). Does NOT touch the transmission path or saved-entry
+   storage shape.
 
-(3 and 4 share the edge-to-edge root cause and may be combined.)
+(3 and 4 share the edge-to-edge root cause and may be combined. 5 is a follow-on to Item 2, sequenced
+after 3+4.)
 
 ---
 
@@ -297,6 +312,20 @@ would be cleaned up naturally by the Item 3 insets work.
 
 ---
 
+## §8 — QUEUED (LOG ONLY — DO NOT BUILD)
+
+Surfaced during Item 1 device testing; parked for their own sessions, NOT part of the S95 Android
+stabilization pass:
+1. **GPS capture / map picker for the Form 222 location field.** Form 222's LAT/LON are hand-typed
+   `TextInput`s today; add a GPS-capture button (mirror FullDfoForm's `captureGps`) and/or a map
+   picker so the interaction coordinates can be captured rather than typed. Own session.
+2. **Red required-field asterisk sweep across all forms.** Audit every form (FullDfoForm, Form 222,
+   Form 233, DfoSetup, Captain Profile) for consistent required-field marking (the red `*`), which is
+   currently inconsistent. Own session.
+
+---
+
 ## Report metadata
 - Path: `docs/RECON_S95_ANDROID.md`
-- No files edited; no code written; no git run.
+- Item 1 (datetime crash) shipped; committed 4d5cca9, device-verified Pixel 8. Items 2–4 pending.
+- No transmission-path or saved-log-storage-shape changes; no git run by Claude.

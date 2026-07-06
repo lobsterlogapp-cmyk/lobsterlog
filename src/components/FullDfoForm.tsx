@@ -42,6 +42,9 @@ import {
   generateNewLogMeta,
   loadLastLog,
   getRequiredFields,
+  saveActiveDraft,
+  loadActiveDraft,
+  clearActiveDraft,
   DfoLog,
   LogRemarks,
 } from '../utils/dfoLogStorage';
@@ -360,11 +363,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const [sheetCondition, setSheetCondition] = useState<number | null>(null);
   const [sheetConditionOpen, setSheetConditionOpen] = useState(false);
 
-  useEffect(() => {
-    const loadExisting = async () => {
-      if (editingLogId) {
-        const log = await loadLogById(editingLogId);
-        if (log) {
+  // Apply a stored DfoLog's fields into form state. Shared by the edit-load path AND the S95
+  // crash-safety restore path (restoring the scratch draft is identical to opening a saved log).
+  const hydrateFromLog = (log: DfoLog) => {
           setTripId(log.id);
           setLgbkUid(log.lgbkUid ?? '');
           setTripNum(log.tripNum);
@@ -486,7 +487,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             pcons: !!seeded.pcons, transfer: !!seeded.transfer, hlin: !!seeded.hlin, hlout: !!seeded.hlout,
             sar: !!seeded.sar,
           });
-        }
+  };
+
+  useEffect(() => {
+    const loadExisting = async () => {
+      if (editingLogId) {
+        const log = await loadLogById(editingLogId);
+        if (log) hydrateFromLog(log);
       } else {
         // New log — today's date + fresh trip ID
         const today = formatDate(new Date());
@@ -518,6 +525,22 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         if (prefillFmaId) setFmaId(prefillFmaId);
       }
       setIsLoaded(true);
+      // S95 Item 2 — crash-safety restore. The scratch draft is written debounced while a NEW
+      // log is entered and cleared on save/back, so a surviving scratch means the app died
+      // mid-entry. Offer to restore it (new logs only; existing logs already persist to dfo_logs).
+      if (!editingLogId) {
+        const scratch = await loadActiveDraft();
+        if (scratch) {
+          Alert.alert(
+            t('form234.restoreDraftTitle'),
+            t('form234.restoreDraftBody'),
+            [
+              { text: t('form234.restoreDraftDiscard'), style: 'destructive', onPress: () => { void clearActiveDraft(); } },
+              { text: t('form234.restoreDraftRestore'), onPress: () => { hydrateFromLog(scratch); } },
+            ],
+          );
+        }
+      }
           };
           loadExisting();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -620,48 +643,61 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     return false;
   };
 
+  // One place building the draft-shaped DfoLog — used by Back, the imperative saveDraft, AND the
+  // S95 crash-safety scratch write, so all three stay in sync.
+  const buildDraftLog = (): DfoLog => ({
+    id: tripId,
+    lgbkUid,
+    firstEntryDt,
+    mode: 'full',
+    status: 'draft',
+    dateFished: dateFished || formatDate(new Date()),
+    createdAt: Date.now(),
+    data: buildLogData(),
+    remarks: buildRemarks(),
+    subformId,
+    regId,
+    tripNum,
+  });
+
+  // S95 Item 2 — debounced crash-safety scratch write for a NEW in-progress log, so an app crash
+  // mid-entry can't destroy the trip. Keyed on a serialized snapshot of the actual form content,
+  // so unrelated re-renders (e.g. timer ticks) don't reset the debounce. New logs only; existing
+  // logs/drafts already persist to dfo_logs. Best-effort; never blocks the UI.
+  const draftSnapshot = JSON.stringify({ df: dateFished, d: buildLogData(), r: buildRemarks() });
+  // Baseline = the prefilled state captured right after load. We only scratch-write once the user
+  // actually diverges from it, so pre-fill (crew/ports/FMA from the last log) alone never triggers
+  // a spurious restore prompt on the next new log.
+  const draftBaselineRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (isLoaded && draftBaselineRef.current === null) draftBaselineRef.current = draftSnapshot;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded]);
+  useEffect(() => {
+    if (editingLogId || readOnly || !isLoaded || editingCompleted) return;
+    if (draftSnapshot === draftBaselineRef.current) return; // no user change beyond the prefill yet
+    if (!hasMeaningfulData()) return;
+    const timer = setTimeout(() => { void saveActiveDraft(buildDraftLog()); }, 800);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftSnapshot, editingLogId, readOnly, isLoaded, editingCompleted]);
+
   useImperativeHandle(ref, () => ({
     saveDraft: async () => {
       if (!isLoaded) return;
       if (editingCompleted) return;
       if (!hasMeaningfulData()) return;
 
-      const log: DfoLog = {
-        id: tripId,
-        lgbkUid,
-        firstEntryDt,
-        mode: 'full',
-        status: 'draft',
-        dateFished: dateFished || formatDate(new Date()),
-        createdAt: Date.now(),
-        data: buildLogData(),
-        remarks: buildRemarks(),
-        subformId,
-        regId,
-        tripNum,
-      };
-      await saveLog(log);
+      await saveLog(buildDraftLog());
+      void clearActiveDraft(); // in-progress work is now a saved draft — drop the scratch
     },
   }));
 
   const handleBack = async () => {
     if (!readOnly && isLoaded && !editingCompleted && hasMeaningfulData()) {
-      const log: DfoLog = {
-        id: tripId,
-        lgbkUid,
-        firstEntryDt,
-        mode: 'full',
-        status: 'draft',
-        dateFished: dateFished || formatDate(new Date()),
-        createdAt: Date.now(),
-        data: buildLogData(),
-        remarks: buildRemarks(),
-        subformId,
-        regId,
-        tripNum,
-      };
-      await saveLog(log);
+      await saveLog(buildDraftLog());
     }
+    void clearActiveDraft(); // S95: work is now a saved draft (or nothing meaningful) — drop scratch
     onBack?.();
   };
 
@@ -1154,6 +1190,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
 
     const ok = await saveLog(log);
     if (ok) {
+      void clearActiveDraft(); // S95: log is committed to dfo_logs — drop the crash-safety scratch
       triggerBackup(); // best-effort cloud backup; fire-and-forget, never blocks save
       onSaved();
     } else {

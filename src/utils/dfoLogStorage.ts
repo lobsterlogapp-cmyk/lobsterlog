@@ -85,6 +85,41 @@ export const saveLog = async (log: DfoLog): Promise<boolean> => {
   }
 };
 
+// --- CRASH-SAFETY SCRATCH DRAFT (S95, Item 2) ---
+// A single uid-namespaced in-progress snapshot, written debounced while a NEW log is being entered,
+// so an app crash mid-entry can't destroy the trip. Cleared on successful save/back (and therefore
+// before any send — a log must be saved before it can be sent). Intentionally NOT in DFO_STORE_BASES:
+// it is transient device-local crash-safety, not user data to back up / migrate / wipe; the dfoKey()
+// uid-namespacing keeps it account-isolated. Best-effort: never throws into a caller.
+const ACTIVE_DRAFT_BASE = '@lobsterlog:dfo_active_draft';
+
+export const saveActiveDraft = async (log: DfoLog): Promise<void> => {
+  try {
+    await AsyncStorage.setItem(dfoKey(ACTIVE_DRAFT_BASE), JSON.stringify(log));
+  } catch (err) {
+    console.error('Failed to write active draft:', err);
+  }
+};
+
+export const loadActiveDraft = async (): Promise<DfoLog | null> => {
+  try {
+    const raw = await AsyncStorage.getItem(dfoKey(ACTIVE_DRAFT_BASE));
+    if (!raw) return null;
+    return JSON.parse(raw) as DfoLog;
+  } catch (err) {
+    console.error('Failed to read active draft:', err);
+    return null;
+  }
+};
+
+export const clearActiveDraft = async (): Promise<void> => {
+  try {
+    await AsyncStorage.removeItem(dfoKey(ACTIVE_DRAFT_BASE));
+  } catch (err) {
+    console.error('Failed to clear active draft:', err);
+  }
+};
+
 // Load a single log by its id
 export const loadLogById = async (id: string): Promise<DfoLog | null> => {
   const all = await loadAllLogs();
