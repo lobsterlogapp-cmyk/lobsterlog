@@ -26,6 +26,8 @@ import {
 
 import { Svg, Path, Rect, Line, Circle } from 'react-native-svg';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import Pdf from 'react-native-pdf';
+import { Asset } from 'expo-asset';
 
 import { useTranslation } from 'react-i18next';
 import { auth, db } from './firebaseConfig';
@@ -107,6 +109,20 @@ import {
 import { styles } from './src/styles/GlobalStyles';
 import { TimerProvider } from './src/context/TimerContext';
 
+// Offline DFO Documents (S94, Rule 2500) — bundled PDFs required through Metro ('pdf' added
+// to metro assetExts) so they embed in the app bundle; opened via expo-asset localUri in an
+// in-app viewer. No network anywhere in this path. Two documents, one per language.
+const DFO_DOC_SOURCES = {
+  providers: {
+    en: require('./assets/docs/providers_instructions_en.pdf'),
+    fr: require('./assets/docs/providers_instructions_fr.pdf'),
+  },
+  dfo234: {
+    en: require('./assets/docs/dfo_instructions_234_7_en.pdf'),
+    fr: require('./assets/docs/dfo_instructions_234_7_fr.pdf'),
+  },
+} as const;
+
 // --- UPDATED MAIN APP COMPONENT ---
 export default function App() {
   const {
@@ -131,7 +147,7 @@ export default function App() {
     cancelReauthDelete,
   } = useAuth();
 
-  const { t } = useTranslation('common');
+  const { t, i18n } = useTranslation('common');
   const [view, setView] = useState<AppView>('log');
   // Cloud Backup restore (Phase 3): brief notice + a once-per-sign-in guard.
   const [restoreNotice, setRestoreNotice] = useState(false);
@@ -149,6 +165,9 @@ export default function App() {
     return migratedUidRef.current.promise;
   };
   const [tutorialVisible, setTutorialVisible] = useState(false);
+  // Offline DFO Documents in-app PDF viewer (S94)
+  const [docViewerVisible, setDocViewerVisible] = useState(false);
+  const [docViewerUri, setDocViewerUri] = useState<string | null>(null);
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
   const [tripStartTime, setTripStartTime] = useState<string>('');
   const [readOnlyLog, setReadOnlyLog] = useState(false);
@@ -419,6 +438,21 @@ const isAdmin = useMemo(() => {
     setCaptainLocalProfile(updated);
     await saveCaptainProfile(updated);
     Alert.alert(t('settings.preferencesSaved'));
+  };
+
+  // Open a bundled DFO document (current app language) in the in-app viewer — fully offline.
+  // expo-asset resolves the embedded asset to a local file:// URI; no network (Rule 2500).
+  const openDfoDoc = async (doc: keyof typeof DFO_DOC_SOURCES) => {
+    const lang: 'en' | 'fr' = i18n.language?.startsWith('fr') ? 'fr' : 'en';
+    const asset = Asset.fromModule(DFO_DOC_SOURCES[doc][lang]);
+    if (!asset.localUri) {
+      await asset.downloadAsync();
+    }
+    const uri = asset.localUri ?? asset.uri;
+    if (uri) {
+      setDocViewerUri(uri);
+      setDocViewerVisible(true);
+    }
   };
 
   const handleManageSubscription = () => {
@@ -1139,6 +1173,39 @@ const isAdmin = useMemo(() => {
                     </TouchableOpacity>
                   </View>
 
+                  {/* DFO Documents (S94) — bundled PDFs, in-app viewer, fully offline (Rule 2500) */}
+                  <View style={styles.card}>
+                    <Text style={styles.cardHeader}>{t('settings.dfoDocsCard')}</Text>
+
+                    <TouchableOpacity
+                      style={styles.tutorialButton}
+                      onPress={() => openDfoDoc('providers')}
+                      activeOpacity={0.8}
+                    >
+                      <View style={styles.tutorialIconBox}>
+                        <FileText size={20} color="#0284C7" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.tutorialTitle}>{t('settings.docProvidersInstructions')}</Text>
+                        <Text style={styles.tutorialSub}>{t('settings.docProvidersInstructionsSub')}</Text>
+                      </View>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.tutorialButton}
+                      onPress={() => openDfoDoc('dfo234')}
+                      activeOpacity={0.8}
+                    >
+                      <View style={styles.tutorialIconBox}>
+                        <FileText size={20} color="#0284C7" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.tutorialTitle}>{t('settings.docDfoInstructions')}</Text>
+                        <Text style={styles.tutorialSub}>{t('settings.docDfoInstructionsSub')}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+
                   <View style={styles.card}>
                     <Text style={styles.cardHeader}>{t('settings.accountCard')}</Text>
                     <Text style={styles.signedInText}>{t('settings.signedInAs', { email: user.email })}</Text>
@@ -1272,6 +1339,32 @@ const isAdmin = useMemo(() => {
       </Modal>
 
       <TutorialModal visible={tutorialVisible} onClose={() => setTutorialVisible(false)} />
+
+      {/* Offline DFO document viewer (S94) — full-screen in-app PDF, no network */}
+      <Modal
+        visible={docViewerVisible}
+        animationType="slide"
+        onRequestClose={() => setDocViewerVisible(false)}
+      >
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#0F172A' }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 16, paddingVertical: 10 }}>
+            <TouchableOpacity
+              onPress={() => setDocViewerVisible(false)}
+              style={{ paddingVertical: 8, paddingHorizontal: 18, backgroundColor: '#1E3A8A', borderRadius: 10 }}
+              activeOpacity={0.8}
+            >
+              <Text style={{ color: '#FFFFFF', fontWeight: '600', fontSize: 15 }}>{t('settings.docViewerClose')}</Text>
+            </TouchableOpacity>
+          </View>
+          {docViewerUri && (
+            <Pdf
+              source={{ uri: docViewerUri, cache: true }}
+              style={{ flex: 1, backgroundColor: '#0F172A' }}
+              onError={(err) => { console.log('[DFO doc viewer] error:', err); }}
+            />
+          )}
+        </SafeAreaView>
+      </Modal>
 
       {isReady && (
         <PaywallModal
