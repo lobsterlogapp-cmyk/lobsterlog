@@ -14,6 +14,7 @@ import {
   View,
 } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { openAndroidDateTime, openAndroidDate } from '../utils/androidDateTimePicker';
 import { ChevronLeft, ChevronDown, Calendar, Clock } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import {
@@ -158,32 +159,37 @@ export default function Form222Screen({ onClose }: Props) {
     const current = field === 'interaction'
       ? parsePickerDateTime(form.interactionDate, form.interactionTime)
       : parsePickerDateTime(form.reportDate, '');
+    if (Platform.OS === 'android') {
+      // Imperative flow — avoids the mode="datetime" unmount-dismiss crash (S95).
+      // interaction = date+time (two-step); report = date-only (single dialog).
+      if (field === 'interaction') {
+        openAndroidDateTime(current, (d) => applyPickerValueForField(field, d));
+      } else {
+        openAndroidDate(current, (d) => applyPickerValueForField(field, d));
+      }
+      return;
+    }
+    // iOS: stage into the Modal spinner (Done → applyPickerValue).
     setPickerDate(current);
     setTempDate(current);
     setPickerField(field);
     setPickerVisible(true);
   };
 
-  const handlePickerChange = (event: DateTimePickerEvent, selected?: Date) => {
-    if (!selected) return;
-    if (Platform.OS === 'android') {
-      setPickerVisible(false);
-      if (event.type === 'dismissed') return;
-      applyPickerValue(selected);
-    } else {
-      setTempDate(selected);
-    }
-  };
-
-  const applyPickerValue = (d: Date) => {
-    if (pickerField === 'report') {
+  // Writes the picked Date into the field's stored strings. Takes `field` explicitly so the
+  // async Android imperative callback can never read a stale `pickerField` state value.
+  const applyPickerValueForField = (field: 'report' | 'interaction' | null, d: Date) => {
+    if (field === 'report') {
       set('reportDate')(formatPickerDate(d));
-    } else if (pickerField === 'interaction') {
+    } else if (field === 'interaction') {
       // One picker, two stored strings — mirror of FullDfoForm's mmTime case.
       set('interactionDate')(formatPickerDate(d));
       set('interactionTime')(formatPickerTime(d));
     }
   };
+
+  // iOS Modal "Done" applies the staged value against the current pickerField state.
+  const applyPickerValue = (d: Date) => applyPickerValueForField(pickerField, d);
 
   const handleLatChange = (v: string) => {
     set('lat')(v);
@@ -706,14 +712,9 @@ export default function Form222Screen({ onClose }: Props) {
           </View>
         </Modal>
       )}
-      {Platform.OS === 'android' && pickerVisible && (
-        <DateTimePicker
-          value={pickerDate}
-          mode={pickerField === 'interaction' ? 'datetime' : 'date'}
-          display="default"
-          onChange={handlePickerChange}
-        />
-      )}
+      {/* Android has no declarative picker mount — it uses the imperative
+          openAndroidDateTime / openAndroidDate helpers (S95), which sidestep the
+          mode="datetime" unmount-dismiss crash. iOS keeps the Modal spinner above. */}
     </SafeAreaView>
   );
 }

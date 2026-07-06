@@ -14,6 +14,7 @@ import {
   Modal,
 } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { openAndroidDateTime, openAndroidDate } from '../utils/androidDateTimePicker';
 import * as Location from 'expo-location';
 import {
   Calendar,
@@ -753,30 +754,27 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       case 'mmTime':     current = parseDateTime(mmDate, mmTime); break;
       case 'sarTime':    current = parseDateTime(sarDate, sarTime); break;
     }
+    if (Platform.OS === 'android') {
+      // Imperative date→time flow — avoids the mode="datetime" unmount-dismiss crash (S95).
+      openAndroidDateTime(current, (d) => applyPickerValueForField(field, d));
+      return;
+    }
+    // iOS: stage into the Modal spinner (Done → applyPickerValue).
     setPickerDate(current);
     setTempDate(current);
     setPickerField(field);
     setPickerVisible(true);
   };
 
-  const handlePickerChange = (event: DateTimePickerEvent, selected?: Date) => {
-    if (!selected) return;
-    if (Platform.OS === 'android') {
-      setPickerVisible(false);
-      if (event.type === 'dismissed') return;
-      applyPickerValue(selected);
-    } else {
-      setTempDate(selected);
-    }
-  };
-
-  const applyPickerValue = (d: Date) => {
-      if (pickerField === null) {
+  // Writes the picked Date into the field's stored strings. Takes `field` explicitly so the
+  // async Android imperative callback can never read a stale `pickerField` state value.
+  const applyPickerValueForField = (field: PickerField | null, d: Date) => {
+      if (field === null) {
         // Date Fished date-only picker
         setDateFished(formatDate(d));
         return;
       }
-      switch (pickerField) {
+      switch (field) {
         case 'sailed':
           // Sail-start owns the trip's nominal date: keep its own date AND drive dateFished.
           setSailDate(formatDate(d)); setDateFished(formatDate(d)); setTimeSailed(formatTime(d)); break;
@@ -792,6 +790,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           setSarDate(formatDate(d)); setSarTime(formatTime(d)); break;
       }
     };
+
+  // iOS Modal "Done" applies the staged value against the current pickerField state.
+  const applyPickerValue = (d: Date) => applyPickerValueForField(pickerField, d);
 
   const openSheet = (mode: SheetMode) => {
     setSheetMode(mode);
@@ -1229,6 +1230,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 if (readOnly) return;
                 const [y, mo, d] = dateFished ? dateFished.split('-').map(Number) : [new Date().getFullYear(), new Date().getMonth() + 1, new Date().getDate()];
                 const initial = new Date(y, mo - 1, d);
+                if (Platform.OS === 'android') {
+                  // Imperative single date dialog — no declarative picker mounted (S95).
+                  openAndroidDate(initial, (picked) => applyPickerValueForField(null, picked));
+                  return;
+                }
                 setTempDate(initial);
                 setPickerDate(initial);
                 setPickerField(null); // null = date-only mode
@@ -1866,14 +1872,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           </View>
         </Modal>
       )}
-      {Platform.OS === 'android' && pickerVisible && (
-        <DateTimePicker
-          value={pickerDate}
-          mode={pickerField === null ? 'date' : 'datetime'}
-          display="default"
-          onChange={handlePickerChange}
-        />
-      )}
+      {/* Android has no declarative picker mount — it uses the imperative
+          openAndroidDateTime / openAndroidDate helpers (S95), which sidestep the
+          mode="datetime" unmount-dismiss crash. iOS keeps the Modal spinner above. */}
 
       <Modal visible={sheetVisible} transparent animationType="slide">
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setSheetVisible(false)}>
