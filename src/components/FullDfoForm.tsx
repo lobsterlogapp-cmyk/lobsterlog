@@ -50,6 +50,7 @@ import {
   LogRemarks,
 } from '../utils/dfoLogStorage';
 import { triggerBackup } from '../utils/dfoBackup';
+import { REQUIRED_ASTERISK_COLOR } from '../styles/GlobalStyles';
 import {
   DFO_FMA_LIST,
   DFO_LGRID_BY_FMA,
@@ -67,6 +68,7 @@ import {
   DFO_FMA_NB_VNTCH_YOU,
   DFO_TRAP_SIZE_LIST,
   DFO_GEAR_SUBTYPE_LIST,
+  clampCoord4,
 } from '../utils/dfoConstants';
 import { loadCaptainProfile } from '../utils/captainStorage';
 import { useTranslation } from 'react-i18next';
@@ -702,17 +704,48 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     onBack?.();
   };
 
+  // Shared GPS fill. Keeps Accuracy.High (234 coords feed the regulator XML — no
+  // precision regression). Clamps to the XSD ≤4-decimal limit (shared clampCoord4),
+  // races the fix against a timeout, and never writes a blank/0 coordinate on a bad fix.
+  // alertOnFail is opt-in: only the manual "Capture GPS" button surfaces a loud Alert on
+  // failure. The auto-triggers (Stop Haul / MM=Yes / SAR=Yes) stay silent — every coord
+  // they fill is either not a regulator field (MM) or hard-blocked before emit if empty
+  // (effort LAT/LONG via validateElogXml Rule 3059; SAR LAT/LONG via handleSave + validator).
   const captureGps = async (
     setLat: (v: string) => void,
-    setLng: (v: string) => void
+    setLng: (v: string) => void,
+    opts?: { alertOnFail?: boolean }
   ) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') return;
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      setLat(loc.coords.latitude.toFixed(4));
-      setLng(loc.coords.longitude.toFixed(4));
-    } catch (_) {}
+      if (status !== 'granted') {
+        if (opts?.alertOnFail) Alert.alert(t('form234.gpsDeniedTitle'), t('form234.gpsDeniedBody'));
+        return; // fields untouched
+      }
+      // expo-location has no first-class timeout — race the fix against a rejecting timer.
+      const loc = await Promise.race([
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error('gps-timeout')), 15000);
+        }),
+      ]);
+      const lat = loc?.coords?.latitude;
+      const lng = loc?.coords?.longitude;
+      if (
+        typeof lat !== 'number' || !isFinite(lat) ||
+        typeof lng !== 'number' || !isFinite(lng)
+      ) {
+        if (opts?.alertOnFail) Alert.alert(t('form234.gpsNoFixTitle'), t('form234.gpsNoFixBody'));
+        return; // never write 0/blank coordinates on a bad fix
+      }
+      setLat(clampCoord4(String(lat)));
+      setLng(clampCoord4(String(lng)));
+    } catch (_e) {
+      if (opts?.alertOnFail) Alert.alert(t('form234.gpsNoFixTitle'), t('form234.gpsNoFixBody'));
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   };
 
   const handleSailPress = async () => {
@@ -906,7 +939,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     <View style={styles.fieldRow}>
       <View style={styles.labelRow}>
         {isProblem && <View style={styles.problemDot} />}
-        <Text style={styles.label}>{label}{isReq && <Text style={{ color: '#EF4444' }}> *</Text>}</Text>
+        <Text style={styles.label}>{label}{isReq && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
       </View>
       <TouchableOpacity style={styles.timeButton} onPress={() => { if (!readOnly) openPicker(field); }}>
         <Text style={[styles.timeButtonText, !value && styles.timeButtonPlaceholder]}>
@@ -925,7 +958,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     <View style={styles.fieldRow}>
       <View style={styles.labelRow}>
         {isProblem && <View style={styles.problemDot} />}
-        <Text style={styles.label}>{label}{isReq && <Text style={{ color: '#EF4444' }}> *</Text>}</Text>
+        <Text style={styles.label}>{label}{isReq && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
       </View>
       <TextInput
         style={[styles.input, (readOnly || fieldReadOnly) && styles.inputReadOnly]}
@@ -1288,7 +1321,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           {renderField(t('form234.tripIdLabel'), tripId, () => {}, '', false, true)}
           {isVisible('crewNb') && (
             <View style={styles.fieldRow}>
-              <Text style={styles.label}>{t('form234.crewRegistryLabel')}{isRequired('crewNb') && <Text style={{ color: '#EF4444' }}> *</Text>}</Text>
+              <Text style={styles.label}>{t('form234.crewRegistryLabel')}{isRequired('crewNb') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
               <CrewSelector selected={crewMembers} onChange={setCrewMembers} />
             </View>
           )}
@@ -1305,7 +1338,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                               </View>
                               {isVisible('portId') && (
                               <View style={styles.fieldRow}>
-                                <Text style={styles.label}>{t('form234.portLandedLabel')}{isRequired('portId') && <Text style={{ color: '#EF4444' }}> *</Text>}</Text>
+                                <Text style={styles.label}>{t('form234.portLandedLabel')}{isRequired('portId') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
                                 <DfoPortSelector
                                   value={portLanded}
                                   codeId={portLandedCodeId}
@@ -1341,7 +1374,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           {renderNoteInput('catch', remarks.catch ?? '', (v) => { setNote('catch', v); setNote('haul', v); })}
           {/* LFA Selector */}
                     <View style={styles.fieldRow}>
-                      <Text style={styles.label}>{t('form234.fishingAreaLabel')}{isRequired('fmaId') && <Text style={{ color: '#EF4444' }}> *</Text>}</Text>
+                      <Text style={styles.label}>{t('form234.fishingAreaLabel')}{isRequired('fmaId') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
                       <TouchableOpacity
                         style={styles.timeButton}
                         onPress={() => { if (readOnly) return; setFmaPickerOpen(o => !o); setLgridPickerOpen(false); }}
@@ -1419,7 +1452,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                         Blocked for 88/89/90 (Rule 608); visible implies required here. */}
                     {subformId === 91 && fmaId !== null && DFO_FMA_STAT_SECT_REQUIRED.has(fmaId) && (
                       <View style={styles.fieldRow}>
-                        <Text style={styles.label}>{t('form234.statSectLabel')}<Text style={{ color: '#EF4444' }}> *</Text></Text>
+                        <Text style={styles.label}>{t('form234.statSectLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
                         <TouchableOpacity
                           style={styles.timeButton}
                           onPress={() => { if (readOnly) return; setStatSectPickerOpen(o => !o); setFmaPickerOpen(false); }}
@@ -1462,7 +1495,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                         Visible implies required → label always carries *. Long list is expected. */}
                     {subformId === 88 && fmaId !== null && fmaId in DFO_FMA_GRID_MAP && (
                       <View style={styles.fieldRow}>
-                        <Text style={styles.label}>{t('form234.gridLabel')}<Text style={{ color: '#EF4444' }}> *</Text></Text>
+                        <Text style={styles.label}>{t('form234.gridLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
                         <TouchableOpacity
                           style={styles.timeButton}
                           onPress={() => { if (readOnly) return; setGridSearch(''); setGridPickerOpen(true); setFmaPickerOpen(false); }}
@@ -1545,7 +1578,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               Values from DFO_TRAP_SIZE_LIST (39682 Standard / 39683 Large; Rule 611). */}
           {isVisible('trapSize') && (
             <View style={styles.fieldRow}>
-              <Text style={styles.label}>{t('form234.trapSizeLabel')}{isRequired('trapSize') && <Text style={{ color: '#EF4444' }}> *</Text>}</Text>
+              <Text style={styles.label}>{t('form234.trapSizeLabel')}{isRequired('trapSize') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
               <TouchableOpacity
                 style={styles.timeButton}
                 onPress={() => { if (readOnly) return; setTrapSizePickerOpen(o => !o); }}
@@ -1580,7 +1613,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               39685 Wire mesh / 39686 Both); display DESC_ENG (.label). */}
           {isVisible('gearSubtypeId') && (
             <View style={styles.fieldRow}>
-              <Text style={styles.label}>{t('form234.gearSubtypeLabel')}{isRequired('gearSubtypeId') && <Text style={{ color: '#EF4444' }}> *</Text>}</Text>
+              <Text style={styles.label}>{t('form234.gearSubtypeLabel')}{isRequired('gearSubtypeId') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
               <TouchableOpacity
                 style={styles.timeButton}
                 onPress={() => { if (readOnly) return; setGearSubtypePickerOpen(o => !o); }}
@@ -1616,7 +1649,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View style={[styles.sectionIcon, { backgroundColor: '#FEE2E2' }]}><Fish size={16} color="#B91C1C" /></View>
-            <Text style={styles.sectionTitle}>{t('form234.baitReportingSection')}{isRequired('baitEntries') && <Text style={{ color: '#EF4444', fontSize: 13 }}> *</Text>}</Text>
+            <Text style={styles.sectionTitle}>{t('form234.baitReportingSection')}{isRequired('baitEntries') && <Text style={{ color: REQUIRED_ASTERISK_COLOR, fontSize: 13 }}> *</Text>}</Text>
             {renderNoteButton('bait')}
           </View>
           {renderNoteInput('bait', remarks.bait ?? '', (v) => setNote('bait', v))}
@@ -1653,7 +1686,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               style={styles.captureGpsBtn}
               onPress={async () => {
                 setGpsCapturing(true);
-                await captureGps(setGpsLat, setGpsLng);
+                await captureGps(setGpsLat, setGpsLng, { alertOnFail: true });
                 setGpsSrc('gps'); // §11.3: GPS-read coordinates → MODE="G"
                 setGpsCapturing(false);
               }}
@@ -1763,7 +1796,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               <>
                 {renderField(t('form234.sarNbSpcmnLabel'), sarNbSpcmn, setSarNbSpcmn, '0', false, false, 'numeric', true)}
                 <View style={styles.fieldRow}>
-                  <Text style={styles.label}>{t('form234.sarCondLabel')}<Text style={{ color: '#EF4444' }}> *</Text></Text>
+                  <Text style={styles.label}>{t('form234.sarCondLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
                   <TouchableOpacity
                     style={styles.timeButton}
                     onPress={() => { if (readOnly) return; setSarCondPickerOpen(o => !o); }}
@@ -1979,7 +2012,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 baitConditionState(subformId, sheetSelectedCodeId) === 'mandatory' && (
                 <>
                   <Text style={[styles.sheetLabel, { marginTop: 14 }]}>
-                    {t('form234.baitConditionLabel')}<Text style={{ color: '#EF4444' }}> *</Text>
+                    {t('form234.baitConditionLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>
                   </Text>
                   <TouchableOpacity style={styles.dropdownBtn} onPress={() => setSheetConditionOpen(o => !o)}>
                     <Text style={[styles.dropdownBtnText, sheetCondition == null && styles.dropdownPlaceholder]}>
@@ -2020,7 +2053,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               {sheetMode === 'bycatch' && subformId === 90 && (
                 <>
                   <Text style={[styles.sheetLabel, { marginTop: 14 }]}>
-                    {t('form234.usageLabel')}<Text style={{ color: '#EF4444' }}> *</Text>
+                    {t('form234.usageLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>
                   </Text>
                   <View style={{ gap: 6, marginTop: 4 }}>
                     {BYCATCH_USAGE_OPTIONS.map(opt => (
