@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
   Platform,
   ScrollView,
   StatusBar,
@@ -173,6 +174,7 @@ export default function DfoSetupScreen({ onActivated, onClose, isAdmin }: Props)
         </TouchableOpacity>
       </View>
 
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'android' ? 'padding' : undefined}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
@@ -263,6 +265,7 @@ export default function DfoSetupScreen({ onActivated, onClose, isAdmin }: Props)
           </TouchableOpacity>
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -278,7 +281,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1E3A8A',
     paddingHorizontal: 16,
     paddingVertical: 14,
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) + 14 : 14,
+    paddingTop: 14, // S95: DfoSetup renders below the app header — no status-bar inset needed here
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.12)',
   },

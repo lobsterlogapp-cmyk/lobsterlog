@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft, ChevronDown, Calendar } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import {
@@ -79,6 +80,7 @@ export default function Form233Screen({ onClose }: Props) {
     setForm(prev => ({ ...prev, [key]: value }));
 
   // Date pickers (mirror FullDfoForm's platform-split). Both fields are date-only.
+  const insets = useSafeAreaInsets(); // S95: edge-to-edge safe-area top for the modal header
   const [pickerVisible, setPickerVisible] = useState(false);
   const [pickerField, setPickerField] = useState<'start' | 'end' | null>(null);
   const [pickerDate, setPickerDate] = useState(new Date());
@@ -195,7 +197,7 @@ export default function Form233Screen({ onClose }: Props) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
         <TouchableOpacity onPress={onClose} style={styles.backButton} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <ChevronLeft size={24} color="#1E3A8A" />
         </TouchableOpacity>

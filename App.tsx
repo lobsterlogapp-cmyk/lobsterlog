@@ -25,6 +25,7 @@ import {
 } from 'react-native';
 
 import { Svg, Path, Rect, Line, Circle } from 'react-native-svg';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Pdf from 'react-native-pdf';
 import { Asset } from 'expo-asset';
@@ -171,6 +172,8 @@ export default function App() {
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
   const [tripStartTime, setTripStartTime] = useState<string>('');
   const [readOnlyLog, setReadOnlyLog] = useState(false);
+  // S95: real safe-area top inset drives the persistent header (edge-to-edge-correct on Android).
+  const insets = useSafeAreaInsets();
   const [dfoActivated, setDfoActivated] = useState<boolean | null>(null);
   const [prefLanguage, setPrefLanguage] = useState<'en' | 'fr'>('en');
   const [prefUnits, setPrefUnits] = useState<'lbs' | 'kg'>('lbs');
@@ -527,7 +530,7 @@ const isAdmin = useMemo(() => {
         onCancel={cancelReauthDelete}
       />
       <StatusBar barStyle="light-content" backgroundColor="#1E3A8A" />
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <View style={styles.headerContent}>
           <View style={styles.headerLeft}>
             <View style={styles.headerIcon}>

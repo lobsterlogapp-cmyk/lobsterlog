@@ -3,6 +3,7 @@
 // so the sent-log layout and tap-to-detail live in exactly one place.
 import React from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, SafeAreaView, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CheckCircle, XCircle, X } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { DfoLog, TransmissionRecord, transmissionKind } from '../utils/dfoLogStorage';
@@ -100,6 +101,7 @@ interface SentLogDetailModalProps {
 
 export const SentLogDetailModal: React.FC<SentLogDetailModalProps> = ({ visible, log, record, onClose }) => {
   const { t } = useTranslation('dfo');
+  const insets = useSafeAreaInsets(); // S95: edge-to-edge safe-area top for this full-screen modal header
   const tripNum = record?.tripNum ?? log?.tripNum;
   const xsdLabel =
     record?.xsdValid === true ? t('logs.detailXsdPass')
@@ -117,7 +119,7 @@ export const SentLogDetailModal: React.FC<SentLogDetailModalProps> = ({ visible,
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={styles.detailContainer}>
-        <View style={styles.detailHeader}>
+        <View style={[styles.detailHeader, { paddingTop: insets.top + 12 }]}>
           <Text style={styles.detailTitle}>{t('logs.detailTitle')}</Text>
           <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
             <X size={20} color="#1E293B" />

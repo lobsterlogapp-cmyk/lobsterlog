@@ -12,6 +12,7 @@ import {
   Alert,
   Platform,
   Modal,
+  KeyboardAvoidingView,
 } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { openAndroidDateTime, openAndroidDate } from '../utils/androidDateTimePicker';
@@ -1914,6 +1915,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           mode="datetime" unmount-dismiss crash. iOS keeps the Modal spinner above. */}
 
       <Modal visible={sheetVisible} transparent animationType="slide">
+        {/* S95: the bait/bycatch sheet portals outside the main-form KAV, so it needs its own —
+            this is where "bait pounds" (sheetLbs) is entered and was being covered on Android. */}
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setSheetVisible(false)}>
           <TouchableOpacity activeOpacity={1} onPress={() => {}}>
             <View style={styles.sheetContent}>
@@ -2043,6 +2047,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             </View>
           </TouchableOpacity>
         </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
 
     </View>
