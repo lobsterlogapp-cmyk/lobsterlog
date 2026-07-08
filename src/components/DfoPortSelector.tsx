@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, TextInput, ScrollView, StyleSheet } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { MV_PORT, PORTS_BY_PROVINCE, type DfoPort } from '../data/reftables';
 import { MV_PROVINCE } from '../data/reftables';
 
@@ -37,6 +38,7 @@ function provinceLabel(p: DfoPort): string {
 }
 
 export default function DfoPortSelector({ value, codeId, onChange, subformId, placeholder = 'Select port…', disabled }: Props) {
+  const { t } = useTranslation('dfo');
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [searchAll, setSearchAll] = useState(false);
@@ -79,7 +81,7 @@ export default function DfoPortSelector({ value, codeId, onChange, subformId, pl
         <View style={styles.dropdown}>
           <TextInput
             style={styles.search}
-            placeholder="Type to search ports…"
+            placeholder={t('portSelector.searchPlaceholder')}
             placeholderTextColor="#999"
             value={query}
             onChangeText={setQuery}
@@ -87,15 +89,15 @@ export default function DfoPortSelector({ value, codeId, onChange, subformId, pl
           />
           <View style={styles.toolbar}>
             <TouchableOpacity onPress={() => setSearchAll(prev => !prev)}>
-              <Text style={styles.toolbarText}>{searchAll ? '☑ All ports' : '☐ All ports'}</Text>
+              <Text style={styles.toolbarText}>{`${searchAll ? '☑' : '☐'} ${t('portSelector.allPorts')}`}</Text>
             </TouchableOpacity>
             {value ? (
-              <TouchableOpacity onPress={clear}><Text style={styles.clearText}>Clear</Text></TouchableOpacity>
+              <TouchableOpacity onPress={clear}><Text style={styles.clearText}>{t('portSelector.clear')}</Text></TouchableOpacity>
             ) : null}
           </View>
           <ScrollView style={{ maxHeight: 240 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
             {results.length === 0 ? (
-              <Text style={styles.empty}>No matching ports — toggle “All ports”.</Text>
+              <Text style={styles.empty}>{t('portSelector.noMatch', { allPorts: t('portSelector.allPorts') })}</Text>
             ) : results.map(p => (
               <TouchableOpacity
                 key={p.codeId}

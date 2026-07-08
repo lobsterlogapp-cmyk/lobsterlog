@@ -196,6 +196,7 @@
   },
   "logs": {
     "title": "Journaux MPO",
+    "privacyRequiredBody": "Tu dois accepter l'avis de confidentialité pour utiliser les fonctions MPO.",
     "noLogs": "Aucun journal pour l'instant",
     "pending": "En attente",
     "submitted": "Soumis",
@@ -284,7 +285,13 @@
     "confirmTitle": "Soumettre au MPO?",
     "confirmBody": "Ce rapport d'inactivité sera soumis au MPO.",
     "submitSuccess": "Le formulaire 233 a été envoyé au MPO.",
-    "validationFailed": "Le formulaire 233 n'a pas passé la validation et n'a pas été envoyé."
+    "validationFailed": "Le formulaire 233 n'a pas passé la validation et n'a pas été envoyé.",
+    "missingFieldsTitle": "Champs manquants",
+    "missingFieldsBody": "Remplis tous les champs obligatoires avant de transmettre.",
+    "validationFailedTitle": "Échec de la validation",
+    "submittedTitle": "Transmis",
+    "submissionFailedTitle": "Échec de la transmission",
+    "unknownError": "Erreur inconnue"
   },
   "form222": {
     "headerTitle": "Formulaire 222 · Mammifères marins",
@@ -345,7 +352,19 @@
     "confirmTitle": "Soumettre au MPO?",
     "confirmBody": "Ce rapport d'interaction avec un mammifère marin sera soumis au MPO.",
     "submitSuccess": "Le formulaire 222 a été envoyé au MPO.",
-    "validationFailed": "Le formulaire 222 n'a pas passé la validation et n'a pas été envoyé."
+    "validationFailed": "Le formulaire 222 n'a pas passé la validation et n'a pas été envoyé.",
+    "missingFieldsTitle": "Champs manquants",
+    "missingFieldsBody": "Remplis tous les champs obligatoires avant de transmettre.",
+    "validationFailedTitle": "Échec de la validation",
+    "submittedTitle": "Transmis",
+    "submissionFailedTitle": "Échec de la transmission",
+    "unknownError": "Erreur inconnue"
+  },
+  "portSelector": {
+    "searchPlaceholder": "Rechercher un port…",
+    "allPorts": "Tous les ports",
+    "clear": "Effacer",
+    "noMatch": "Aucun port correspondant — coche « {{allPorts}} »."
   },
   "tripConfirm": {
     "headerTitle": "Confirmer le début de sortie",

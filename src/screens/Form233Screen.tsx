@@ -121,17 +121,17 @@ export default function Form233Screen({ onClose }: Props) {
       return;
     }
     if (!form.periodStartDate || !form.periodEndDate || !form.reason) {
-      Alert.alert('Missing Fields', 'Please complete all required fields before submitting.');
+      Alert.alert(t('form233.missingFieldsTitle'), t('form233.missingFieldsBody'));
       return;
     }
 
     Alert.alert(
-      'Submit to DFO?',
-      'This inactivity report will be submitted to DFO.',
+      t('form233.confirmTitle'),
+      t('form233.confirmBody'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: tc('nav.cancel'), style: 'cancel' },
         {
-          text: 'Submit',
+          text: t('form233.submitButton'),
           style: 'default',
           onPress: async () => {
             try {
@@ -151,9 +151,9 @@ export default function Form233Screen({ onClose }: Props) {
               const validation = validateForm233Xml(xml);
               if (!validation.valid) {
                 Alert.alert(
-                  'Validation Failed',
-                  `Form 233 failed schema validation and was not sent.\n\n${validation.errors.join('\n')}`,
-                  [{ text: 'OK' }]
+                  t('form233.validationFailedTitle'),
+                  `${t('form233.validationFailed')}\n\n${validation.errors.join('\n')}`,
+                  [{ text: tc('nav.ok') }]
                 );
                 return;
               }
@@ -175,7 +175,7 @@ export default function Form233Screen({ onClose }: Props) {
                   result.httpStatus && `HTTP ${result.httpStatus}`,
                   result.errorMessage,
                 ].filter(Boolean).join('\n');
-                Alert.alert('Submission Failed', detail || 'Unknown error');
+                Alert.alert(t('form233.submissionFailedTitle'), detail || t('form233.unknownError'));
                 return;
               }
 
@@ -184,9 +184,9 @@ export default function Form233Screen({ onClose }: Props) {
               await saveForm233Entry(entry);
               triggerBackup(); // best-effort cloud backup; fire-and-forget, never blocks the send
 
-              Alert.alert('Submitted', 'Form 233 has been sent to DFO.', [{ text: 'OK', onPress: onClose }]);
+              Alert.alert(t('form233.submittedTitle'), t('form233.submitSuccess'), [{ text: tc('nav.ok'), onPress: onClose }]);
             } catch (e: any) {
-              Alert.alert('Submission Failed', e.message ?? 'Unknown error');
+              Alert.alert(t('form233.submissionFailedTitle'), e.message ?? t('form233.unknownError'));
             } finally {
               setSending(false);
             }

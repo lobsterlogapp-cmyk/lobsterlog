@@ -783,7 +783,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const handleMmYes = async (val: boolean) => {
     setMmYes(val);
     if (val) {
-      Alert.alert('', t('form234.mmInterIndPrompt'), [{ text: 'OK' }]);
+      Alert.alert('', t('form234.mmInterIndPrompt'), [{ text: tc('nav.ok') }]);
       const now = new Date();
       setMmDate(formatDate(now));
       setMmTime(formatTime(now));
@@ -798,7 +798,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const handleSarYes = async (val: boolean) => {
     setSarYes(val);
     if (val) {
-      Alert.alert('', t('form234.sarIndPrompt'), [{ text: 'OK' }]);
+      Alert.alert('', t('form234.sarIndPrompt'), [{ text: tc('nav.ok') }]);
       const now = new Date();
       setSarDate(formatDate(now));
       setSarTime(formatTime(now));

@@ -749,8 +749,8 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
             } else {
               Alert.alert(
                 t('privacy.title'),
-                'You must accept the Privacy Notice to use DFO features.',
-                [{ text: 'OK' }]
+                t('logs.privacyRequiredBody'),
+                [{ text: tc('nav.ok') }]
               );
             }
           }}

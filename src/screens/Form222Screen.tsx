@@ -283,7 +283,7 @@ export default function Form222Screen({ onClose }: Props) {
         !form.contactInfo;
 
       if (missing || latError || lonError) {
-        Alert.alert('Missing Fields', 'Please complete all required fields before submitting.');
+        Alert.alert(t('form222.missingFieldsTitle'), t('form222.missingFieldsBody'));
         return;
       }
     }
@@ -292,7 +292,7 @@ export default function Form222Screen({ onClose }: Props) {
       t('form222.confirmTitle'),
       t('form222.confirmBody'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: tc('nav.cancel'), style: 'cancel' },
         {
           text: t('form222.submitButton'),
           style: 'default',
@@ -330,9 +330,9 @@ export default function Form222Screen({ onClose }: Props) {
               const validation = validateForm222Xml(xml);
               if (!validation.valid) {
                 Alert.alert(
-                  'Validation Failed',
+                  t('form222.validationFailedTitle'),
                   `${t('form222.validationFailed')}\n\n${validation.errors.join('\n')}`,
-                  [{ text: 'OK' }]
+                  [{ text: tc('nav.ok') }]
                 );
                 return;
               }
@@ -354,7 +354,7 @@ export default function Form222Screen({ onClose }: Props) {
                   result.httpStatus && `HTTP ${result.httpStatus}`,
                   result.errorMessage,
                 ].filter(Boolean).join('\n');
-                Alert.alert('Submission Failed', detail || 'Unknown error');
+                Alert.alert(t('form222.submissionFailedTitle'), detail || t('form222.unknownError'));
                 return;
               }
 
@@ -363,9 +363,9 @@ export default function Form222Screen({ onClose }: Props) {
               await saveForm222Entry(entry);
               triggerBackup(); // best-effort cloud backup; fire-and-forget, never blocks the send
 
-              Alert.alert('Submitted', t('form222.submitSuccess'), [{ text: 'OK', onPress: onClose }]);
+              Alert.alert(t('form222.submittedTitle'), t('form222.submitSuccess'), [{ text: tc('nav.ok'), onPress: onClose }]);
             } catch (e: any) {
-              Alert.alert('Submission Failed', e.message ?? 'Unknown error');
+              Alert.alert(t('form222.submissionFailedTitle'), e.message ?? t('form222.unknownError'));
             } finally {
               setSending(false);
             }
