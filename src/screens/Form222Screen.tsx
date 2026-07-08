@@ -17,8 +17,9 @@ import {
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { openAndroidDateTime, openAndroidDate } from '../utils/androidDateTimePicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronLeft, ChevronDown, Calendar, Clock } from 'lucide-react-native';
+import { ChevronLeft, ChevronDown, Calendar, Clock, LocateFixed } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
+import * as Location from 'expo-location';
 import {
   Form222Entry,
   generateForm222Uid,
@@ -39,6 +40,8 @@ import { submitDfoXml, isValidFormVrn } from '../utils/submitDfoXml';
 import { triggerBackup } from '../utils/dfoBackup';
 import { generateDfoXmlFileName } from '../utils/dfoXmlGenerator';
 import { loadCaptainProfile, CaptainProfile, EMPTY_PROFILE } from '../utils/captainStorage';
+import { clampCoord4 } from '../utils/dfoConstants';
+import { REQUIRED_ASTERISK_COLOR } from '../styles/GlobalStyles';
 
 interface Props {
   onClose: () => void;
@@ -135,6 +138,7 @@ export default function Form222Screen({ onClose }: Props) {
   const [latError, setLatError] = useState('');
   const [lonError, setLonError] = useState('');
   const [sending, setSending] = useState(false);
+  const [gpsCapturing, setGpsCapturing] = useState(false);
 
   useEffect(() => {
     loadCaptainProfile().then(setProfile);
@@ -214,6 +218,46 @@ export default function Form222Screen({ onClose }: Props) {
       setLonError(t('form222.lonError'));
     } else {
       setLonError('');
+    }
+  };
+
+  // "Use my location": fill lat/lon from a live GPS fix. Values are clamped to the XSD's
+  // ≤4-decimal limit (shared clampCoord4) and written through the SAME manual change
+  // handlers, so range validation runs and the user can still hand-edit afterwards.
+  // On denial / no fix / timeout: loud Alert, fields left untouched — never 0/blank.
+  const captureMyLocation = async () => {
+    if (gpsCapturing) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      setGpsCapturing(true);
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(t('form222.gpsDeniedTitle'), t('form222.gpsDeniedBody'));
+        return; // fields untouched, manual entry remains the path
+      }
+      // expo-location has no first-class timeout — race the fix against a rejecting timer.
+      const loc = await Promise.race([
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error('gps-timeout')), 15000);
+        }),
+      ]);
+      const lat = loc?.coords?.latitude;
+      const lon = loc?.coords?.longitude;
+      if (
+        typeof lat !== 'number' || !isFinite(lat) ||
+        typeof lon !== 'number' || !isFinite(lon)
+      ) {
+        Alert.alert(t('form222.gpsNoFixTitle'), t('form222.gpsNoFixBody'));
+        return; // never write 0/blank coordinates on a bad fix
+      }
+      handleLatChange(clampCoord4(String(lat)));
+      handleLonChange(clampCoord4(String(lon)));
+    } catch (_e) {
+      Alert.alert(t('form222.gpsNoFixTitle'), t('form222.gpsNoFixBody'));
+    } finally {
+      if (timer) clearTimeout(timer);
+      setGpsCapturing(false);
     }
   };
 
@@ -340,9 +384,10 @@ export default function Form222Screen({ onClose }: Props) {
     onSelect: (v: string) => void,
     placeholder: string,
     isLast = false,
+    required = false,
   ) => (
     <View style={[styles.inputGroup, isLast && styles.lastInputGroup]}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.label}>{label}{required && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
       <TouchableOpacity
         style={styles.dropdownButton}
         onPress={() => {
@@ -465,7 +510,7 @@ export default function Form222Screen({ onClose }: Props) {
             <View style={styles.card}>
               <Text style={styles.cardHeader}>{t('form222.reportDetailsCard')}</Text>
               <View style={styles.lastInputGroup}>
-                <Text style={styles.label}>{t('form222.reportDateLabel')}</Text>
+                <Text style={styles.label}>{t('form222.reportDateLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
                 <TouchableOpacity
                   style={styles.dropdownButton}
                   onPress={() => openPicker('report')}
@@ -478,7 +523,7 @@ export default function Form222Screen({ onClose }: Props) {
                 </TouchableOpacity>
               </View>
               <View style={styles.lastInputGroup}>
-                <Text style={styles.label}>{t('form222.lgbkNumRefLabel')}</Text>
+                <Text style={styles.label}>{t('form222.lgbkNumRefLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
                 <TextInput
                   style={styles.input}
                   value={form.lgbkNumRef}
@@ -496,7 +541,7 @@ export default function Form222Screen({ onClose }: Props) {
               <Text style={styles.cardHeader}>{t('form222.interactionDetailsCard')}</Text>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>{t('form222.interactionDateLabel')}</Text>
+                <Text style={styles.label}>{t('form222.interactionDateLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
                 <TouchableOpacity
                   style={styles.dropdownButton}
                   onPress={() => openPicker('interaction')}
@@ -510,7 +555,7 @@ export default function Form222Screen({ onClose }: Props) {
               </View>
 
               <View style={styles.lastInputGroup}>
-                <Text style={styles.label}>{t('form222.interactionTimeLabel')}</Text>
+                <Text style={styles.label}>{t('form222.interactionTimeLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
                 <TouchableOpacity
                   style={styles.dropdownButton}
                   onPress={() => openPicker('interaction')}
@@ -528,8 +573,20 @@ export default function Form222Screen({ onClose }: Props) {
             <View style={styles.card}>
               <Text style={styles.cardHeader}>{t('form222.locationCard')}</Text>
 
+              <TouchableOpacity
+                style={styles.captureGpsBtn}
+                onPress={captureMyLocation}
+                disabled={gpsCapturing}
+                activeOpacity={0.8}
+              >
+                <LocateFixed size={15} color="#4338CA" />
+                <Text style={styles.captureGpsBtnText}>
+                  {gpsCapturing ? t('form222.capturingGps') : t('form222.useMyLocation')}
+                </Text>
+              </TouchableOpacity>
+
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>{t('form222.latLabel')}</Text>
+                <Text style={styles.label}>{t('form222.latLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
                 <TextInput
                   style={[styles.input, latError ? styles.inputError : null]}
                   value={form.lat}
@@ -542,7 +599,7 @@ export default function Form222Screen({ onClose }: Props) {
               </View>
 
               <View style={styles.lastInputGroup}>
-                <Text style={styles.label}>{t('form222.lonLabel')}</Text>
+                <Text style={styles.label}>{t('form222.lonLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
                 <TextInput
                   style={[styles.input, lonError ? styles.inputError : null]}
                   value={form.lon}
@@ -567,10 +624,12 @@ export default function Form222Screen({ onClose }: Props) {
                 setSpeciesOpen,
                 set('speciesLabel'),
                 t('form222.speciesPlaceholder'),
+                false,
+                true,
               )}
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>{t('form222.nbAnimalsLabel')}</Text>
+                <Text style={styles.label}>{t('form222.nbAnimalsLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
                 <TextInput
                   style={styles.input}
                   value={form.nbAnimals}
@@ -589,6 +648,8 @@ export default function Form222Screen({ onClose }: Props) {
                 setInteractionTypeOpen,
                 set('interactionTypeLabel'),
                 t('form222.interactionTypePlaceholder'),
+                false,
+                true,
               )}
 
               {/* Optional specimen detail (XSD minOccurs=0) → ID_CNFDNCE_ID / SPCMN_COND_ID / BDY_LEN_ID */}
@@ -640,7 +701,7 @@ export default function Form222Screen({ onClose }: Props) {
               <Text style={styles.cardHeader}>{t('form222.observerCard')}</Text>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>{t('form222.observerNmLabel')}</Text>
+                <Text style={styles.label}>{t('form222.observerNmLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
                 <TextInput
                   style={styles.input}
                   value={form.observerNm}
@@ -651,7 +712,7 @@ export default function Form222Screen({ onClose }: Props) {
               </View>
 
               <View style={styles.lastInputGroup}>
-                <Text style={styles.label}>{t('form222.contactInfoLabel')}</Text>
+                <Text style={styles.label}>{t('form222.contactInfoLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
                 <TextInput
                   style={styles.input}
                   value={form.contactInfo}
@@ -815,6 +876,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#334155',
   },
+  captureGpsBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 10, borderRadius: 8, marginBottom: 12,
+    backgroundColor: '#EEF2FF', borderWidth: 1, borderColor: '#C7D2FE',
+  },
+  captureGpsBtnText: { fontSize: 13, fontWeight: '700', color: '#4338CA' },
   inputError: {
     borderColor: '#EF4444',
   },
