@@ -338,7 +338,7 @@ export default function CaptainProfileScreen({ onClose }: Props) {
               activeOpacity={0.8}
             >
               <Text style={[styles.langPillText, i18n.language === 'en' && styles.langPillTextActive]}>
-                {t('settings.english')}
+                English
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -347,7 +347,7 @@ export default function CaptainProfileScreen({ onClose }: Props) {
               activeOpacity={0.8}
             >
               <Text style={[styles.langPillText, i18n.language === 'fr' && styles.langPillTextActive]}>
-                {t('settings.french')}
+                Français
               </Text>
             </TouchableOpacity>
           </View>
