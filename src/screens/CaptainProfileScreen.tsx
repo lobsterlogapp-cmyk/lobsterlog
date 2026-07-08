@@ -27,6 +27,7 @@ import { DFO_FMA_LIST } from '../utils/dfoConstants';
 import { loadBackupConsent, saveBackupConsent, backupNow } from '../utils/dfoBackup';
 import BackupExplainerModal from './BackupExplainerModal';
 import { changeLanguage } from '../i18n';
+import { REQUIRED_ASTERISK_COLOR } from '../styles/GlobalStyles';
 
 // Rule 260 — valid FIN formats: 9 digits | C/D + 7 digits | 5–6 digits | DFOCC + 9 digits
 const isValidFin = (s: string): boolean =>
@@ -148,7 +149,7 @@ export default function CaptainProfileScreen({ onClose }: Props) {
           <Text style={styles.cardHeader}>{t('profile.vesselDetails')}</Text>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>{t('profile.operatorNameLabel')}</Text>
+            <Text style={styles.label}>{t('profile.operatorNameLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
             <TextInput
               style={styles.input}
               value={profile.operatorName}
@@ -159,7 +160,7 @@ export default function CaptainProfileScreen({ onClose }: Props) {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>{t('profile.finLabel')}</Text>
+            <Text style={styles.label}>{t('profile.finLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
             <TextInput
               style={styles.input}
               value={profile.licenceHolderFin}
@@ -175,7 +176,7 @@ export default function CaptainProfileScreen({ onClose }: Props) {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>{t('profile.vesselNumberLabel')}</Text>
+            <Text style={styles.label}>{t('profile.vesselNumberLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
             <TextInput
               style={styles.input}
               value={profile.vesselNumber}
@@ -191,7 +192,7 @@ export default function CaptainProfileScreen({ onClose }: Props) {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>{t('profile.fishingLicenceLabel')}</Text>
+            <Text style={styles.label}>{t('profile.fishingLicenceLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
             <TextInput
               style={styles.input}
               value={profile.fishingNumber}
@@ -203,7 +204,7 @@ export default function CaptainProfileScreen({ onClose }: Props) {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>{t('profile.fishingAreaLabel')}</Text>
+            <Text style={styles.label}>{t('profile.fishingAreaLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
             <TouchableOpacity
               style={styles.dropdownButton}
               onPress={() => setLfaDropdownOpen(o => !o)}
@@ -246,7 +247,7 @@ export default function CaptainProfileScreen({ onClose }: Props) {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>{t('profile.totalGearLabel')}</Text>
+            <Text style={styles.label}>{t('profile.totalGearLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
             <TextInput
               style={styles.input}
               value={profile.totalGearCount}
@@ -272,7 +273,7 @@ export default function CaptainProfileScreen({ onClose }: Props) {
         <View style={styles.card}>
           <Text style={styles.cardHeader}>{t('profile.dfoSettings')}</Text>
           <View style={[styles.inputGroup, styles.lastInputGroup]}>
-            <Text style={styles.label}>{t('profile.elogKeyLabel')}</Text>
+            <Text style={styles.label}>{t('profile.elogKeyLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
             <View style={styles.elogKeyRow}>
               <TextInput
                 style={[styles.input, styles.elogKeyInput]}

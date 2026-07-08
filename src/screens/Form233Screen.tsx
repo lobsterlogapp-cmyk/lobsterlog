@@ -29,6 +29,7 @@ import { submitDfoXml, isValidFormVrn } from '../utils/submitDfoXml';
 import { triggerBackup } from '../utils/dfoBackup';
 import { generateDfoXmlFileName } from '../utils/dfoXmlGenerator';
 import { loadCaptainProfile, CaptainProfile, EMPTY_PROFILE } from '../utils/captainStorage';
+import { REQUIRED_ASTERISK_COLOR } from '../styles/GlobalStyles';
 
 interface Props {
   onClose: () => void;
@@ -246,7 +247,7 @@ export default function Form233Screen({ onClose }: Props) {
           <Text style={styles.cardHeader}>{t('form233.reportingPeriodCard')}</Text>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>{t('form233.startDateLabel')}</Text>
+            <Text style={styles.label}>{t('form233.startDateLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
             <TouchableOpacity
               style={styles.dropdownButton}
               onPress={() => openPicker('start')}
@@ -260,7 +261,7 @@ export default function Form233Screen({ onClose }: Props) {
           </View>
 
           <View style={[styles.inputGroup, styles.lastInputGroup]}>
-            <Text style={styles.label}>{t('form233.endDateLabel')}</Text>
+            <Text style={styles.label}>{t('form233.endDateLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
             <TouchableOpacity
               style={styles.dropdownButton}
               onPress={() => openPicker('end')}
@@ -278,7 +279,7 @@ export default function Form233Screen({ onClose }: Props) {
           <Text style={styles.cardHeader}>{t('form233.reasonCard')}</Text>
 
           <View style={[styles.inputGroup, styles.lastInputGroup]}>
-            <Text style={styles.label}>{t('form233.reasonLabel')}</Text>
+            <Text style={styles.label}>{t('form233.reasonLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
             <TouchableOpacity
               style={styles.dropdownButton}
               onPress={() => setReasonOpen(o => !o)}

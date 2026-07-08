@@ -1,5 +1,10 @@
 import { StyleSheet, Platform, StatusBar } from 'react-native';
 
+// Shared red for required-field asterisks across the DFO forms (Form 222/233/234 +
+// Captain Profile). Matches the DFO pill red (dfoPill backgroundColor below). One source
+// of truth so the four forms don't drift — additive; existing values are unchanged.
+export const REQUIRED_ASTERISK_COLOR = '#DC2626';
+
 // We export this so App.js can see it
 export const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8FAFC' },
