@@ -194,7 +194,15 @@
     "logSavedTitle": "Log Saved",
     "logSavedWeather": "Weather updated automatically.",
     "logSavedBody": "Saved.",
-    "saveErrorTitle": "Save Error"
+    "saveErrorTitle": "Save Error",
+    "historyWeekOf": "History (Week of {{date}})",
+    "eventsFor": "Events for {{date}}:",
+    "haulBadge": "Haul {{n}}",
+    "perLbSuffix": "/lb",
+    "tempFSuffix": "°F",
+    "ktsSuffix": "kts",
+    "swellWord": "Swell",
+    "noHistory": "No history recorded for this date."
   },
   "bait": {
     "title": "Bait Performance",

@@ -730,6 +730,7 @@ const isAdmin = useMemo(() => {
                       value={currentDate}
                       mode="date"
                       display="default"
+                      locale={i18n.language.startsWith('fr') ? 'fr-CA' : 'en-CA'}
                       onChange={handleCalendarChange}
                     />
                   )}
@@ -887,12 +888,12 @@ const isAdmin = useMemo(() => {
                     <View style={styles.historyHeader}>
                       <History size={16} color="#92400E" />
                       <Text style={styles.historyTitle}>
-                        History (Week of{' '}
-                        {historyWeekDays[0].toLocaleDateString('en-US', {
-                          month: 'numeric',
-                          day: 'numeric',
+                        {t('log.historyWeekOf', {
+                          date: historyWeekDays[0].toLocaleDateString(
+                            i18n.language.startsWith('fr') ? 'fr-CA' : 'en-CA',
+                            { month: 'numeric', day: 'numeric' }
+                          ),
                         })}
-                        )
                       </Text>
                     </View>
                     <View style={styles.historyWeekContainer}>
@@ -913,7 +914,7 @@ const isAdmin = useMemo(() => {
                                 isSelected && styles.historyDayTextActive,
                               ]}
                             >
-                              {dateObj.toLocaleDateString('en-US', { weekday: 'narrow' })}
+                              {dateObj.toLocaleDateString(i18n.language.startsWith('fr') ? 'fr-CA' : 'en-CA', { weekday: 'narrow' })}
                             </Text>
                             <Text
                               style={[
@@ -930,7 +931,11 @@ const isAdmin = useMemo(() => {
                     </View>
                     <View style={styles.historyListContainer}>
                       <Text style={styles.historySubHeader}>
-                        Events for {selectedHistoryDate.toLocaleDateString()}:
+                        {t('log.eventsFor', {
+                          date: selectedHistoryDate.toLocaleDateString(
+                            i18n.language.startsWith('fr') ? 'fr-CA' : 'en-CA'
+                          ),
+                        })}
                       </Text>
                       {stats.historyMatches.length > 0 ? (
                         stats.historyMatches.map((log) => (
@@ -943,28 +948,28 @@ const isAdmin = useMemo(() => {
                                     {log.haulNumber > 0 && (
                                       <View style={styles.haulBadge}>
                                         <Text style={styles.haulBadgeText}>
-                                          Haul {log.haulNumber}
+                                          {t('log.haulBadge', { n: log.haulNumber })}
                                         </Text>
                                       </View>
                                     )}
                                   </View>
                                   <Text style={styles.historyLbsLarge}>
-                                    {Number(log.lbs).toLocaleString()} lbs
+                                    {t('log.lbsSuffix', { lbs: Number(log.lbs).toLocaleString() })}
                                   </Text>
                                 </View>
                                 <Text style={styles.historyPriceLarge}>
-                                  ${log.price || '--'}/lb
+                                  ${log.price || '--'}{t('log.perLbSuffix')}
                                 </Text>
                               </View>
                               <View style={styles.historyDetailBox}>
                                 <Text style={styles.historyDetailsLarge}>
-                                  {log.temp ? `${log.temp}°F` : ''}
+                                  {log.temp ? `${log.temp}${t('log.tempFSuffix')}` : ''}
                                   {log.wind
-                                    ? ` • ${log.wind}${log.gust ? `-${log.gust}` : ''}kts ${
+                                    ? ` • ${log.wind}${log.gust ? `-${log.gust}` : ''}${t('log.ktsSuffix')} ${
                                         log.windDir || ''
                                       }`
                                     : ''}
-                                  {log.swell ? ` • ${log.swell}m Swell` : ''}
+                                  {log.swell ? ` • ${log.swell}m ${t('log.swellWord')}` : ''}
                                 </Text>
                                 {log.weather && (
                                   <Text
@@ -988,7 +993,7 @@ const isAdmin = useMemo(() => {
                           </View>
                         ))
                       ) : (
-                        <Text style={styles.noHistoryText}>No history recorded for this date.</Text>
+                        <Text style={styles.noHistoryText}>{t('log.noHistory')}</Text>
                       )}
                     </View>
                   </View>

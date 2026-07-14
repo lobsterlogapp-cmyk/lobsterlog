@@ -207,3 +207,91 @@ git push origin main
 ```
 
 Files changed: **5** (4 code/locale + this gate doc). Bare one-line subject, no trailer.
+
+---
+
+## PHASE 3 — COMMIT 1: history card strings + date sites + picker locale ✅ (built + gated; awaiting Jonny's walk + commit)
+
+Recon: docs/GATE_S98_PHASE3_RECON.md §B + §C. Tip at build time: ea5f513.
+Scope guard held: **zero** edits to chip arrays (App.tsx:823/848), WEATHER_OPTIONS,
+any useLogForm write/toggle/skip path, or the stored-value render interpolations —
+`${log.windDir}` (App.tsx:964-965) and `log.weather.join(', ')` (:976-978) are
+byte-untouched (only the literal `kts` next to windDir was swapped); diff-grepped for
+chip/write symbols: no hits. Chip values still render EN — Commit 2.
+
+### Changelog
+
+**`src/i18n/locales/en/common.json` + `src/i18n/locales/fr/common.json`** — 8 new keys
+appended to the existing `log` section (additive): historyWeekOf, eventsFor, haulBadge,
+perLbSuffix, tempFSuffix, ktsSuffix, swellWord, noHistory. EN values byte-for-byte.
+**Key REUSED, not added:** the lbs suffix site now calls the pre-existing
+`log.lbsSuffix` ("{{lbs}} lbs", en = fr, already used by LobsterLogProposalForm) —
+renders byte-identical EN, no duplicate key.
+
+**`App.tsx`** — 10 sites:
+- **Picker locale (recon B):** `locale={i18n.language.startsWith('fr') ? 'fr-CA' : 'en-CA'}`
+  added to the DateTimePicker (:727-736). Only the prop added; value/mode/display/
+  onChange untouched. iOS honors it; Android follows device locale by design.
+- **3 date sites → the Phase-2 ternary:** week-of date (was `'en-US'` numeric M/D),
+  S/M/T/W day-letter row `{weekday:'narrow'}` (was `'en-US'` — locale swap auto-yields
+  D L M M J V S, no hand-typed letters), events-for date (was locale-default, now
+  explicit fr-CA/en-CA).
+- **7 string sites → t():** historyWeekOf + eventsFor + haulBadge (all with dynamic
+  interpolation preserved), lbsSuffix (reused key), perLbSuffix (the `$` currency
+  symbol stays literal), tempFSuffix, ktsSuffix (windDir interpolation untouched),
+  swellWord (the metric `m` stays literal), noHistory empty state.
+
+**UNITS-PREF:** unit WORDS only — zero conversion logic or Settings-toggle changes;
+the lbs/kg + °F/°C behavior bug stays open and out of scope, per recon §C flag.
+
+### New FR strings — PROOFREADER REVIEW (8; join the pile)
+
+| Key | FR value | Status |
+|---|---|---|
+| log.historyWeekOf | Historique (semaine du {{date}}) | PROOFREADER REVIEW |
+| log.eventsFor | Événements du {{date}} : | PROOFREADER REVIEW (space before colon per existing FR file convention) |
+| log.haulBadge | Levée {{n}} | PROOFREADER REVIEW |
+| log.perLbSuffix | /lb | PROOFREADER REVIEW (lb abbreviation same in FR) |
+| log.tempFSuffix | °F | PROOFREADER REVIEW (unit word only; °F↔°C is the units bug, untouched) |
+| log.ktsSuffix | nd | PROOFREADER REVIEW (nautical nœuds abbrev — reviewer may prefer "kn"/"nds") |
+| log.swellWord | houle | PROOFREADER REVIEW |
+| log.noHistory | Aucun historique enregistré pour cette date. | PROOFREADER REVIEW |
+
+(`log.lbsSuffix` FR is the pre-existing "{{lbs}} lbs" — flagging for the same review:
+reviewer may want "{{lbs}} lb"; it predates this commit and is shared with the legacy
+proposal form, so changing it is the proofreader pass's call, not this commit's.)
+
+### Gates (Phase 3 / Commit 1)
+
+- **tsc:** 33 = baseline, **0 new**, none in App.tsx.
+- **jest:** **19 suites / 68 tests green** = baseline.
+- **JSON + coverage:** both files parse; all 24 `t('log.*')` App.tsx call sites resolve
+  in BOTH languages, zero missing/empty.
+- **Sim (partial):** new bundle loads clean, signed-in FR home screen live-verified
+  («mar. 14 juill.» header, all Phase-2 labels French, chips EN as expected). The
+  history card sits below the fold and the picker pill needs a tap — no headless
+  scroll/tap automation. → **JONNY DEVICE GATE:** in FR, scroll to the history card
+  (header «Historique (semaine du 7-12)»-style, day row D L M M J V S, dates fr-CA,
+  «Levée n», suffixes, empty state «Aucun historique…»), and tap the date header to
+  confirm the grey picker pill reads a French date (e.g. «15 avr. 2026»). Stored
+  wind/weather values in history rows still EN — expected until Commit 2.
+
+### Phase-3 Commit-1 block (Jonny runs, one line at a time)
+
+Tree caveats unchanged: `docs/CHECKLIST_S97_FR_SWEEP.md` (your edits) +
+`assets/docs/*.pdf` + `docs/DIAG_S95_ITEM2.md` (yours/untracked) — NOT staged.
+The Phase-3 recon doc rides this commit.
+
+```
+git add App.tsx
+git add src/i18n/locales/en/common.json
+git add src/i18n/locales/fr/common.json
+git add docs/GATE_S98_PHASE3_RECON.md
+git add docs/GATE_S98_FRENCH_FIX.md
+git status
+git commit -m "i18n history card strings + date locales + date-picker locale (FR)"
+git push origin main
+```
+
+Files changed: **5** (3 code/locale + recon doc + this gate doc). Bare one-line
+subject, no trailer.

@@ -195,7 +195,15 @@
     "logSavedTitle": "Journal enregistré",
     "logSavedWeather": "Météo mise à jour automatiquement.",
     "logSavedBody": "Enregistré.",
-    "saveErrorTitle": "Erreur d'enregistrement"
+    "saveErrorTitle": "Erreur d'enregistrement",
+    "historyWeekOf": "Historique (semaine du {{date}})",
+    "eventsFor": "Événements du {{date}} :",
+    "haulBadge": "Levée {{n}}",
+    "perLbSuffix": "/lb",
+    "tempFSuffix": "°F",
+    "ktsSuffix": "nd",
+    "swellWord": "houle",
+    "noHistory": "Aucun historique enregistré pour cette date."
   },
   "bait": {
     "title": "Performance des appâts",
