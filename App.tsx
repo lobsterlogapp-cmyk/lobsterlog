@@ -708,7 +708,7 @@ const isAdmin = useMemo(() => {
                       style={{ alignItems: 'center' }}
                     >
                       <Text style={styles.dateText}>
-                        {currentDate.toLocaleDateString('en-US', {
+                        {currentDate.toLocaleDateString(i18n.language.startsWith('fr') ? 'fr-CA' : 'en-CA', {
                           weekday: 'short',
                           month: 'short',
                           day: 'numeric',
@@ -738,20 +738,20 @@ const isAdmin = useMemo(() => {
                     <View style={[styles.statCard, { borderLeftColor: '#3B82F6' }]}>
                       <View style={styles.statLabelRow}>
                         <CalendarIcon size={14} color="#94A3B8" />
-                        <Text style={styles.statLabel}>DAYS OUT</Text>
+                        <Text style={styles.statLabel}>{t('log.daysOut')}</Text>
                       </View>
                       <Text style={styles.statValue}>{stats.daysFishedThisSeason}</Text>
-                      <Text style={styles.statSub}>This season</Text>
+                      <Text style={styles.statSub}>{t('log.thisSeason')}</Text>
                     </View>
                     <View style={[styles.statCard, { borderLeftColor: '#EF4444' }]}>
                       <View style={styles.statLabelRow}>
                         <Scale size={14} color="#94A3B8" />
-                        <Text style={styles.statLabel}>THIS WEEK</Text>
+                        <Text style={styles.statLabel}>{t('log.thisWeek')}</Text>
                       </View>
                       <Text style={styles.statValue}>
                         {stats.lbsCaughtThisWeek.toLocaleString()}
                       </Text>
-                      <Text style={styles.statSub}>Sun - Sat</Text>
+                      <Text style={styles.statSub}>{t('log.sunSat')}</Text>
                     </View>
                   </View>
 
@@ -761,14 +761,14 @@ const isAdmin = useMemo(() => {
                         <View style={styles.iconBox}>
                           <FileText size={16} color="#2563EB" />
                         </View>
-                        <Text style={styles.formTitle}>Daily Log</Text>
+                        <Text style={styles.formTitle}>{t('log.dailyLog')}</Text>
                       </View>
-                      {saving && <Text style={styles.savingText}>Saving...</Text>}
+                      {saving && <Text style={styles.savingText}>{t('log.saving')}</Text>}
                     </View>
                     <View style={styles.formBody}>
                       <View style={styles.row}>
                         <View style={styles.col}>
-                          <Text style={styles.label}>LBS CAUGHT</Text>
+                          <Text style={styles.label}>{t('log.lbsCaught')}</Text>
                           <TextInput
                             style={styles.input}
                             keyboardType="numeric"
@@ -778,7 +778,7 @@ const isAdmin = useMemo(() => {
                           />
                         </View>
                         <View style={styles.col}>
-                          <Text style={styles.label}>PRICE / LB</Text>
+                          <Text style={styles.label}>{t('log.pricePerLb')}</Text>
                           <View style={styles.inputWithIcon}>
                             <Text style={styles.prefix}>$</Text>
                             <TextInput
@@ -793,7 +793,7 @@ const isAdmin = useMemo(() => {
                       </View>
                       <View style={styles.row}>
                         <View style={styles.col}>
-                          <Text style={styles.label}>WATER TEMP</Text>
+                          <Text style={styles.label}>{t('log.waterTemp')}</Text>
                           <TextInput
                             style={styles.input}
                             keyboardType="numeric"
@@ -803,7 +803,7 @@ const isAdmin = useMemo(() => {
                           />
                         </View>
                         <View style={styles.col}>
-                          <Text style={styles.label}>WIND (KTS)</Text>
+                          <Text style={styles.label}>{t('log.windKts')}</Text>
                           <TextInput
                             style={styles.input}
                             keyboardType="numeric"
@@ -814,7 +814,7 @@ const isAdmin = useMemo(() => {
                         </View>
                       </View>
                       <View style={{ marginTop: 10, marginBottom: 5 }}>
-                        <Text style={styles.label}>WIND DIRECTION</Text>
+                        <Text style={styles.label}>{t('log.windDirection')}</Text>
                         <ScrollView
                           horizontal
                           showsHorizontalScrollIndicator={false}
@@ -839,7 +839,7 @@ const isAdmin = useMemo(() => {
                         </ScrollView>
                       </View>
                       <View>
-                        <Text style={styles.label}>CONDITIONS</Text>
+                        <Text style={styles.label}>{t('log.conditions')}</Text>
                         <ScrollView
                           horizontal
                           showsHorizontalScrollIndicator={false}
@@ -866,19 +866,19 @@ const isAdmin = useMemo(() => {
                         </ScrollView>
                       </View>
                       <View>
-                        <Text style={styles.label}>NOTES</Text>
+                        <Text style={styles.label}>{t('log.notesLabel')}</Text>
                         <TextInput
                           style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
                           multiline
                           value={formData.notes}
                           onChangeText={(t) => setFormData({ ...formData, notes: t })}
-                          placeholder="Crew, gear issues..."
+                          placeholder={t('log.notesPlaceholder')}
                         />
                       </View>
                       <View style={styles.actionButtons}>
                         <TouchableOpacity style={styles.saveButton} onPress={() => saveLogData()}>
                           <Save size={20} color="#FFF" />
-                          <Text style={styles.saveButtonText}>Save Log</Text>
+                          <Text style={styles.saveButtonText}>{t('log.saveLogButton')}</Text>
                         </TouchableOpacity>
                       </View>
                     </View>

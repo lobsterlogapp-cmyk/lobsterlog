@@ -119,6 +119,91 @@ Files changed: **6** (4 code/locale + 2 docs). Bare one-line subject, no trailer
 
 ---
 
-## PHASE 2 — DAILY LOG HOME LABELS + DATE — NOT STARTED
+## PHASE 2 — DAILY LOG HOME LABELS + DATE ✅ (built + gated; awaiting Jonny's signed-in walk + commit)
 
-Blocked on "Phase 1 pushed" confirmation per instructions.
+Phase 1 pushed as a282d4c. Scope guard held: **zero** edits to the wind chip array
+(App.tsx:823), the condition chips / WEATHER_OPTIONS (App.tsx:848, constants.ts), any
+chip `.map()` render output, or any save/write logic — verified by grepping the App.tsx
+diff for `windDir:/weather:/WEATHER_OPTIONS/setFormData/toggleWeather` (no hits).
+Chip LABELS stay English this phase — expected seam, closes in Phase 3.
+
+### Changelog
+
+**`src/i18n/locales/en/common.json` + `src/i18n/locales/fr/common.json`** — 19 new keys
+appended to the EXISTING `log` section (additive; nothing renamed/moved/deleted; the
+pre-existing `log.saveError` legacy key is untouched — the new alert title is
+`log.saveErrorTitle`). EN values byte-for-byte the previous hardcoded strings.
+
+**`App.tsx`** — 15 home-screen label/button sites wired with the existing
+`t`/`i18n` from line 151 (`useTranslation('common')`): daysOut, thisSeason, thisWeek,
+sunSat, dailyLog, saving, lbsCaught, pricePerLb, waterTemp, windKts, windDirection
+(label only), conditions (label only), notesLabel, notesPlaceholder, saveLogButton.
+**Date header (2c):** App.tsx:711 `toLocaleDateString('en-US', …)` →
+`toLocaleDateString(i18n.language.startsWith('fr') ? 'fr-CA' : 'en-CA', …)` — exact
+FullDfoForm `formatDateTimeDisplay` precedent (FullDfoForm.tsx:932). Year line (717)
+locale-free, untouched. **NOT touched (noted per 2c):** the history-card dates at
+App.tsx:891/916/933 still hardcode `'en-US'`/default — their own pass, with the rest
+of the history card's EN strings.
+
+**`src/Hooks/useLogForm.ts`** — `import i18next` added; the 4 save-path alert strings
+(and ONLY the strings) swapped at the two Alert.alert sites: `log.logSavedTitle` /
+`log.logSavedWeather` / `log.logSavedBody` / `log.saveErrorTitle`. Save logic,
+Firestore payload, weather sync, and `handleSkipDay` byte-untouched (the `'No Fishing'`
+/ `'Did not go out. '` stored strings remain — Phase 3 territory).
+
+### New FR strings — PROOFREADER REVIEW (all 19; join the pile)
+
+| Key | FR value | Status |
+|---|---|---|
+| log.daysOut | JOURS EN MER | PROOFREADER REVIEW |
+| log.thisSeason | Cette saison | PROOFREADER REVIEW |
+| log.thisWeek | CETTE SEMAINE | PROOFREADER REVIEW |
+| log.sunSat | dim - sam | PROOFREADER REVIEW (FR day abbrevs lowercased per convention — reviewer's call vs matching EN caps) |
+| log.dailyLog | Journal quotidien | PROOFREADER REVIEW |
+| log.saving | Enregistrement... | PROOFREADER REVIEW |
+| log.lbsCaught | LIVRES CAPTURÉES | PROOFREADER REVIEW (kept imperial "livres" — the lbs/kg units-pref bug is separate, recon §7) |
+| log.pricePerLb | PRIX / LB | PROOFREADER REVIEW |
+| log.waterTemp | TEMP. DE L'EAU | PROOFREADER REVIEW |
+| log.windKts | VENT (NŒUDS) | PROOFREADER REVIEW |
+| log.windDirection | DIRECTION DU VENT | PROOFREADER REVIEW |
+| log.conditions | CONDITIONS | PROOFREADER REVIEW |
+| log.notesLabel | NOTES | PROOFREADER REVIEW |
+| log.notesPlaceholder | Équipage, problèmes d'engins... | PROOFREADER REVIEW |
+| log.saveLogButton | Enregistrer le journal | PROOFREADER REVIEW |
+| log.logSavedTitle | Journal enregistré | PROOFREADER REVIEW |
+| log.logSavedWeather | Météo mise à jour automatiquement. | PROOFREADER REVIEW |
+| log.logSavedBody | Enregistré. | PROOFREADER REVIEW |
+| log.saveErrorTitle | Erreur d'enregistrement | PROOFREADER REVIEW |
+
+### Gates (Phase 2)
+
+- **tsc:** 33 errors total = baseline, **0 new**, none in App.tsx / useLogForm.ts.
+- **jest:** **68/68 green** = baseline.
+- **JSON + coverage:** both files parse; all 19 new-key call sites (15 App.tsx +
+  4 useLogForm) resolve in BOTH languages, zero missing/empty.
+- **Sim (partial):** new bundle loads clean on the booted iPhone 17 Pro with
+  `user_language='fr'`. The sim is currently SIGNED OUT (from the Phase-1 walk), which
+  live-verified the Phase-1 FR LoginScreen on-screen (Bon retour / COURRIEL /
+  MOT DE PASSE / Mot de passe oublié? / Se connecter / Pas encore de compte?
+  Inscris-toi) — but it means the signed-in home screen was NOT visually walked
+  headlessly (no credential automation). → **JONNY DEVICE GATE:** sign in (FR), confirm
+  home labels + date header render French («mar. 14 juill.»-style), chips still English
+  (expected), Save Log fires the French saved/error alerts.
+
+### Phase-2 commit block (Jonny runs, one line at a time — SEPARATE from Phase 1)
+
+Same tree caveats as Phase 1: `docs/CHECKLIST_S97_FR_SWEEP.md` (your edits),
+`assets/docs/*.pdf` + `docs/DIAG_S95_ITEM2.md` (yours/untracked) — NOT staged below.
+
+```
+git add App.tsx
+git add src/Hooks/useLogForm.ts
+git add src/i18n/locales/en/common.json
+git add src/i18n/locales/fr/common.json
+git add docs/GATE_S98_FRENCH_FIX.md
+git status
+git commit -m "i18n Daily Log home labels + date header locale (FR)"
+git push origin main
+```
+
+Files changed: **5** (4 code/locale + this gate doc). Bare one-line subject, no trailer.

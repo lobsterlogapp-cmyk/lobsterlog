@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Alert } from 'react-native';
+import i18next from 'i18next';
 import { db } from '../../firebaseConfig';
 import { doc, setDoc } from '@react-native-firebase/firestore';
 import { formatDateId, getWindDirection, getAverageWeather } from '../utils/helpers';
@@ -123,10 +124,10 @@ export function useLogForm(user: any, profile: any, dateId: string, isPro: boole
       const logDocRef = doc(db, 'users', user.uid, 'logs', safeDateId);
       await setDoc(logDocRef, payload, { merge: true });
 
-      Alert.alert('Log Saved', isPro && !hasManualWind && finalData.wind ? 'Weather updated automatically.' : 'Saved.');
+      Alert.alert(i18next.t('log.logSavedTitle'), isPro && !hasManualWind && finalData.wind ? i18next.t('log.logSavedWeather') : i18next.t('log.logSavedBody'));
 
     } catch (e: any) {
-      Alert.alert('Save Error', e.message);
+      Alert.alert(i18next.t('log.saveErrorTitle'), e.message);
     } finally {
       setSaving(false);
     }
