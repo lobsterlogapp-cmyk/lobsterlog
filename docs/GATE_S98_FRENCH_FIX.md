@@ -295,3 +295,114 @@ git push origin main
 
 Files changed: **5** (3 code/locale + recon doc + this gate doc). Bare one-line
 subject, no trailer.
+
+---
+
+## PHASE 3 — COMMIT 2: wind + condition chip code↔label split ✅ (built + gated; awaiting Jonny's tap walk + commit)
+
+Recon: docs/GATE_S98_PHASE3_RECON.md §A. Tip at build time: 6ab38e1.
+
+**THE INVARIANT HELD — verified in the diff before building.** `git diff` shows zero
+change to useLogForm.ts (writes/toggle/handleSkipDay/'No Fishing' sentinel) and zero
+change to constants.ts; the App.tsx hunks are EXACTLY: one import line + the four
+render outputs. The chip `.map()`s still iterate the CODE arrays; onPress still writes
+the code; the selected-state compares (`windDir === dir`, `weather.includes(opt)`)
+are byte-untouched. What lands in formData/Firestore is identical to before —
+**zero migration.**
+
+### Changelog
+
+**`src/i18n/locales/en/common.json` + `src/i18n/locales/fr/common.json`** — two keyed
+subsections appended to the existing `log` section, keyed BY THE CODE:
+`log.windDirLabels` (all 16 compass points — covers legacy 16-point auto-fill values,
+not just the 8 chips) + `log.weatherLabels` (all 9 conditions; "Too Windy" /
+"No Fishing" are single keys with spaces — valid, dots are the only separator).
+EN values byte-identical to the codes → English rendering provably unchanged.
+
+**`src/utils/chipLabels.ts` (NEW)** — `windDirLabel(code, t)` / `weatherLabel(code, t)`,
+each `t('log.…Labels.' + code, { defaultValue: code })`. The `defaultValue: code`
+fallback is in the code and TEST-VERIFIED (below): an unmapped/legacy stored value
+renders as its raw code, never a key path.
+
+**`App.tsx`** — the import + exactly 4 render sites: wind chip Text → `windDirLabel(dir, t)`;
+condition chip Text → `weatherLabel(opt, t)`; history wind detail →
+`windDirLabel(log.windDir, t)` (the Commit-1 kts suffix not re-touched); history
+weather → `.map((w: string) => weatherLabel(w, t)).join(', ')` (+ the non-array legacy
+branch through the same helper). The `w: string` annotation exists to hold the tsc
+baseline (an untyped callback param was a NEW TS7006 — caught and fixed in-session).
+
+### New FR strings — PROOFREADER REVIEW (25; join the pile)
+
+Wind (16 — only the O-for-Ouest points differ from EN):
+
+| Code | FR label | Status |
+|---|---|---|
+| N / NNE / NE / ENE / E / ESE / SE / SSE / S | identical to code | PROOFREADER REVIEW (trivial) |
+| SSW | SSO | PROOFREADER REVIEW |
+| SW | SO | PROOFREADER REVIEW |
+| WSW | OSO | PROOFREADER REVIEW |
+| W | O | PROOFREADER REVIEW |
+| WNW | ONO | PROOFREADER REVIEW |
+| NW | NO | PROOFREADER REVIEW |
+| NNW | NNO | PROOFREADER REVIEW |
+
+Conditions (9):
+
+| Code | FR label | Status |
+|---|---|---|
+| Sunny | Soleil | PROOFREADER REVIEW |
+| Cloudy | Nuageux | PROOFREADER REVIEW |
+| Rain | Pluie | PROOFREADER REVIEW |
+| Fog | Brouillard | PROOFREADER REVIEW |
+| Windy | Venteux | PROOFREADER REVIEW |
+| Too Windy | Trop venteux | PROOFREADER REVIEW |
+| Rough | Agité | PROOFREADER REVIEW |
+| Snow | Neige | PROOFREADER REVIEW |
+| No Fishing | Pas de pêche | PROOFREADER REVIEW |
+
+### Gates (Phase 3 / Commit 2)
+
+- **tsc:** 33 = baseline, **0 new** (one new TS7006 appeared mid-build and was fixed
+  with the `w: string` annotation before the gate).
+- **jest:** **19 suites / 68 tests green** = baseline.
+- **JSON:** both files parse; 16 wind + 9 weather entries in BOTH languages.
+- **Helper proven with a throwaway jest test against the REAL locale JSONs** (added,
+  run 4/4 green, deleted — S95 temp-probe precedent, not committed): EN labels
+  byte-identical to codes; FR O-for-Ouest across the 16-point set (W→O, SW→SO,
+  NNW→NNO, WSW→OSO, NNE→NNE); FR conditions incl. the sentinel label
+  ('No Fishing'→'Pas de pêche'); fallback — `windDirLabel('XYZ')`→'XYZ',
+  `weatherLabel('Hurricane')`→'Hurricane', empty string passes through.
+- **Sim, BOTH languages live-verified off the same stored data:** launch in EN → chips
+  render Sunny/Cloudy/Rain/Fog + N NE E SE S SW (byte-identical EN); flip
+  `user_language` to fr (AsyncStorage, app terminated) → same screen renders
+  Soleil/Nuageux/Pluie/Brouillard + **N NE E SE S SO** (SW→SO on-screen). Sim left in
+  FR for your walk. This is 5(b) demonstrated headlessly; taps aren't automatable here.
+- → **JONNY DEVICE GATE (the tap half):**
+  (a) in FR, tap a wind chip + 2 condition chips, Save → inspect the saved log
+  (Firestore console or the history row after an EN flip) and confirm EN codes stored
+  (e.g. windDir "E", weather ["Sunny","Fog"]), not French text;
+  (c) scroll a history row with a 16-point auto-filled windDir (e.g. NNE) → renders
+  NNE in EN / NNE-style code or mapped label in FR, never a raw key path;
+  (d) 'No Fishing' exclusivity: tap «Pas de pêche» → others clear; tap another → it
+  clears. (Logic runs on codes and is diff-proven untouched — this is belt-and-braces.)
+- **Dormant-path note:** handleSkipDay (no button renders it) keeps writing the EN
+  `'Did not go out. '` note — deliberate this commit; decide translate-at-write if/when
+  the path is resurrected.
+
+### Phase-3 Commit-2 block (Jonny runs, one line at a time)
+
+Tree caveats unchanged (CHECKLIST_S97 edits + your untracked PDFs/DIAG doc not staged).
+
+```
+git add App.tsx
+git add src/utils/chipLabels.ts
+git add src/i18n/locales/en/common.json
+git add src/i18n/locales/fr/common.json
+git add docs/GATE_S98_FRENCH_FIX.md
+git status
+git commit -m "chip code-label split: translate wind/condition labels at render, EN codes stay stored"
+git push origin main
+```
+
+Files changed: **5** (4 code/locale incl. the new chipLabels.ts + this gate doc).
+Bare one-line subject, no trailer.

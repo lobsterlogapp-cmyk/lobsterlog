@@ -97,6 +97,7 @@ import { changeLanguage } from './src/i18n';
 import LanguagePickerScreen from './src/components/LanguagePickerScreen';
 
 import { DEFAULT_LOCATION, WEATHER_OPTIONS, AppView } from './src/config/constants';
+import { windDirLabel, weatherLabel } from './src/utils/chipLabels';
 
 import {
   formatDateId,
@@ -832,7 +833,7 @@ const isAdmin = useMemo(() => {
                                 <Text
                                   style={[styles.chipText, isSelected && styles.chipTextActive]}
                                 >
-                                  {dir}
+                                  {windDirLabel(dir, t)}
                                 </Text>
                               </TouchableOpacity>
                             );
@@ -859,7 +860,7 @@ const isAdmin = useMemo(() => {
                                 <Text
                                   style={[styles.chipText, isSelected && styles.chipTextActive]}
                                 >
-                                  {opt}
+                                  {weatherLabel(opt, t)}
                                 </Text>
                               </TouchableOpacity>
                             );
@@ -966,7 +967,7 @@ const isAdmin = useMemo(() => {
                                   {log.temp ? `${log.temp}${t('log.tempFSuffix')}` : ''}
                                   {log.wind
                                     ? ` • ${log.wind}${log.gust ? `-${log.gust}` : ''}${t('log.ktsSuffix')} ${
-                                        log.windDir || ''
+                                        log.windDir ? windDirLabel(log.windDir, t) : ''
                                       }`
                                     : ''}
                                   {log.swell ? ` • ${log.swell}m ${t('log.swellWord')}` : ''}
@@ -979,8 +980,8 @@ const isAdmin = useMemo(() => {
                                     ]}
                                   >
                                     {Array.isArray(log.weather)
-                                      ? log.weather.join(', ')
-                                      : log.weather}
+                                      ? log.weather.map((w: string) => weatherLabel(w, t)).join(', ')
+                                      : weatherLabel(log.weather, t)}
                                   </Text>
                                 )}
                               </View>

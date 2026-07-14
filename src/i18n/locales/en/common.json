@@ -202,7 +202,36 @@
     "tempFSuffix": "°F",
     "ktsSuffix": "kts",
     "swellWord": "Swell",
-    "noHistory": "No history recorded for this date."
+    "noHistory": "No history recorded for this date.",
+    "windDirLabels": {
+      "N": "N",
+      "NNE": "NNE",
+      "NE": "NE",
+      "ENE": "ENE",
+      "E": "E",
+      "ESE": "ESE",
+      "SE": "SE",
+      "SSE": "SSE",
+      "S": "S",
+      "SSW": "SSW",
+      "SW": "SW",
+      "WSW": "WSW",
+      "W": "W",
+      "WNW": "WNW",
+      "NW": "NW",
+      "NNW": "NNW"
+    },
+    "weatherLabels": {
+      "Sunny": "Sunny",
+      "Cloudy": "Cloudy",
+      "Rain": "Rain",
+      "Fog": "Fog",
+      "Windy": "Windy",
+      "Too Windy": "Too Windy",
+      "Rough": "Rough",
+      "Snow": "Snow",
+      "No Fishing": "No Fishing"
+    }
   },
   "bait": {
     "title": "Bait Performance",
