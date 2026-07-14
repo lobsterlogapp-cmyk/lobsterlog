@@ -406,3 +406,31 @@ git push origin main
 
 Files changed: **5** (4 code/locale incl. the new chipLabels.ts + this gate doc).
 Bare one-line subject, no trailer.
+
+---
+
+## S98 CLOSEOUT — CLAUDE.md update (Jonny runs, one line at a time)
+
+CLAUDE.md updated for the S98 close: header bumped (Session 98, July 14 2026, tip
+70b16d1); the four pushed commits recorded in What's built; PENDING VERIFICATION
+recorded (chip gate 5a/5c device walk; FR verification-email template — French NOT
+marked done); FR proofreader pile updated to ~113 (35 S97 + ~78 S98, handoff timing
+open); Session Log row S98 added; non-French fix-list items (PDF-viewer inset,
+Confirm-Trip-Start double header, DFO-docs-card dfoActivated gate) noted still open
+for the screenshot gate; Current goals → SESSION 99 — TBD.
+
+Tree caveats unchanged: docs/CHECKLIST_S97_FR_SWEEP.md (your walk edits — stage it
+yourself if/when you want it recorded), assets/docs/*.pdf + docs/DIAG_S95_ITEM2.md
+(yours/untracked) — NOT staged below.
+
+```
+git add CLAUDE.md
+git add docs/GATE_S98_FRENCH_FIX.md
+git status
+git commit -m "S98 closeout: CLAUDE.md session log + pending verification"
+git push origin main
+```
+
+Files changed: **2** (CLAUDE.md + this gate doc). Bare one-line subject, no trailer.
+After the push: `git show -s` + `git log --oneline a282d4c^..HEAD` shows the five
+S98 commits (four fix + this closeout).
