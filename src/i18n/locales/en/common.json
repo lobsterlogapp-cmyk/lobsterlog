@@ -268,5 +268,35 @@
     "reauthPrompt": "Enter your password to confirm account deletion.",
     "reauthConfirm": "Delete account",
     "reauthFailed": "Couldn't verify your password — nothing was deleted. Please try again."
+  },
+  "login": {
+    "subtitle": "Digital Logbook",
+    "welcomeBack": "Welcome Back",
+    "createAccount": "Create Account",
+    "emailLabel": "EMAIL",
+    "emailPlaceholder": "name@example.com",
+    "passwordLabel": "PASSWORD",
+    "forgotPassword": "Forgot Password?",
+    "logIn": "Log In",
+    "signUp": "Sign Up",
+    "needAccount": "Need an account? Sign Up",
+    "haveAccount": "Already have an account? Log In",
+    "inboxTitle": "Check Your Inbox",
+    "inboxBody": "We sent a verification link to your email address.\n\nClick the link in that email, then come back here and log in.",
+    "backToLogIn": "Back to Log In",
+    "wrongEmail": "Wrong email address? Tap above and sign up again with the correct one.",
+    "missingEmailTitle": "Missing Email",
+    "missingEmailBody": "Please enter your email address in the box above so we know where to send the link.",
+    "emailSentTitle": "Email Sent",
+    "emailSentBody": "Check your inbox for a link to reset your password.",
+    "errorTitle": "Error",
+    "errors": {
+      "missingFields": "Please enter both email and password.",
+      "invalidCredential": "Incorrect email or password. Please try again.",
+      "emailInUse": "An account with this email already exists. Try logging in instead.",
+      "weakPassword": "Password must be at least 6 characters.",
+      "invalidEmail": "Please enter a valid email address.",
+      "authErrorTitle": "Authentication Error"
+    }
   }
 }

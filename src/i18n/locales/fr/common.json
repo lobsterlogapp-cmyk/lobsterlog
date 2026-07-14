@@ -269,5 +269,35 @@
     "reauthPrompt": "Saisis ton mot de passe pour confirmer la suppression du compte.",
     "reauthConfirm": "Supprimer le compte",
     "reauthFailed": "Impossible de vérifier ton mot de passe — rien n'a été supprimé. Réessaie."
+  },
+  "login": {
+    "subtitle": "Journal de bord numérique",
+    "welcomeBack": "Bon retour",
+    "createAccount": "Créer un compte",
+    "emailLabel": "COURRIEL",
+    "emailPlaceholder": "nom@exemple.com",
+    "passwordLabel": "MOT DE PASSE",
+    "forgotPassword": "Mot de passe oublié?",
+    "logIn": "Se connecter",
+    "signUp": "S'inscrire",
+    "needAccount": "Pas encore de compte? Inscris-toi",
+    "haveAccount": "Déjà un compte? Connecte-toi",
+    "inboxTitle": "Vérifie ta boîte de réception",
+    "inboxBody": "Nous avons envoyé un lien de vérification à ton adresse courriel.\n\nClique sur le lien dans ce courriel, puis reviens ici pour te connecter.",
+    "backToLogIn": "Retour à la connexion",
+    "wrongEmail": "Mauvaise adresse courriel? Touche le bouton ci-dessus et inscris-toi de nouveau avec la bonne adresse.",
+    "missingEmailTitle": "Courriel manquant",
+    "missingEmailBody": "Entre ton adresse courriel dans le champ ci-dessus pour qu'on sache où envoyer le lien.",
+    "emailSentTitle": "Courriel envoyé",
+    "emailSentBody": "Vérifie ta boîte de réception pour trouver le lien de réinitialisation de ton mot de passe.",
+    "errorTitle": "Erreur",
+    "errors": {
+      "missingFields": "Entre ton courriel et ton mot de passe.",
+      "invalidCredential": "Courriel ou mot de passe incorrect. Réessaie.",
+      "emailInUse": "Un compte existe déjà avec ce courriel. Essaie plutôt de te connecter.",
+      "weakPassword": "Le mot de passe doit contenir au moins 6 caractères.",
+      "invalidEmail": "Entre une adresse courriel valide.",
+      "authErrorTitle": "Erreur d'authentification"
+    }
   }
 }

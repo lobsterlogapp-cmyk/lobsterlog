@@ -12,7 +12,8 @@ import {
   Image
 } from 'react-native';
 import { Mail, Lock } from 'lucide-react-native';
-import { sendPasswordResetEmail } from '@react-native-firebase/auth';
+import { sendPasswordResetEmail, setLanguageCode } from '@react-native-firebase/auth';
+import { useTranslation } from 'react-i18next';
 import { auth } from '../../firebaseConfig';
 import { styles } from '../styles/GlobalStyles';
 
@@ -28,17 +29,20 @@ const LoginScreen = ({
   verificationPending,
   onDismissVerification
 }) => {
+  const { t, i18n } = useTranslation();
 
   const handleForgotPassword = async () => {
     if (!email) {
-      Alert.alert("Missing Email", "Please enter your email address in the box above so we know where to send the link.");
+      Alert.alert(t('login.missingEmailTitle'), t('login.missingEmailBody'));
       return;
     }
     try {
+      // Reset email goes out in the app language (template localization is Firebase-console side)
+      await setLanguageCode(auth, i18n.language);
       await sendPasswordResetEmail(auth, email);
-      Alert.alert("Email Sent", "Check your inbox for a link to reset your password.");
+      Alert.alert(t('login.emailSentTitle'), t('login.emailSentBody'));
     } catch (error) {
-      Alert.alert("Error", error.message);
+      Alert.alert(t('login.errorTitle'), error.message);
     }
   };
 
@@ -52,16 +56,15 @@ const LoginScreen = ({
               style={{ width: 70, height: 70, resizeMode: 'contain' }}
             />
           </View>
-          <Text style={[styles.loginTitle, { marginTop: 20 }]}>Check Your Inbox</Text>
+          <Text style={[styles.loginTitle, { marginTop: 20 }]}>{t('login.inboxTitle')}</Text>
           <Text style={{ color: '#64748B', textAlign: 'center', marginTop: 10, marginBottom: 30, lineHeight: 22 }}>
-            We sent a verification link to your email address.{'\n\n'}
-            Click the link in that email, then come back here and log in.
+            {t('login.inboxBody')}
           </Text>
           <TouchableOpacity style={styles.primaryButton} onPress={onDismissVerification}>
-            <Text style={styles.primaryButtonText}>Back to Log In</Text>
+            <Text style={styles.primaryButtonText}>{t('login.backToLogIn')}</Text>
           </TouchableOpacity>
           <Text style={{ color: '#94A3B8', fontSize: 12, marginTop: 20, textAlign: 'center' }}>
-            Wrong email address? Tap above and sign up again with the correct one.
+            {t('login.wrongEmail')}
           </Text>
         </View>
       </View>
@@ -88,26 +91,26 @@ const LoginScreen = ({
                 />
               </View>
               <Text style={styles.loginTitle}>LobsterLog</Text>
-              <Text style={styles.loginSubtitle}>Digital Logbook</Text>
+              <Text style={styles.loginSubtitle}>{t('login.subtitle')}</Text>
             </View>
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>{isRegistering ? 'Create Account' : 'Welcome Back'}</Text>
+              <Text style={styles.cardTitle}>{isRegistering ? t('login.createAccount') : t('login.welcomeBack')}</Text>
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>EMAIL</Text>
+                <Text style={styles.label}>{t('login.emailLabel')}</Text>
                 <View style={styles.inputWrapper}>
                   <Mail size={20} color="#94A3B8" style={styles.inputIcon} />
                   <TextInput
                     style={[styles.input, { paddingLeft: 45 }]}
                     value={email}
                     onChangeText={setEmail}
-                    placeholder="name@example.com"
+                    placeholder={t('login.emailPlaceholder')}
                     autoCapitalize="none"
                     keyboardType="email-address"
                   />
                 </View>
               </View>
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>PASSWORD</Text>
+                <Text style={styles.label}>{t('login.passwordLabel')}</Text>
                 <View style={styles.inputWrapper}>
                   <Lock size={20} color="#94A3B8" style={styles.inputIcon} />
                   <TextInput
@@ -126,7 +129,7 @@ const LoginScreen = ({
                   style={{ alignSelf: 'flex-end', marginBottom: 15, marginTop: -10 }}
                 >
                   <Text style={{ color: '#3B82F6', fontWeight: '600', fontSize: 13 }}>
-                    Forgot Password?
+                    {t('login.forgotPassword')}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -139,7 +142,7 @@ const LoginScreen = ({
                 {loading
                   ? <ActivityIndicator color="#FFF" />
                   : <Text style={styles.primaryButtonText}>
-                      {isRegistering ? 'Sign Up' : 'Log In'}
+                      {isRegistering ? t('login.signUp') : t('login.logIn')}
                     </Text>
                 }
               </TouchableOpacity>
@@ -149,7 +152,7 @@ const LoginScreen = ({
                 style={styles.switchButton}
               >
                 <Text style={styles.switchButtonText}>
-                  {isRegistering ? 'Already have an account? Log In' : 'Need an account? Sign Up'}
+                  {isRegistering ? t('login.haveAccount') : t('login.needAccount')}
                 </Text>
               </TouchableOpacity>
             </View>

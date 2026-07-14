@@ -10,7 +10,8 @@ import {
   signOut,
   deleteUser,
   reauthenticateWithCredential,
-  EmailAuthProvider
+  EmailAuthProvider,
+  setLanguageCode
 } from '@react-native-firebase/auth';
 import { doc, deleteDoc } from '@react-native-firebase/firestore';
 import { db } from '../../firebaseConfig';
@@ -60,13 +61,15 @@ export function useAuth() {
 
   const handleLoginSubmit = async () => {
     if (!email || !password) {
-      Alert.alert('Error', 'Please enter both email and password.');
+      Alert.alert(i18next.t('login.errorTitle'), i18next.t('login.errors.missingFields'));
       return;
     }
     setAuthLoading(true);
     try {
       if (isRegistering) {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        // Verification email goes out in the app language (template localization is Firebase-console side)
+        await setLanguageCode(auth, i18next.language);
         await userCredential.user.sendEmailVerification();
         await signOut(auth);
         setPendingEmail(email);
@@ -78,15 +81,15 @@ export function useAuth() {
     } catch (err: any) {
       const friendlyMessage =
         err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password'
-          ? 'Incorrect email or password. Please try again.'
+          ? i18next.t('login.errors.invalidCredential')
           : err.code === 'auth/email-already-in-use'
-          ? 'An account with this email already exists. Try logging in instead.'
+          ? i18next.t('login.errors.emailInUse')
           : err.code === 'auth/weak-password'
-          ? 'Password must be at least 6 characters.'
+          ? i18next.t('login.errors.weakPassword')
           : err.code === 'auth/invalid-email'
-          ? 'Please enter a valid email address.'
+          ? i18next.t('login.errors.invalidEmail')
           : err.message;
-      Alert.alert('Authentication Error', friendlyMessage);
+      Alert.alert(i18next.t('login.errors.authErrorTitle'), friendlyMessage);
     } finally {
       setAuthLoading(false);
     }
