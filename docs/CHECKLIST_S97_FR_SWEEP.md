@@ -7,36 +7,36 @@ Legend: ☐ = check · **[2a]**/**[2b]** = what this session changed · **[eyeba
 ---
 
 ## 0. iOS sim setup (do first)
-- ☐ Boot the iOS sim, launch LobsterLog (dev build).
-- ☐ Switch the app to French: **Captain Profile → Langue → Français** (or first-launch picker → Français). This is the fastest in-app switch; the free Settings language toggle also works.
-- ☐ For a truly fresh pass (first-launch picker + privacy notice), erase-and-reinstall or reset the sim: **Device → Erase All Content and Settings**, reinstall. (Needed only for §1 first-launch + §6d privacy-gate.)
-- ☐ Global watch on EVERY screen below — accents render (é è à ç ê î ô û « »), no mojibake (Ã©/â€™); no text truncation/overflow or clipped buttons from longer FR strings; no mixed EN+FR in the same view; red required-asterisks (`*`, #DC2626) render beside labels, never a literal " *" baked into the label text.
+- check Boot the iOS sim, launch LobsterLog (dev build).
+- check Switch the app to French: **Captain Profile → Langue → Français** (or first-launch picker → Français). This is the fastest in-app switch; the free Settings language toggle also works.
+- check For a truly fresh pass (first-launch picker + privacy notice), erase-and-reinstall or reset the sim: **Device → Erase All Content and Settings**, reinstall. (Needed only for §1 first-launch + §6d privacy-gate.)
+- check Global watch on EVERY screen below — accents render (é è à ç ê î ô û « »), no mojibake (Ã©/â€™); no text truncation/overflow or clipped buttons from longer FR strings; no mixed EN+FR in the same view; red required-asterisks (`*`, #DC2626) render beside labels, never a literal " *" baked into the label text.
 
 ---
 
 ## 1. First-launch + main screen (free side)
-- ☐ **[2b][eyeball]** First-launch language picker (`LanguagePickerScreen`): the two buttons read **English** and **Français** — each in its OWN language (endonyms), regardless of anything. **[Pixel 8]**
-- ☐ **[eyeball]** Main **Daily Log** screen. KNOWN/EXPECTED: the free Daily Log is not yet translated (out of S97 scope) — labels like "LBS CAUGHT", "PRICE / LB", "Daily Log", "Save Log", "Saving...", history " lbs" will show **English**. This is a documented gap (RECON §2-B), NOT an S97 regression. Just confirm nothing crashes; do not file as a bug.
+- check **[2b][eyeball]** First-launch language picker (`LanguagePickerScreen`): the two buttons read **English** and **Français** — each in its OWN language (endonyms), regardless of anything. **[Pixel 8]**
+- check **[eyeball]** Main **Daily Log** screen. KNOWN/EXPECTED: the free Daily Log is not yet translated (out of S97 scope) — labels like "LBS CAUGHT", "PRICE / LB", "Daily Log", "Save Log", "Saving...", history " lbs" will show **English**. This is a documented gap (RECON §2-B), NOT an S97 regression. Just confirm nothing crashes; do not file as a bug.
 
 ---
 
 ## 2. Settings (free, `App.tsx`)
-- ☐ **[2b][eyeball]** Language toggle: buttons read **English** / **Français** (endonyms, hardcoded — correct). **[Pixel 8]**
-- ☐ **[eyeball]** lbs/kg weight-units toggle: options render as **lbs** / **kg** (raw units, untranslated by design). Section label `UNITÉS DE POIDS` is FR. Toggling switches the pref; no layout break.
-- ☐ **[2a]** **Documents du MPO** card (S94 DFO Documents): card title + both rows in FR (`Instructions du MPO 234.7`, `Instructions du fournisseur`, sub-lines). Tapping a row opens the PDF viewer (see §6i).
-- ☐ **[2a]** Account deletion (Account/Supprimer le compte): trigger **Delete account** → reauth password prompt. Verify FR: title **Confirmer la suppression du compte**, prompt **Saisis ton mot de passe pour confirmer la suppression du compte.**, confirm button **Supprimer le compte**. Enter a WRONG password → failure message **Impossible de vérifier ton mot de passe — rien n'a été supprimé. Réessaie.** (Then cancel — don't actually delete.) **[Pixel 8]**
-- ☐ **[eyeball]** Rest of Settings is largely English (known gap) — confirm no crash.
+- check **[2b][eyeball]** Language toggle: buttons read **English** / **Français** (endonyms, hardcoded — correct). **[Pixel 8]**
+- check **[eyeball]** lbs/kg weight-units toggle: options render as **lbs** / **kg** (raw units, untranslated by design). Section label `UNITÉS DE POIDS` is FR. Toggling switches the pref; no layout break.
+- check **[2a]** **Documents du MPO** card (S94 DFO Documents): card title + both rows in FR (`Instructions du MPO 234.7`, `Instructions du fournisseur`, sub-lines). Tapping a row opens the PDF viewer (see §6i).
+- check **[2a]** Account deletion (Account/Supprimer le compte): trigger **Delete account** → reauth password prompt. Verify FR: title **Confirmer la suppression du compte**, prompt **Saisis ton mot de passe pour confirmer la suppression du compte.**, confirm button **Supprimer le compte**. Enter a WRONG password → failure message **Impossible de vérifier ton mot de passe — rien n'a été supprimé. Réessaie.** (Then cancel — don't actually delete.) **[Pixel 8]**
+- check **[eyeball]** Rest of Settings is largely English (known gap) — confirm no crash.
 
 ---
 
 ## 3. Pro — Weather + Map
-- ☐ **[eyeball]** **Weather view — DO NOT TOUCH / DO NOT EDIT.** Look only: note any mixed-language, but this screen is off-limits this session. (`pro.air` = "AIR" is intentionally identical.)
-- ☐ **[eyeball]** **Map** (`Garminmapbox`) — the live map, already `t()`-wired. Confirm FR labels, no English leaks. Tap the trawl-number entry → the "missing info" alert should be FR (`map.*`). **[Pixel 8]**
+- check **[eyeball]** **Weather view — DO NOT TOUCH / DO NOT EDIT.** Look only: note any mixed-language, but this screen is off-limits this session. (`pro.air` = "AIR" is intentionally identical.)
+- check **[eyeball]** **Map** (`Garminmapbox`) — the live map, already `t()`-wired. Confirm FR labels, no English leaks. Tap the trawl-number entry → the "missing info" alert should be FR (`map.*`). **[Pixel 8]**
 
 ---
 
 ## 4. DFO entry — header pill
-- ☐ **[2a]** App header DFO pill reads **ELOG MPO** (was "ELOG MPO _todo"; the tag is gone, no stray "_todo" visible). Tapping it opens the DFO logs list.
+- check **[2a]** App header DFO pill reads **ELOG MPO** (was "ELOG MPO _todo"; the tag is gone, no stray "_todo" visible). Tapping it opens the DFO logs list.
 
 ---
 
