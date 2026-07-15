@@ -40,10 +40,7 @@ export default function DfoSetupScreen({ onActivated, onClose, isAdmin }: Props)
   const [licenceNo, setLicenceNo] = useState('');
   const [fin, setFin] = useState('');
   const [loading, setLoading] = useState(false);
-  const [devMode, setDevMode] = useState(false);
   const [finError, setFinError] = useState('');
-
-  const selectedRegionLabel = REGIONS.find(r => r.subformId === selectedSubformId)?.label ?? 'Region';
 
   const handleActivate = async () => {
     if (!licenceNo.trim()) {
@@ -56,29 +53,6 @@ export default function DfoSetupScreen({ onActivated, onClose, isAdmin }: Props)
     }
     if (!isValidFin(fin.trim())) {
       setFinError('Invalid FIN — must be 9 digits, 5–6 digits, C/D + 7 digits, or DFOCC + 9 digits.');
-      return;
-    }
-
-    if (devMode) {
-      setLoading(true);
-      try {
-        const regId = DFO_SUBFORM_REGISTRY[selectedSubformId]?.regId ?? 1004;
-        const profile = await loadCaptainProfile();
-        await saveCaptainProfile({
-          ...profile,
-          subformId: selectedSubformId,
-          regId,
-          dfoLicenceNo: licenceNo.trim(),
-          dfoFin: fin.trim(),
-          fishingNumber: licenceNo.trim(),
-          licenceHolderFin: fin.trim(),
-        });
-        onActivated();
-      } catch (e: any) {
-        Alert.alert('Dev Error', e.message ?? 'Something went wrong.');
-      } finally {
-        setLoading(false);
-      }
       return;
     }
 
@@ -153,17 +127,7 @@ export default function DfoSetupScreen({ onActivated, onClose, isAdmin }: Props)
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        {isAdmin ? (
-          <TouchableOpacity
-            onPress={() => setDevMode(d => !d)}
-            style={[styles.devPill, devMode && styles.devPillActive]}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Text style={styles.devPillText}>DEV</Text>
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.headerSpacer} />
-        )}
+        <View style={styles.headerSpacer} />
         <Text style={styles.headerTitle}>{t('setup.headerTitle')}</Text>
         <TouchableOpacity
           onPress={onClose}
@@ -247,23 +211,20 @@ export default function DfoSetupScreen({ onActivated, onClose, isAdmin }: Props)
           style={[
             styles.activateButton,
             loading && styles.activateButtonDisabled,
-            devMode && styles.activateButtonDev,
           ]}
           onPress={handleActivate}
           activeOpacity={0.85}
           disabled={loading}
         >
           <Text style={styles.activateButtonText}>
-            {loading ? t('setup.processing') : devMode ? t('setup.previewAs', { region: selectedRegionLabel }) : t('setup.activateButton')}
+            {loading ? t('setup.processing') : t('setup.activateButton')}
           </Text>
         </TouchableOpacity>
 
-        {/* Restore purchase — hidden in dev mode */}
-        {!devMode && (
-          <TouchableOpacity onPress={handleRestore} disabled={loading} style={styles.restoreButton}>
-            <Text style={styles.restoreText}>{t('setup.restoreButton')}</Text>
-          </TouchableOpacity>
-        )}
+        {/* Restore purchase */}
+        <TouchableOpacity onPress={handleRestore} disabled={loading} style={styles.restoreButton}>
+          <Text style={styles.restoreText}>{t('setup.restoreButton')}</Text>
+        </TouchableOpacity>
       </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -408,26 +369,6 @@ const styles = StyleSheet.create({
   },
   activateButtonDisabled: {
     backgroundColor: '#93A3C2',
-  },
-  activateButtonDev: {
-    backgroundColor: '#EA580C',
-  },
-  devPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    minWidth: 36,
-    alignItems: 'center',
-  },
-  devPillActive: {
-    backgroundColor: '#EA580C',
-  },
-  devPillText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.5,
   },
   activateButtonText: {
     color: '#FFFFFF',
