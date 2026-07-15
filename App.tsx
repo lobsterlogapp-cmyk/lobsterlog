@@ -1181,38 +1181,43 @@ const isAdmin = useMemo(() => {
                     </TouchableOpacity>
                   </View>
 
-                  {/* DFO Documents (S94) — bundled PDFs, in-app viewer, fully offline (Rule 2500) */}
-                  <View style={styles.card}>
-                    <Text style={styles.cardHeader}>{t('settings.dfoDocsCard')}</Text>
+                  {/* DFO Documents (S94) — bundled PDFs, in-app viewer, fully offline (Rule 2500).
+                      S99: rendered only for activated DFO users — a user with dfoActivated=false
+                      has no DFO obligations, so hiding the card does not violate Rule 2500
+                      (reasoning on record in docs/GATE_S99_REMAINDER.md §0.3). */}
+                  {dfoActivated === true && (
+                    <View style={styles.card}>
+                      <Text style={styles.cardHeader}>{t('settings.dfoDocsCard')}</Text>
 
-                    <TouchableOpacity
-                      style={styles.tutorialButton}
-                      onPress={() => openDfoDoc('providers')}
-                      activeOpacity={0.8}
-                    >
-                      <View style={styles.tutorialIconBox}>
-                        <FileText size={20} color="#0284C7" />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.tutorialTitle}>{t('settings.docProvidersInstructions')}</Text>
-                        <Text style={styles.tutorialSub}>{t('settings.docProvidersInstructionsSub')}</Text>
-                      </View>
-                    </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.tutorialButton}
+                        onPress={() => openDfoDoc('providers')}
+                        activeOpacity={0.8}
+                      >
+                        <View style={styles.tutorialIconBox}>
+                          <FileText size={20} color="#0284C7" />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.tutorialTitle}>{t('settings.docProvidersInstructions')}</Text>
+                          <Text style={styles.tutorialSub}>{t('settings.docProvidersInstructionsSub')}</Text>
+                        </View>
+                      </TouchableOpacity>
 
-                    <TouchableOpacity
-                      style={styles.tutorialButton}
-                      onPress={() => openDfoDoc('dfo234')}
-                      activeOpacity={0.8}
-                    >
-                      <View style={styles.tutorialIconBox}>
-                        <FileText size={20} color="#0284C7" />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.tutorialTitle}>{t('settings.docDfoInstructions')}</Text>
-                        <Text style={styles.tutorialSub}>{t('settings.docDfoInstructionsSub')}</Text>
-                      </View>
-                    </TouchableOpacity>
-                  </View>
+                      <TouchableOpacity
+                        style={styles.tutorialButton}
+                        onPress={() => openDfoDoc('dfo234')}
+                        activeOpacity={0.8}
+                      >
+                        <View style={styles.tutorialIconBox}>
+                          <FileText size={20} color="#0284C7" />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.tutorialTitle}>{t('settings.docDfoInstructions')}</Text>
+                          <Text style={styles.tutorialSub}>{t('settings.docDfoInstructionsSub')}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    </View>
+                  )}
 
                   <View style={styles.card}>
                     <Text style={styles.cardHeader}>{t('settings.accountCard')}</Text>
