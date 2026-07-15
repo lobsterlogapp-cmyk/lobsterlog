@@ -9,8 +9,6 @@ import {
   SafeAreaView,
   Modal,
   ActivityIndicator,
-  Platform,
-  StatusBar,
 } from 'react-native';
 import { ChevronLeft, CheckCircle, User } from 'lucide-react-native';
 import { loadCaptainProfile, CaptainProfile } from '../utils/captainStorage';
@@ -132,7 +130,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F8FAFC',
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
+    // S99: no window-top inset here — this screen renders BELOW the persistent app header,
+    // which already consumes insets.top (App.tsx). The Android StatusBar.currentHeight
+    // padding drew a spurious gap band between the two headers (the "double header").
   },
   header: {
     backgroundColor: '#1E3A8A',
