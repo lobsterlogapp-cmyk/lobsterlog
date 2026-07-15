@@ -13,7 +13,6 @@ import {
   ScrollView,
   Switch,
   ActivityIndicator,
-  SafeAreaView,
   StatusBar,
   Platform,
   KeyboardAvoidingView,
@@ -1355,7 +1354,9 @@ const isAdmin = useMemo(() => {
         animationType="slide"
         onRequestClose={() => setDocViewerVisible(false)}
       >
-        <SafeAreaView style={{ flex: 1, backgroundColor: '#0F172A' }}>
+        {/* S99: insets-driven padding (S95 pattern) — core RN SafeAreaView is iOS-only, so the
+            Close button sat under the Android status bar with edge-to-edge enabled */}
+        <View style={{ flex: 1, backgroundColor: '#0F172A', paddingTop: insets.top, paddingBottom: insets.bottom }}>
           <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 16, paddingVertical: 10 }}>
             <TouchableOpacity
               onPress={() => setDocViewerVisible(false)}
@@ -1372,7 +1373,7 @@ const isAdmin = useMemo(() => {
               onError={(err) => { console.log('[DFO doc viewer] error:', err); }}
             />
           )}
-        </SafeAreaView>
+        </View>
       </Modal>
 
       {isReady && (
