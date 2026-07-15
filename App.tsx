@@ -587,6 +587,11 @@ const isAdmin = useMemo(() => {
                         )}
                       </TouchableOpacity>
                     </View>
+          {/* S99: pill shown only for role admin/dfo OR an already-activated profile — the
+              dfoActivated disjunct keeps a paid/legacy activation reachable if the role is
+              ever absent (see GATE_S99_REMAINDER §5.7). Invite-only rollout: normal users no
+              longer see a DFO entry point (no side doors — §5.6). */}
+          {(canActivateDfoFree || dfoActivated === true) && (
           <View style={styles.dfoPillRow}>
             <TouchableOpacity
               style={styles.dfoPill}
@@ -605,6 +610,7 @@ const isAdmin = useMemo(() => {
               <Text style={styles.dfoPillLabel}>{t('nav.dfoElog')}</Text>
             </TouchableOpacity>
           </View>
+          )}
           </View>
         </View>
       </View>
