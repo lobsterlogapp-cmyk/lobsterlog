@@ -230,6 +230,13 @@ const isAdmin = useMemo(() => {
     return userRole === 'admin';
   }, [profile]);
 
+  // S99: role-gated free DFO activation (console-assigned Firestore role; profiles without
+  // the field resolve 'user' → false, so existing accounts are unaffected).
+  const canActivateDfoFree = useMemo(() => {
+    const userRole = typeof profile?.role === 'string' ? profile.role.toLowerCase() : '';
+    return userRole === 'admin' || userRole === 'dfo';
+  }, [profile]);
+
   const { formData, setFormData, saving, loadFormData, toggleWeather, saveLogData, handleSkipDay } =
     useLogForm(user, profile, dateId, isPro);
 
@@ -627,7 +634,7 @@ const isAdmin = useMemo(() => {
                             setView('dfo-list');
                           }}
                           onClose={() => setView('log')}
-                          isAdmin={isAdmin}
+                          canActivateDfoFree={canActivateDfoFree}
                         />
                       ) : view === 'dfo-list' ? (
                                   <DfoLogsListScreen

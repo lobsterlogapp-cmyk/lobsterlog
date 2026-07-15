@@ -20,7 +20,7 @@ import { DFO_SUBFORM_REGISTRY } from '../utils/dfoConstants';
 interface Props {
   onActivated: () => void;
   onClose: () => void;
-  isAdmin?: boolean;
+  canActivateDfoFree?: boolean;
 }
 
 // Rule 260 — valid FIN formats: 9 digits | C/D + 7 digits | 5–6 digits | DFOCC + 9 digits
@@ -34,7 +34,7 @@ const REGIONS = [
   { label: 'Nfld & Lab', subformId: 91 },
 ] as const;
 
-export default function DfoSetupScreen({ onActivated, onClose, isAdmin }: Props) {
+export default function DfoSetupScreen({ onActivated, onClose, canActivateDfoFree }: Props) {
   const { t } = useTranslation('dfo');
   const [selectedSubformId, setSelectedSubformId] = useState<number>(90);
   const [licenceNo, setLicenceNo] = useState('');
@@ -58,12 +58,17 @@ export default function DfoSetupScreen({ onActivated, onClose, isAdmin }: Props)
 
     setLoading(true);
     try {
-      const products = await Purchases.getProducts(['dfo_elog_seasonal']);
-      if (!products || products.length === 0) {
-        Alert.alert('Unavailable', 'The DFO ELOG purchase is not available right now. Please try again later.');
-        return;
+      // S99: role 'admin'/'dfo' activates free — skip the purchase, then fall through to the
+      // SAME profile write as a paid activation (incl. dfoActivated: true, which the old DEV
+      // bypass omitted and so never survived a restart).
+      if (!canActivateDfoFree) {
+        const products = await Purchases.getProducts(['dfo_elog_seasonal']);
+        if (!products || products.length === 0) {
+          Alert.alert('Unavailable', 'The DFO ELOG purchase is not available right now. Please try again later.');
+          return;
+        }
+        await Purchases.purchaseStoreProduct(products[0]);
       }
-      await Purchases.purchaseStoreProduct(products[0]);
       const regId = DFO_SUBFORM_REGISTRY[selectedSubformId]?.regId ?? 1004;
       const profile = await loadCaptainProfile();
       await saveCaptainProfile({
