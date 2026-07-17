@@ -116,6 +116,9 @@ interface DfoLogsListScreenProps {
   onViewLog: (logId: string) => void;
   onOpenHistory: () => void;
   refreshKey?: number;
+  // S101b F1: the harness is dev chrome — in a dev client __DEV__ is true for ANY
+  // account (a role-'dfo' tester saw it), so the button is admin-gated on top.
+  isAdmin?: boolean;
 }
 
 // Cap the SENT logs shown on the main screen; the full archive lives in Log History.
@@ -127,6 +130,7 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
   onViewLog,
   onOpenHistory,
   refreshKey = 0,
+  isAdmin = false,
 }) => {
   const { t } = useTranslation('dfo');
   const { t: tc } = useTranslation('common');
@@ -566,8 +570,9 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
           </TouchableOpacity>
         )}
 
-        {/* XML Test Harness — DEV-only entry point (relocated from DfoSetupScreen) */}
-        {__DEV__ && (
+        {/* XML Test Harness — DEV-only entry point (relocated from DfoSetupScreen);
+            admin-gated on top since S101b (F1: dev clients show __DEV__ chrome to any role) */}
+        {__DEV__ && isAdmin && (
           <TouchableOpacity
             style={styles.pillButton}
             onPress={() => setHarnessVisible(true)}

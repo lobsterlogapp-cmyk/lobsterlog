@@ -660,6 +660,7 @@ const isAdmin = useMemo(() => {
                                       setView('dfo-demo');
                                     }}
                                     onOpenHistory={() => setView('dfo-history')}
+                                    isAdmin={isAdmin}
                                   />
                                 ) : view === 'dfo-history' ? (
                                   <LogHistoryScreen onBack={() => setView('dfo-list')} />
