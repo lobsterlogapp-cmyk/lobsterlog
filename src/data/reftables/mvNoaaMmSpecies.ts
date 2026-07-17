@@ -1,5 +1,5 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
-// Source: data/dfo-reftables/MV_NOAA_MM_SPECIES_rel3.csv (46 rows, generated 2026-06-25)
+// Source: data/dfo-reftables/MV_NOAA_MM_SPECIES_rel3.csv (46 rows, generated 2026-07-17)
 // Regenerate with: node scripts/generateReftables.js
 
 export interface DfoNoaaMmSpecies {
@@ -29,22 +29,22 @@ export const MV_NOAA_MM_SPECIES: DfoNoaaMmSpecies[] = [
   { noaaCode: '135', descFr: 'Loutre de mer', descEn: 'Sea Otter' },
   { noaaCode: '039', descFr: 'Épaulard', descEn: 'Killer Whale' },
   { noaaCode: '105', descFr: 'Otarie à fourrure des îles Pribilof)', descEn: 'Northern (Pribilof) Fur Seal' },
-  { noaaCode: '231', descFr: 'Rorqual de Bryde', descEn: 'Brydes Whale' },
+  { noaaCode: '231', descFr: 'Rorqual de Bryde', descEn: 'Bryde’s Whale' },
   { noaaCode: '040', descFr: 'Rorqual bleu', descEn: 'Blue Whale' },
   { noaaCode: '053', descFr: 'Dauphin commun', descEn: 'Common Dolphin' },
-  { noaaCode: '055', descFr: 'Dauphin de Risso (Grampus)', descEn: 'Grampus (Rissos) Dolphin' },
+  { noaaCode: '055', descFr: 'Dauphin de Risso (Grampus)', descEn: 'Grampus (Risso’s) Dolphin' },
   { noaaCode: '005', descFr: 'Baleine grise', descEn: 'Gray whale' },
-  { noaaCode: '002', descFr: 'Baleine noire de lAtlantique', descEn: 'North Atlantic Right Whale' },
+  { noaaCode: '002', descFr: 'Baleine noire de l’Atlantique', descEn: 'North Atlantic Right Whale' },
   { noaaCode: '234', descFr: 'Baleine à bec commune', descEn: 'Northern Bottlenose Whale' },
   { noaaCode: '230', descFr: 'Baleine à bec', descEn: 'Beaked Whale' },
   { noaaCode: '232', descFr: 'Cachalot nain', descEn: 'Dwarf Sperm Whale' },
-  { noaaCode: '047', descFr: 'Dauphin à flancs blancs de lAtlantique', descEn: 'Atlantic White-sided dolphin' },
+  { noaaCode: '047', descFr: 'Dauphin à flancs blancs de l’Atlantique', descEn: 'Atlantic White-sided dolphin' },
   { noaaCode: '049', descFr: 'Dauphin à flancs blancs du Pacifique', descEn: 'Pacific White-sided dolphin' },
   { noaaCode: '011', descFr: 'Rorqual à bosse', descEn: 'Humpback Whale' },
   { noaaCode: '129', descFr: 'Éléphant de mer', descEn: 'Northern Elephant Seal' },
   { noaaCode: '063', descFr: 'Dauphin à dos lisse', descEn: 'Northern Right Whale Dolphin' },
   { noaaCode: '038', descFr: 'Faux-orque', descEn: 'False Killer Whale' },
-  { noaaCode: '072', descFr: 'Marsouin de Dall', descEn: 'Dalls Porpoise' },
+  { noaaCode: '072', descFr: 'Marsouin de Dall', descEn: 'Dall’s Porpoise' },
   { noaaCode: '061', descFr: 'Dauphin bleu', descEn: 'Striped Dolphin' },
   { noaaCode: '058', descFr: 'Dauphin tacheté', descEn: 'Spotted Dolphin' },
   { noaaCode: '060', descFr: 'Dauphin à long bec', descEn: 'Spinner Dolphin' },

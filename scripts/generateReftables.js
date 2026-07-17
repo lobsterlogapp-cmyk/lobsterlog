@@ -59,6 +59,11 @@ export const PORTS_BY_PROVINCE: Record<number, ${iface}[]> = (() => {
   },
   // Form 234 pickers
   { csv: 'MV_CATCH_USAGE_rel1.csv', module: 'mvCatchUsage', exportName: 'MV_CATCH_USAGE', iface: 'DfoCatchUsage' },
+  // S101b Round C — FR display sources for the bait-type and catch/bycatch species pickers
+  // (BT_TYP_ID / SPECIE_ID lists stay the hand-typed dfoConstants label lists; these tables
+  // supply descFr by codeId at render only).
+  { csv: 'MV_BAIT_TYPE_rel8.csv', module: 'mvBaitType', exportName: 'MV_BAIT_TYPE', iface: 'DfoBaitType' },
+  { csv: 'MV_SPECIES_rel48.csv', module: 'mvSpecies', exportName: 'MV_SPECIES', iface: 'DfoSpecies' },
   { csv: 'MV_SPECIMENS_CONDITION_rel1.csv', module: 'mvSpecimensCondition', exportName: 'MV_SPECIMENS_CONDITION', iface: 'DfoSpecimensCondition' },
   { csv: 'MV_SAR_LIST_rel8.csv', module: 'mvSarList', exportName: 'MV_SAR_LIST', iface: 'DfoSarList' },
   { csv: 'MV_BAIT_CONDITION_rel2.csv', module: 'mvBaitCondition', exportName: 'MV_BAIT_CONDITION', iface: 'DfoBaitCondition' },
@@ -134,10 +139,27 @@ function tsString(s) {
 
 const tsType = t => (t === 'number?' ? 'number | null' : t);
 
+// Node without full ICU resolves the 'windows-1252' label with latin1 semantics: bytes
+// 0x80–0x9F come out as C1 control chars instead of the cp1252 punctuation (0x92 → U+0092
+// rather than ’ U+2019 — the S101b mojibake in MV_NOAA_MM_SPECIES descFr). Map the C1
+// range to the real cp1252 code points post-decode; accents (0xA0+) are unaffected.
+const CP1252_C1 = {
+  0x80: 0x20AC, 0x82: 0x201A, 0x83: 0x0192, 0x84: 0x201E, 0x85: 0x2026, 0x86: 0x2020,
+  0x87: 0x2021, 0x88: 0x02C6, 0x89: 0x2030, 0x8A: 0x0160, 0x8B: 0x2039, 0x8C: 0x0152,
+  0x8E: 0x017D, 0x91: 0x2018, 0x92: 0x2019, 0x93: 0x201C, 0x94: 0x201D, 0x95: 0x2022,
+  0x96: 0x2013, 0x97: 0x2014, 0x98: 0x02DC, 0x99: 0x2122, 0x9A: 0x0161, 0x9B: 0x203A,
+  0x9C: 0x0153, 0x9E: 0x017E, 0x9F: 0x0178,
+};
+const fixCp1252C1 = s =>
+  s.replace(/[\u0080-\u009F]/g, ch => {
+    const cp = CP1252_C1[ch.charCodeAt(0)];
+    return cp ? String.fromCharCode(cp) : ch;
+  });
+
 function generateTable({ csv, module: moduleName, exportName, iface, columns, extraExports, derived }) {
   const raw = fs.readFileSync(path.join(CSV_DIR, csv));
   // DFO ships Windows-1252; decode properly so French accents survive (Standard §3.11).
-  const text = new TextDecoder('windows-1252').decode(raw).replace(/^﻿/, '');
+  const text = fixCp1252C1(new TextDecoder('windows-1252').decode(raw)).replace(/^﻿/, '');
   const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
 
   const headers = parseCsvLine(lines[0]).map(h => h.trim().replace(/^"|"$/g, ''));
