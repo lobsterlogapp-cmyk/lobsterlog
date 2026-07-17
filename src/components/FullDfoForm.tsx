@@ -75,7 +75,7 @@ import { useTranslation } from 'react-i18next';
 import CrewSelector from './CrewSelector';
 import DfoPortSelector from './DfoPortSelector';
 import { CrewMember } from '../utils/crewStorage';
-import { MV_CATCH_USAGE, MV_PARTNERSHIP_TYPE, MV_SAR_LIST, MV_SPECIMENS_CONDITION, MV_BAIT_CONDITION, MV_GRID } from '../data/reftables';
+import { MV_CATCH_USAGE, MV_PARTNERSHIP_TYPE, MV_SAR_LIST, MV_SPECIMENS_CONDITION, MV_BAIT_CONDITION, MV_GRID, MV_BAIT_TYPE, MV_SPECIES } from '../data/reftables';
 
 export interface FullDfoFormHandle {
   saveDraft: () => Promise<void>;
@@ -101,6 +101,18 @@ const BYCATCH_USAGE_OPTIONS = PCONS_USAGE_CODE_IDS
   .map(id => MV_CATCH_USAGE.find(u => u.codeId === id))
   .filter((u): u is NonNullable<typeof u> => u != null)
   .map(u => ({ label: u.descEn, value: String(u.codeId) }));
+
+// Locale display text for a generated-reftable row — descFr in French with descEn as the
+// fallback (S98 pattern). Display-only; stored values stay the codeId.
+const refDesc = (r: { descEn: string; descFr?: string } | undefined, isFr: boolean) =>
+  r ? (isFr && r.descFr) || r.descEn : undefined;
+
+// S101b Round C (L1/L3) — FR display for the bait-type and catch/bycatch species labels,
+// keyed by codeId from the vendored MV tables. Display-only: BaitEntry.type /
+// BycatchEntry.species keep storing the EN label, which is ALSO the generator's
+// find-by-label emit key (BT_TYP_ID / SPECIE_ID) — never translate the stored value.
+const BAIT_TYPE_FR = new Map<number, string>(MV_BAIT_TYPE.map(r => [r.codeId, r.descFr]));
+const SPECIES_FR = new Map<number, string>(MV_SPECIES.map(r => [r.codeId, r.descFr]));
 
 // Natural, numeric-aware sort for FMA labels so "20a10" sorts after "20a9a" (not after
 // "20a1") and sub-letter entries land right (20a3a after 20a3; 20a9a after 20a9). Splits
@@ -163,6 +175,7 @@ type SheetMode = 'bait' | 'bycatch' | null;
 const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLogId, onSaved, readOnly = false, onBack }, ref) => {
   const { t, i18n } = useTranslation('dfo');
   const { t: tc } = useTranslation('common');
+  const isFr = i18n.language.startsWith('fr');
 
   // Core fields — start BLANK for new logs so completion % reflects real progress
   const [dateFished, setDateFished] = useState('');
@@ -913,14 +926,31 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const deleteBycatch = (index: number) => setBycatchEntries(prev => prev.filter((_, i) => i !== index));
 
   // Options carry codeId so a selection resolves its codeId from the chosen list entry
-  // directly (never by re-matching the label string). bycatch entries have no codeId here.
+  // directly (never by re-matching the label string). The bycatch codeId is DISPLAY
+  // metadata only (FR lookup) — BycatchEntry still persists just the label (S101b L3).
   const getSheetOptions = (): { label: string; codeId?: number }[] => {
     switch (sheetMode) {
       case 'bait': return getDfoBaitTypeList(subformId).map(b => ({ label: b.label, codeId: b.codeId }));
-      case 'bycatch': return getDfoCatchSpeciesList(subformId).map(s => ({ label: s.label }));
+      case 'bycatch': return getDfoCatchSpeciesList(subformId).map(s => ({ label: s.label, codeId: s.codeId }));
       default: return [];
     }
   };
+
+  // S101b L1/L3 display-only FR: stored EN label → app-list row (the SAME in-list label
+  // match the generator does at emit) → codeId → MV descFr; falls back to the stored
+  // label (covers custom 'Other' bait text and any unmatched legacy value).
+  const baitTypeDisplay = (label: string): string => {
+    if (!isFr) return label;
+    const row = getDfoBaitTypeList(subformId).find(b => b.label === label);
+    return (row && BAIT_TYPE_FR.get(row.codeId)) || label;
+  };
+  const bycatchSpeciesDisplay = (label: string): string => {
+    if (!isFr) return label;
+    const row = getDfoCatchSpeciesList(subformId).find(s => s.label === label);
+    return (row && SPECIES_FR.get(row.codeId)) || label;
+  };
+  const sheetTypeDisplay = (label: string): string =>
+    sheetMode === 'bait' ? baitTypeDisplay(label) : bycatchSpeciesDisplay(label);
 
   // Display-only helper (S93): render a trip-timestamp as locale-aware date + time —
   // e.g. "Jul 5, 12:33" (EN) / "5 juill., 12:33" (FR). Combines the field's companion date
@@ -1003,7 +1033,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     setSpeciesOther: (v: string) => void,
     dropdownOpen: boolean,
     setDropdownOpen: (v: boolean) => void,
-    speciesOptions: readonly (string | { codeId: number; descEn: string })[],
+    speciesOptions: readonly (string | { codeId: number; descEn: string; descFr?: string })[],
     what: string,
     setWhat: (v: string) => void,
     lat: string,
@@ -1014,11 +1044,15 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     timeStr: string,
     pickerFieldName: PickerField
   ) => {
-    // Normalize to { value, label }: plain strings (Marine Mammal) use value === label;
-    // coded rows (SAR / MV_SAR_LIST) store codeId as the value but display descEn — so the
-    // SAR picker now yields a real SPECIE_ID while MM behaviour is unchanged.
+    // Normalize to { value, label }: plain strings (Marine Mammal) keep the EN string as
+    // the stored value/code and translate at render via mmSpeciesLabels (defaultValue =
+    // the code, S98 chip pattern — d.mmSpecies bytes and the 'Other' sentinel compares
+    // stay on the EN string); coded rows (SAR / MV_SAR_LIST) store codeId as the value
+    // and display the locale desc (descEn fallback) — a real SPECIE_ID either way.
     const opts = speciesOptions.map(o =>
-      typeof o === 'string' ? { value: o, label: o } : { value: String(o.codeId), label: o.descEn });
+      typeof o === 'string'
+        ? { value: o, label: t(`form234.mmSpeciesLabels.${o}`, { defaultValue: o }) }
+        : { value: String(o.codeId), label: (isFr && o.descFr) || o.descEn });
     const selectedLabel = opts.find(o => o.value === species)?.label ?? species;
     return (
     <View style={styles.incidentBlock}>
@@ -1380,7 +1414,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                         onPress={() => { if (readOnly) return; setFmaPickerOpen(o => !o); setLgridPickerOpen(false); }}
                       >
                         <Text style={[styles.timeButtonText, !fmaId && styles.timeButtonPlaceholder]}>
-                          {fmaId ? getDfoFmaList(subformId).find(f => f.codeId === fmaId)?.label ?? t('form234.selectLfa') : t('form234.selectLfa')}
+                          {fmaId ? t(`form234.fmaOption_${fmaId}`, { defaultValue: getDfoFmaList(subformId).find(f => f.codeId === fmaId)?.label ?? t('form234.selectLfa') }) : t('form234.selectLfa')}
                         </Text>
                         <ChevronDown size={16} color="#64748B" />
                       </TouchableOpacity>
@@ -1403,7 +1437,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                               }}
                             >
                               <Text style={[styles.dropdownItemText, fmaId === f.codeId && styles.dropdownItemTextActive]}>
-                                {f.label}
+                                {t(`form234.fmaOption_${f.codeId}`, { defaultValue: f.label })}
                               </Text>
                             </TouchableOpacity>
                           ))}
@@ -1584,7 +1618,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 onPress={() => { if (readOnly) return; setTrapSizePickerOpen(o => !o); }}
               >
                 <Text style={[styles.timeButtonText, !trapSize && styles.timeButtonPlaceholder]}>
-                  {trapSize ? DFO_TRAP_SIZE_LIST.find(s => String(s.codeId) === trapSize)?.label ?? t('form234.selectTrapSize') : t('form234.selectTrapSize')}
+                  {trapSize ? t(`form234.trapSizeOption_${trapSize}`, { defaultValue: DFO_TRAP_SIZE_LIST.find(s => String(s.codeId) === trapSize)?.label ?? t('form234.selectTrapSize') }) : t('form234.selectTrapSize')}
                 </Text>
                 <ChevronDown size={16} color="#64748B" />
               </TouchableOpacity>
@@ -1600,7 +1634,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                       }}
                     >
                       <Text style={[styles.dropdownItemText, trapSize === String(s.codeId) && styles.dropdownItemTextActive]}>
-                        {s.label}
+                        {t(`form234.trapSizeOption_${s.codeId}`, { defaultValue: s.label })}
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -1610,7 +1644,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           )}
           {/* GEAR_SBTYP_ID: NL(91) only — mandatory (Subforms_requirements_234.xlsx row 75),
               blocked for 88/89/90. Values from DFO_GEAR_SUBTYPE_LIST (39684 Wooden /
-              39685 Wire mesh / 39686 Both); display DESC_ENG (.label). */}
+              39685 Wire mesh / 39686 Both); display via i18n gearSubtypeOption_<codeId>
+              (FR per MV_GEAR_SUBTYPE_rel7 = the FS234 Rule-611 block), .label fallback. */}
           {isVisible('gearSubtypeId') && (
             <View style={styles.fieldRow}>
               <Text style={styles.label}>{t('form234.gearSubtypeLabel')}{isRequired('gearSubtypeId') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
@@ -1619,7 +1654,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 onPress={() => { if (readOnly) return; setGearSubtypePickerOpen(o => !o); }}
               >
                 <Text style={[styles.timeButtonText, !gearSubtypeId && styles.timeButtonPlaceholder]}>
-                  {gearSubtypeId ? DFO_GEAR_SUBTYPE_LIST.find(s => String(s.codeId) === gearSubtypeId)?.label ?? t('form234.selectGearSubtype') : t('form234.selectGearSubtype')}
+                  {gearSubtypeId ? t(`form234.gearSubtypeOption_${gearSubtypeId}`, { defaultValue: DFO_GEAR_SUBTYPE_LIST.find(s => String(s.codeId) === gearSubtypeId)?.label ?? t('form234.selectGearSubtype') }) : t('form234.selectGearSubtype')}
                 </Text>
                 <ChevronDown size={16} color="#64748B" />
               </TouchableOpacity>
@@ -1635,7 +1670,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                       }}
                     >
                       <Text style={[styles.dropdownItemText, gearSubtypeId === String(s.codeId) && styles.dropdownItemTextActive]}>
-                        {s.label}
+                        {t(`form234.gearSubtypeOption_${s.codeId}`, { defaultValue: s.label })}
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -1657,7 +1692,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           {baitEntries.map((entry, i) => (
             <View key={i} style={styles.entryRow}>
               <View style={styles.entryInfo}>
-                <Text style={styles.entryType}>{entry.type}</Text>
+                <Text style={styles.entryType}>{baitTypeDisplay(entry.type)}</Text>
                 <Text style={styles.entryLbs}>{t('form234.lbsSuffix', { lbs: entry.lbs })}</Text>
               </View>
               {!readOnly && (
@@ -1729,7 +1764,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 {bycatchEntries.map((entry, i) => (
                   <View key={i} style={styles.entryRow}>
                     <View style={styles.entryInfo}>
-                      <Text style={styles.entryType}>{entry.species}</Text>
+                      <Text style={styles.entryType}>{bycatchSpeciesDisplay(entry.species)}</Text>
                       {entry.usage && (
                         <Text style={[styles.entryLbs, { color: '#64748B' }]}>{t(`form234.usageOption_${entry.usage}`)}</Text>
                       )}
@@ -1802,7 +1837,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                     onPress={() => { if (readOnly) return; setSarCondPickerOpen(o => !o); }}
                   >
                     <Text style={[styles.timeButtonText, !sarCondId && styles.timeButtonPlaceholder]}>
-                      {sarCondId ? MV_SPECIMENS_CONDITION.find(s => String(s.codeId) === sarCondId)?.descEn ?? t('form234.sarCondPlaceholder') : t('form234.sarCondPlaceholder')}
+                      {sarCondId ? refDesc(MV_SPECIMENS_CONDITION.find(s => String(s.codeId) === sarCondId), isFr) ?? t('form234.sarCondPlaceholder') : t('form234.sarCondPlaceholder')}
                     </Text>
                     <ChevronDown size={16} color="#64748B" />
                   </TouchableOpacity>
@@ -1815,7 +1850,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                           onPress={() => { setSarCondId(String(s.codeId)); setSarCondPickerOpen(false); }}
                         >
                           <Text style={[styles.dropdownItemText, sarCondId === String(s.codeId) && styles.dropdownItemTextActive]}>
-                            {s.descEn}
+                            {refDesc(s, isFr)}
                           </Text>
                         </TouchableOpacity>
                       ))}
@@ -1963,7 +1998,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               </Text>
               <TouchableOpacity style={styles.dropdownBtn} onPress={() => setSheetDropdownOpen(o => !o)}>
                 <Text style={[styles.dropdownBtnText, !sheetSelectedType && styles.dropdownPlaceholder]}>
-                  {sheetSelectedType || t('form234.selectPlaceholder')}
+                  {sheetSelectedType ? sheetTypeDisplay(sheetSelectedType) : t('form234.selectPlaceholder')}
                 </Text>
                 <ChevronDown size={16} color="#64748B" />
               </TouchableOpacity>
@@ -1986,7 +2021,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                         }}
                       >
                         <Text style={[styles.dropdownItemText, sheetSelectedType === opt.label && styles.dropdownItemTextActive]}>
-                          {opt.label}
+                          {sheetTypeDisplay(opt.label)}
                         </Text>
                       </TouchableOpacity>
                     ))}
@@ -2017,7 +2052,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                   <TouchableOpacity style={styles.dropdownBtn} onPress={() => setSheetConditionOpen(o => !o)}>
                     <Text style={[styles.dropdownBtnText, sheetCondition == null && styles.dropdownPlaceholder]}>
                       {sheetCondition != null
-                        ? MV_BAIT_CONDITION.find(c => c.codeId === sheetCondition)?.descEn ?? t('form234.selectPlaceholder')
+                        ? refDesc(MV_BAIT_CONDITION.find(c => c.codeId === sheetCondition), isFr) ?? t('form234.selectPlaceholder')
                         : t('form234.selectPlaceholder')}
                     </Text>
                     <ChevronDown size={16} color="#64748B" />
@@ -2031,7 +2066,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                           onPress={() => { setSheetCondition(c.codeId); setSheetConditionOpen(false); }}
                         >
                           <Text style={[styles.dropdownItemText, sheetCondition === c.codeId && styles.dropdownItemTextActive]}>
-                            {c.descEn}
+                            {refDesc(c, isFr)}
                           </Text>
                         </TouchableOpacity>
                       ))}

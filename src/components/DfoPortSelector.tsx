@@ -33,12 +33,17 @@ const DEFAULT_PROV: Record<number, number[]> = {
 const PROVINCE_NAME_EN = new Map<number, string>(MV_PROVINCE.map(p => [p.codeId, p.descEn]));
 const MAX_RESULTS = 60;
 
+// FR port name by PORT_ID — display-only lookup for the trigger text, which renders the
+// STORED name (nameEn; the stored value never changes — the XSD PORT_ID rides codeId).
+const FR_NAME_BY_ID = new Map<number, string>(MV_PORT.map(p => [p.codeId, p.nameFr]));
+
 function provinceLabel(p: DfoPort): string {
   return p.provCodeId != null ? (PROVINCE_NAME_EN.get(p.provCodeId) ?? '') : '';
 }
 
 export default function DfoPortSelector({ value, codeId, onChange, subformId, placeholder = 'Select port…', disabled }: Props) {
-  const { t } = useTranslation('dfo');
+  const { t, i18n } = useTranslation('dfo');
+  const isFr = i18n.language.startsWith('fr');
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [searchAll, setSearchAll] = useState(false);
@@ -64,6 +69,12 @@ export default function DfoPortSelector({ value, codeId, onChange, subformId, pl
 
   const clear = () => onChange({ name: '', codeId: null });
 
+  // Display-only FR names (nameEn fallback); select()/clear() keep storing nameEn + codeId.
+  const rowName = (p: DfoPort) => (isFr && p.nameFr) || p.nameEn;
+  const triggerName = value
+    ? (isFr && codeId != null && FR_NAME_BY_ID.get(codeId)) || value
+    : placeholder;
+
   return (
     <View>
       <TouchableOpacity
@@ -72,7 +83,7 @@ export default function DfoPortSelector({ value, codeId, onChange, subformId, pl
         onPress={() => setOpen(prev => !prev)}
       >
         <Text style={[styles.triggerText, value ? styles.triggerTextSelected : null]} numberOfLines={1}>
-          {value ? value : placeholder}
+          {triggerName}
         </Text>
         <Text style={styles.arrow}>{open ? '▲' : '▼'}</Text>
       </TouchableOpacity>
@@ -104,7 +115,7 @@ export default function DfoPortSelector({ value, codeId, onChange, subformId, pl
                 style={[styles.row, p.codeId === codeId ? styles.rowSelected : null]}
                 onPress={() => select(p)}
               >
-                <Text style={styles.rowName}>{p.nameEn}</Text>
+                <Text style={styles.rowName}>{rowName(p)}</Text>
                 {provinceLabel(p) ? <Text style={styles.rowProv}>{provinceLabel(p)}</Text> : null}
               </TouchableOpacity>
             ))}

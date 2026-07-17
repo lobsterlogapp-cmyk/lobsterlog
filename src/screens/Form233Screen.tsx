@@ -286,7 +286,7 @@ export default function Form233Screen({ onClose }: Props) {
               activeOpacity={0.8}
             >
               <Text style={form.reason ? styles.dropdownValueText : styles.dropdownPlaceholderText}>
-                {form.reason || t('form233.reasonPlaceholder')}
+                {form.reason ? t(`form233.reasonOptions.${form.reason}`, { defaultValue: form.reason }) : t('form233.reasonPlaceholder')}
               </Text>
               <ChevronDown size={18} color="#94A3B8" />
             </TouchableOpacity>
@@ -305,7 +305,7 @@ export default function Form233Screen({ onClose }: Props) {
                       onPress={() => { set('reason')(opt); setReasonOpen(false); }}
                     >
                       <Text style={[styles.dropdownItemText, selected && styles.dropdownItemTextSelected]}>
-                        {opt}
+                        {t(`form233.reasonOptions.${opt}`, { defaultValue: opt })}
                       </Text>
                     </TouchableOpacity>
                   );
