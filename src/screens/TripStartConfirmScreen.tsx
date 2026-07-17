@@ -21,7 +21,7 @@ interface Props {
 }
 
 export default function TripStartConfirmScreen({ onConfirm, onBack }: Props) {
-  const { t } = useTranslation('dfo');
+  const { t, i18n } = useTranslation('dfo');
   const [profile, setProfile] = useState<CaptainProfile | null>(null);
   // Fixed at mount — this is the moment the user tapped "Fill Out New ELOG"
   const [tripStartTime] = useState(() => new Date().toISOString());
@@ -41,7 +41,8 @@ export default function TripStartConfirmScreen({ onConfirm, onBack }: Props) {
 
   const formatTripStart = (iso: string) => {
     const d = new Date(iso);
-    return d.toLocaleString('en-CA', { dateStyle: 'long', timeStyle: 'short' });
+    const locale = i18n.language.startsWith('fr') ? 'fr-CA' : 'en-CA';
+    return d.toLocaleString(locale, { dateStyle: 'long', timeStyle: 'short' });
   };
 
   const renderRow = (label: string, value: string) => (
@@ -100,7 +101,7 @@ export default function TripStartConfirmScreen({ onConfirm, onBack }: Props) {
           activeOpacity={0.8}
         >
           <User size={16} color="#1E3A8A" />
-          <Text style={styles.editButtonText}>{t('tripConfirm.editProfileButton')}</Text>
+          <Text style={styles.editButtonText} numberOfLines={1} adjustsFontSizeToFit>{t('tripConfirm.editProfileButton')}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.confirmButton}
@@ -230,6 +231,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#1E3A8A',
+    // Text defaults to flexShrink 0 in a row — unconstrained, it overflows the button
+    // and adjustsFontSizeToFit never engages. Shrinkable bounds let the scale kick in.
+    flexShrink: 1,
   },
   confirmButton: {
     flex: 2,
