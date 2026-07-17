@@ -409,3 +409,35 @@ string/code/doc edits. Next: Jonny marks §4, then a separate session executes t
 `logs.submittedTitle` was actually « Soumis » at S100 time. Per the S101a Phase-0 D2
 ruling, `logs.submittedTitle` → « Transmis » (folded into T21). Evidence + before/after:
 docs/GATE_S101A_FR_STRINGS.md §0.3 D2 / §1.1.
+
+--
+
+## S101b CORRECTION (2026-07-16, appended — original rows above NOT rewritten)
+
+§3.3 row E5 is RETRACTED. FullDfoForm.tsx:103 is the BYCATCH_USAGE_OPTIONS construction
+(`label: u.descEn`), but no display site renders that label — the bycatch usage picker
+and saved-entry rows render `t('form234.usageOption_<codeId>')` (locale-aware; the 5
+usageOption_* keys exist in en+fr dfo.json) and store the codeId. The S101a FR device
+walk (F4) showed French options, confirming. E5 dropped from the S101b fix list; no code
+change needed or made for E5. Also corrected by S101b recon: the E6 note "no MV row for
+39684–86 found in the reftables" — MV_GEAR_SUBTYPE_rel7.csv / MV_TRAP_SUBTYPE_rel7.csv
+(~/Desktop/DFO/ELOG_reftables/) DO carry those rows, with DESC_FRE identical to the
+FS234 Rule-611 block (the FR values used are unchanged; their authority is upgraded).
+Evidence: docs/GATE_S101B_DROPDOWNS.md §0.2/§0.6.
+
+--
+
+## S101b CORRECTION 2 (2026-07-16, appended — original rows above NOT rewritten)
+
+§3.3's E-inventory (E1–E8) was INCOMPLETE: the S101b FR device walk found three more
+234-form pickers rendering English in FR mode, none inventoried by S100 —
+(L1) bait TYPE list (Ajouter un appât; options getDfoBaitTypeList, stored value = the
+EN label in BaitEntry.type, which is ALSO the generator's BT_TYP_ID lookup key — the
+same stored-label emit coupling later proven for E1), (L2) marine-mammal species list
+(234 Interactions; MARINE_MAMMAL_OPTIONS hardcoded EN strings, stored value = the EN
+string, never emitted), (L3) bycatch species list (Ajouter une prise accessoire;
+options getDfoCatchSpeciesList, stored value = the EN label in BycatchEntry.species,
+which is the generator's SPECIE_ID lookup key against the pcons list). The §3.3 scan
+evidently keyed on reftable `descEn` render sites; these three lists render hand-typed
+dfoConstants labels / hardcoded strings, so they escaped the sweep. Recon, storage
+models, and fix designs: docs/GATE_S101B_DROPDOWNS.md (S101B SCOPE-GAP NOTE, 2026-07-16).
