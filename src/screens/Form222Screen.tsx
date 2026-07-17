@@ -35,6 +35,13 @@ import {
   SPECIMEN_CONDITION_LABELS,
   LENGTH_CATEGORY_LABELS,
 } from '../utils/dfoForm222Generator';
+import {
+  MV_NOAA_MM_SPECIES,
+  MV_INCIDENT_TYPE,
+  MV_CONFIDENCE_LEVEL,
+  MV_MM_SPECIMENS_CONDITION,
+  MV_MM_LENGTH_CATEGORY,
+} from '../data/reftables';
 import { loadLastLog } from '../utils/dfoLogStorage';
 import { submitDfoXml, isValidFormVrn } from '../utils/submitDfoXml';
 import { triggerBackup } from '../utils/dfoBackup';
@@ -42,6 +49,17 @@ import { generateDfoXmlFileName } from '../utils/dfoXmlGenerator';
 import { loadCaptainProfile, CaptainProfile, EMPTY_PROFILE } from '../utils/captainStorage';
 import { clampCoord4 } from '../utils/dfoConstants';
 import { REQUIRED_ASTERISK_COLOR } from '../styles/GlobalStyles';
+
+// FR display text for the stored EN reftable labels, one map per table (same descEn can
+// recur across tables with different FR). Display-only: the stored Form222Entry label
+// values and the generator's label→codeId resolution stay on descEn.
+const toFrByEn = (rows: readonly { descEn: string; descFr: string }[]) =>
+  new Map(rows.map(r => [r.descEn, r.descFr]));
+const SPECIES_FR = toFrByEn(MV_NOAA_MM_SPECIES);
+const INTERACTION_TYPE_FR = toFrByEn(MV_INCIDENT_TYPE);
+const CONFIDENCE_FR = toFrByEn(MV_CONFIDENCE_LEVEL);
+const SPECIMEN_COND_FR = toFrByEn(MV_MM_SPECIMENS_CONDITION);
+const LENGTH_CAT_FR = toFrByEn(MV_MM_LENGTH_CATEGORY);
 
 interface Props {
   onClose: () => void;
@@ -126,8 +144,9 @@ const parsePickerDateTime = (dateStr: string, timeStr: string): Date => {
 };
 
 export default function Form222Screen({ onClose }: Props) {
-  const { t } = useTranslation('dfo');
+  const { t, i18n } = useTranslation('dfo');
   const { t: tc } = useTranslation('common');
+  const isFr = i18n.language.startsWith('fr');
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [profile, setProfile] = useState<CaptainProfile>(EMPTY_PROFILE);
   const [speciesOpen, setSpeciesOpen] = useState(false);
@@ -385,7 +404,11 @@ export default function Form222Screen({ onClose }: Props) {
     placeholder: string,
     isLast = false,
     required = false,
-  ) => (
+    frMap?: Map<string, string>,
+  ) => {
+    // Display-only FR lookup; onSelect still stores the EN label the emit path resolves.
+    const show = (v: string) => (isFr && frMap?.get(v)) || v;
+    return (
     <View style={[styles.inputGroup, isLast && styles.lastInputGroup]}>
       <Text style={styles.label}>{label}{required && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
       <TouchableOpacity
@@ -401,7 +424,7 @@ export default function Form222Screen({ onClose }: Props) {
         activeOpacity={0.8}
       >
         <Text style={value ? styles.dropdownValueText : styles.dropdownPlaceholderText}>
-          {value || placeholder}
+          {value ? show(value) : placeholder}
         </Text>
         <ChevronDown size={18} color="#94A3B8" />
       </TouchableOpacity>
@@ -420,7 +443,7 @@ export default function Form222Screen({ onClose }: Props) {
                 onPress={() => { onSelect(opt); setOpen(false); }}
               >
                 <Text style={[styles.dropdownItemText, selected && styles.dropdownItemTextSelected]}>
-                  {opt}
+                  {show(opt)}
                 </Text>
               </TouchableOpacity>
             );
@@ -428,7 +451,8 @@ export default function Form222Screen({ onClose }: Props) {
         </View>
       )}
     </View>
-  );
+    );
+  };
 
   const renderYNToggle = (label: string, value: 'Y' | 'N', onToggle: () => void) => (
     <View style={styles.ynRow}>
@@ -626,6 +650,7 @@ export default function Form222Screen({ onClose }: Props) {
                 t('form222.speciesPlaceholder'),
                 false,
                 true,
+                SPECIES_FR,
               )}
 
               <View style={styles.inputGroup}>
@@ -650,6 +675,7 @@ export default function Form222Screen({ onClose }: Props) {
                 t('form222.interactionTypePlaceholder'),
                 false,
                 true,
+                INTERACTION_TYPE_FR,
               )}
 
               {/* Optional specimen detail (XSD minOccurs=0) → ID_CNFDNCE_ID / SPCMN_COND_ID / BDY_LEN_ID */}
@@ -661,6 +687,9 @@ export default function Form222Screen({ onClose }: Props) {
                 setConfidenceOpen,
                 set('confidenceLabel'),
                 t('form222.confidencePlaceholder'),
+                false,
+                false,
+                CONFIDENCE_FR,
               )}
 
               {renderDropdown(
@@ -671,6 +700,9 @@ export default function Form222Screen({ onClose }: Props) {
                 setSpecimenCondOpen,
                 set('specimenCondLabel'),
                 t('form222.specimenCondPlaceholder'),
+                false,
+                false,
+                SPECIMEN_COND_FR,
               )}
 
               {renderDropdown(
@@ -682,6 +714,8 @@ export default function Form222Screen({ onClose }: Props) {
                 set('lengthCatLabel'),
                 t('form222.lengthCatPlaceholder'),
                 true,
+                false,
+                LENGTH_CAT_FR,
               )}
             </View>
 
