@@ -115,8 +115,8 @@ import { TimerProvider } from './src/context/TimerContext';
 // in-app viewer. No network anywhere in this path. Two documents, one per language.
 const DFO_DOC_SOURCES = {
   providers: {
-    en: require('./assets/docs/providers_instructions_en.pdf'),
-    fr: require('./assets/docs/providers_instructions_fr.pdf'),
+    en: require('./assets/docs/LobsterLog_Providers_Instructions_v1_2_EN.pdf'),
+    fr: require('./assets/docs/LobsterLog_Instructions_Fournisseur_v1_2_FR.pdf'),
   },
   dfo234: {
     en: require('./assets/docs/dfo_instructions_234_7_en.pdf'),
