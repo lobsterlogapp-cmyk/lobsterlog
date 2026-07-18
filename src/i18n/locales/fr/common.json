@@ -94,8 +94,8 @@
     "totalGearPlaceholder": "ex. 375",
     "gearTypeLabel": "TYPE D'ENGIN (EX. CASIER/TRAPPE)",
     "gearTypePlaceholder": "ex. Casier/Trappe",
-    "elogKey": "Clé ELOG",
-    "elogKeyLabel": "CLÉ ELOG",
+    "elogKey": "Clé JBE",
+    "elogKeyLabel": "CLÉ JBE",
     "elogKeyPlaceholder": "Clé fournisseur du MPO",
     "save": "Enregistrer le profil",
     "saved": "Profil enregistré"

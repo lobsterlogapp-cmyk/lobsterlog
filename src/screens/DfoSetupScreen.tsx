@@ -27,11 +27,13 @@ interface Props {
 const isValidFin = (s: string): boolean =>
   /^(\d{9}|[CD]\d{7}|\d{5,6}|DFOCC\d{9})$/.test(s);
 
+// Display-only FR via i18n (S104 L5): stored value is subformId — the label never persists.
+// EN pill = defaultValue fallback; FR from MV_DFO_REGION_rel3.csv DESC_FRE (regId==CODE_ID).
 const REGIONS = [
-  { label: 'Maritimes', subformId: 90 },
-  { label: 'Gulf',      subformId: 89 },
-  { label: 'Quebec',    subformId: 88 },
-  { label: 'Nfld & Lab', subformId: 91 },
+  { label: 'Maritimes',  labelKey: 'setup.regionMaritimes', subformId: 90 },
+  { label: 'Gulf',       labelKey: 'setup.regionGulf',      subformId: 89 },
+  { label: 'Quebec',     labelKey: 'setup.regionQuebec',    subformId: 88 },
+  { label: 'Nfld & Lab', labelKey: 'setup.regionNL',        subformId: 91 },
 ] as const;
 
 export default function DfoSetupScreen({ onActivated, onClose, canActivateDfoFree }: Props) {
@@ -161,7 +163,7 @@ export default function DfoSetupScreen({ onActivated, onClose, canActivateDfoFre
                 activeOpacity={0.8}
               >
                 <Text style={[styles.pillText, selectedSubformId === r.subformId && styles.pillTextActive]}>
-                  {r.label}
+                  {t(r.labelKey, { defaultValue: r.label })}
                 </Text>
               </TouchableOpacity>
             ))}
