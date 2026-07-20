@@ -548,39 +548,43 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
     <SafeAreaView style={styles.container}>
       {/* ── Header ── */}
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.pillButton}
-          onPress={() => setCaptainProfileVisible(true)}
-        >
-          <User size={14} color="#1E3A8A" />
-          <Text style={styles.pillButtonText}>{t('logs.profileButton')}</Text>
-        </TouchableOpacity>
+        <View style={styles.headerSide}>
+          <TouchableOpacity
+            style={styles.pillButton}
+            onPress={() => setCaptainProfileVisible(true)}
+          >
+            <User size={14} color="#1E3A8A" />
+            <Text style={styles.pillButtonText}>{t('logs.profileButton')}</Text>
+          </TouchableOpacity>
+        </View>
 
         <Text style={styles.headerTitle}>{t('logs.headerTitle')}</Text>
 
-        {/* Inspection Mode (QR) — hidden for now: demoed to DFO, not currently wanted.
-            NOT deleted — flip false→true to re-enable. Screen + modal + state left intact. */}
-        {false && (
-          <TouchableOpacity
-            style={styles.pillButtonShield}
-            onPress={() => setInspectionModeVisible(true)}
-          >
-            <Shield size={14} color="#FFFFFF" />
-            <Text style={styles.pillButtonShieldText}>{t('logs.inspectButton')}</Text>
-          </TouchableOpacity>
-        )}
+        <View style={[styles.headerSide, styles.headerSideRight]}>
+          {/* Inspection Mode (QR) — hidden for now: demoed to DFO, not currently wanted.
+              NOT deleted — flip false→true to re-enable. Screen + modal + state left intact. */}
+          {false && (
+            <TouchableOpacity
+              style={styles.pillButtonShield}
+              onPress={() => setInspectionModeVisible(true)}
+            >
+              <Shield size={14} color="#FFFFFF" />
+              <Text style={styles.pillButtonShieldText}>{t('logs.inspectButton')}</Text>
+            </TouchableOpacity>
+          )}
 
-        {/* XML Test Harness — DEV-only entry point (relocated from DfoSetupScreen);
-            admin-gated on top since S101b (F1: dev clients show __DEV__ chrome to any role) */}
-        {__DEV__ && isAdmin && (
-          <TouchableOpacity
-            style={styles.pillButton}
-            onPress={() => setHarnessVisible(true)}
-          >
-            <Play size={14} color="#1E3A8A" />
-            <Text style={styles.pillButtonText}>XML Test Harness</Text>
-          </TouchableOpacity>
-        )}
+          {/* XML Test Harness — DEV-only entry point (relocated from DfoSetupScreen);
+              admin-gated on top since S101b (F1: dev clients show __DEV__ chrome to any role) */}
+          {__DEV__ && isAdmin && (
+            <TouchableOpacity
+              style={styles.pillButton}
+              onPress={() => setHarnessVisible(true)}
+            >
+              <Play size={14} color="#1E3A8A" />
+              <Text style={styles.pillButtonText}>XML Test Harness</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       <ScrollView
@@ -807,6 +811,15 @@ const styles = StyleSheet.create({
     color: '#1E293B',
     fontSize: 18,
     fontWeight: '700',
+    textAlign: 'center',
+  },
+  headerSide: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerSideRight: {
+    justifyContent: 'flex-end',
   },
   pillButton: {
     flexDirection: 'row',
