@@ -167,6 +167,13 @@ byte-for-byte and `dfoActivated:true`.
 
 1. **`New Boat` throwaway (uid `G6lxWhv9DQQmeNXZYJ6PQMO0vZM2`, role `'dfo'`) — FULLY DELETED (Jonny's revised ruling, 2026-07-19).** **Supersedes** any earlier keep/downgrade consideration — the decision is **delete outright**, not downgrade. **Auth user deleted by Jonny in the Firebase console.** Claude-verified read-only: Firestore `users/G6lxWh…/settings/profile` returns **NOT_FOUND** (no orphaned `role:'dfo'` doc left behind — Auth deletion doesn't cascade to Firestore, so this was checked explicitly). Its local AsyncStorage was already wiped by the mid-session app-delete. **Fully gone across all three surfaces — Auth, Firestore, local** — no second DFO identity remains on the sim or in the project. The demo account `dfoelog@…` (uid `AHfUKx…`) is now the sole `dfo`-role account.
 2. **Demo-account credentials handling — POLICY RECORDED.** The demo-account credentials (email + password + the reserved MAR-90 triplet + ELOG key) are handed to DFO **out-of-band at submission time**, and are **never** written to a repo, doc, gate file, or commit. (Access is discretionary per Standard v7; this gate doc deliberately records only the non-secret identity values — FIN/VRN/Licence, which are DFO's own reserved test triplet — and never the password or the ELOG key value.)
+3. **Signup-flow throwaways `billing@` + `support@` — DELETED (Jonny, 2026-07-20).** Created solely to capture the signup-state frames **F00b/F00c** (account-creation screens); both forward to the app Gmail. **Auth deleted by Jonny in the Firebase console.** Firestore verified **empty** — no `settings/profile` docs (the signups were never verified, so no doc was ever written). Residual local AsyncStorage **accepted as inert** (support@ on the EN sim, billing@ on the FR sim). Claude-corroborated read-only across **both** capture sims (iPhone 17 Pro F5B8F071 / iPhone 17 5D481C08): the only namespaced DFO data on either sim is the `dfoelog` demo (`AHfUKx…`) — **no support@/billing@ DFO-store namespace or profile data anywhere** → inert confirmed. **PENDING (Jonny):** delete the two verification emails from the app Gmail inbox.
+
+## Capture-prep note — dual-sim state (2026-07-20)
+
+The EN/FR capture pair is standing up. Current demo (`AHfUKx…`) state per sim (Claude storage read):
+- **EN sim** (iPhone 17 Pro, F5B8F071): `dfoActivated=true`, lang `en`.
+- **FR sim** (iPhone 17, 5D481C08): `dfoActivated=false`, lang `fr` — profile seeded but **not yet activated on the FR sim**. Activation is per-sim (Cloud Backup OFF ⇒ local-only), so **the FR sim still needs the demo activated** before its Group-B (activated dfo-list / seed-trip) shots. Flag, not a fault.
 
 ## Phase 0b region ruling + cross-session note
 

@@ -73,6 +73,9 @@ Folder: `~/Desktop/S106_capture` (NOT in repo — figures flow to Drive masters 
 
 ## §7 — Commit block (NO-GIT — Jonny runs, one line at a time, prompt must show `LobsterLog %`)
 
+## §8
+Header-centering fix (DfoLogsListScreen) live during capture. Jonny requested mid-session that Claude Code center the logs-list header title (EN + FR rendered right-shifted); fix applied via Metro hot-reload while captures ran, committed post-capture as its own display-only commit (f7bea477 — 42+/29−, header restructured into headerSide containers; XML-harness __DEV__ && isAdmin gate verified intact at line 578). Frames captured after the fix show the centered title; earlier logs-list frames may show the pre-fix offset — EN/FR pairs were shot in lockstep so pair-parity holds regardless. Not a §10 trigger.
+
 ```
 git add docs/GATE_S106_CAPTURE.md
 git add CLAUDE.md
