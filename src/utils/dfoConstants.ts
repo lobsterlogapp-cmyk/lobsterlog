@@ -1511,8 +1511,11 @@ export const DFO_SUBFORM_FIELD_CONFIG: Record<number, SubformFieldConfig> = {
     required: ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'fmaId', 'catchWeight', 'trapHauls', 'baitEntries', 'portId', 'gpsCoords'],
   },
   // ── MAR (subform 90) ────────────────────────────────────
+  // gpsCoords in visible (S110 Phase 3): keeps the GPS section rendering for MAR exactly as
+  // pre-S110 (F16 frames it on the MAR LFA 34 demo) — required only for 88/89; MAR emission
+  // stays Rule-3059-gated (38b) in the generator; NL(91) omits the key → section hidden.
   90: {
-    visible:  ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'lgridCodeId', 'baitEntries', 'crewNb', 'mammalIncident', 'sarIncident', 'lostGear', 'catchWeight', 'trapHauls', 'fmaId', 'portId', 'nbSpcmnBrd', 'hlin', 'hlout'],
+    visible:  ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'lgridCodeId', 'baitEntries', 'crewNb', 'mammalIncident', 'sarIncident', 'lostGear', 'catchWeight', 'trapHauls', 'fmaId', 'portId', 'nbSpcmnBrd', 'hlin', 'hlout', 'gpsCoords'],
     required: ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'fmaId', 'catchWeight', 'trapHauls', 'crewNb', 'baitEntries', 'portId', 'hlinCompany', 'hlinConfirmNo', 'hloutCompany', 'hloutConfirmNo'],
   },
   // ── NL (subform 91) ─────────────────────────────────────

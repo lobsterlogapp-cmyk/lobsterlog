@@ -1729,6 +1729,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         </View>
         )}
 
+        {/* GPS section: isVisible-gated (S110 Phase 3) — 'gpsCoords' is in the 88/89/90
+            visible configs, ABSENT from 91 (rows 82/83: LAT/LONG Blocked for NL; the sheet
+            legend says Blocked = "the application must prevent the entry"). Stored
+            gpsLat/gpsLng on existing NL drafts is untouched — state still hydrates and
+            buildLogData still writes it; the generator never emits it for 91 (Phase 1). */}
+        {isVisible('gpsCoords') && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View style={[styles.sectionIcon, { backgroundColor: '#E0E7FF' }]}><MapPin size={16} color="#4338CA" /></View>
@@ -1755,6 +1761,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           {renderField(t('form234.latitudeLabel'), gpsLat, (v: string) => { setGpsLat(v); setGpsSrc('manual'); }, '0.0000', false, false, 'numeric')}
           {renderField(t('form234.longitudeLabel'), gpsLng, (v: string) => { setGpsLng(v); setGpsSrc('manual'); }, '0.0000', false, false, 'numeric')}
         </View>
+        )}
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
