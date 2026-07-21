@@ -1187,6 +1187,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       trapSize,
       gearSubtypeId,
       operName:    'ok',
+      // S110 G1: EFFORT_DETAIL LAT/LONG Mandatory for QC(88)/GLF(89) (Subforms rows 82/83).
+      // Listed in FULL_DFO_REQUIRED_FIELDS for 88/89 only, so MAR/NL gates are unchanged.
+      gpsCoords:   gpsLat.trim() && gpsLng.trim() ? 'ok' : '',
       sailTime:      timeSailed,
       haulStartTime: timeStartedHauling,
       haulEndTime:   timeStoppedHauling,
@@ -1207,6 +1210,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       trapSize:    'Trap Size',
       gearSubtypeId: 'Gear Subtype',
       operName:    'Operator Name (Captain Profile)',
+      gpsCoords:   'GPS Coordinates (Latitude/Longitude)',
       sailTime:      'Time Sailed',
       haulStartTime: 'Time Started Hauling',
       haulEndTime:   'Time Stopped Hauling',

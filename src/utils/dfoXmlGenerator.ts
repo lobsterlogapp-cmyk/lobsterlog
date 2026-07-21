@@ -282,10 +282,15 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   }
   // GEAR_GRP_NUM: sequential from 1 per EFFORT node (Rule 609x); always 1 for single-effort log
   effort += tag('GEAR_GRP_NUM', '1', '          ');
-  // LAT/LONG: Rule 3059 — MAR(90) FMA 38b only (mandatory there, blocked in all other
-  // MAR FMAs). MODE attribute per Standard v6.1 §11.3: G = GPS-captured, M = manual
+  // LAT/LONG per subform — Subforms_requirements rows 82/83 + Rule 3059 (S110 G1 fix):
+  //   QC(88)/GLF(89): Mandatory (rows 82/83) — emit whenever captured;
+  //   MAR(90): Rule 3059 — FMA 38b only (mandatory there, blocked in all other MAR FMAs);
+  //   NL(91): Blocked (rows 82/83) — never emitted, even if coords exist on an old draft.
+  // MODE attribute per Standard v6.1 §11.3: G = GPS-captured, M = manual
   // entry/edit (open question 3 resolution; d.gpsSrc tracked by FullDfoForm).
-  if (subformId === 90 && Number(d.fmaId) === DFO_FMA_38B && d.gpsLat && d.gpsLng) {
+  const emitEffortCoords = subformId === 88 || subformId === 89 ||
+    (subformId === 90 && Number(d.fmaId) === DFO_FMA_38B);
+  if (emitEffortCoords && d.gpsLat && d.gpsLng) {
     const coordMode = d.gpsSrc === 'gps' ? 'G' : 'M';
     // Clamp to the XSD's ≤4-decimal LAT/LONG limit at emit (shared clampCoord4), matching
     // the 222 form path — a high-precision GPS read would otherwise draw WS1038. Emit-only.
@@ -874,6 +879,14 @@ export function validateElogXml(xml: string, subformId: number): { valid: boolea
           }
           if (subformId === 90 && efFma !== 28599 && (hasLat || hasLong)) {
             errors.push(`${dp}: LAT/LONG are blocked outside MAR FMA 38b (Rule 3059)`);
+          }
+          // Subforms_requirements rows 82/83 (S110 G1): LAT/LONG Mandatory for QC(88)/GLF(89),
+          // Blocked for NL(91). MAR is governed by Rule 3059 above.
+          if ((subformId === 88 || subformId === 89) && (!hasLat || !hasLong)) {
+            errors.push(`${dp}: LAT and LONG are mandatory for subform ${subformId} (rows 82/83)`);
+          }
+          if (subformId === 91 && (hasLat || hasLong)) {
+            errors.push(`${dp}: LAT/LONG are blocked for NL(91) (rows 82/83)`);
           }
           // Rules 653/654/655: NB_SPCMN_BRD — lobster in MAR 38b only
           get(ed, 'CATCH').forEach((c, ci) => {

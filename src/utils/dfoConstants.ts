@@ -1497,16 +1497,18 @@ export interface SubformFieldConfig {
 
 export const DFO_SUBFORM_FIELD_CONFIG: Record<number, SubformFieldConfig> = {
   // ── QC (subform 88) ─────────────────────────────────────
+  // gpsCoords (EFFORT_DETAIL.LAT/LONG) Mandatory for QC/GLF — Subforms_requirements rows 82/83
+  // (S110 G1); Blocked for NL (absent from 91); MAR governed by Rule 3059 (38b-only emit).
   88: {
-    visible:  ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'baitEntries', 'crewNb', 'mammalIncident', 'sarIncident', 'lostGear', 'catchWeight', 'trapHauls', 'fmaId', 'departurePort', 'portId'],
-    required: ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'fmaId', 'catchWeight', 'trapHauls', 'crewNb', 'baitEntries', 'departurePort', 'portId'],
+    visible:  ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'baitEntries', 'crewNb', 'mammalIncident', 'sarIncident', 'lostGear', 'catchWeight', 'trapHauls', 'fmaId', 'departurePort', 'portId', 'gpsCoords'],
+    required: ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'fmaId', 'catchWeight', 'trapHauls', 'crewNb', 'baitEntries', 'departurePort', 'portId', 'gpsCoords'],
   },
   // ── GLF (subform 89) ────────────────────────────────────
   // portId (LANDING.PORT_ID) is XSD-mandatory for every subform; GLF default filter
   // pending Kane's blocked-vs-mandatory note, but the schema requires the element.
   89: {
-    visible:  ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'baitEntries', 'mammalIncident', 'sarIncident', 'lostGear', 'catchWeight', 'trapHauls', 'fmaId', 'portId'],
-    required: ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'fmaId', 'catchWeight', 'trapHauls', 'baitEntries', 'portId'],
+    visible:  ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'baitEntries', 'mammalIncident', 'sarIncident', 'lostGear', 'catchWeight', 'trapHauls', 'fmaId', 'portId', 'gpsCoords'],
+    required: ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'fmaId', 'catchWeight', 'trapHauls', 'baitEntries', 'portId', 'gpsCoords'],
   },
   // ── MAR (subform 90) ────────────────────────────────────
   90: {

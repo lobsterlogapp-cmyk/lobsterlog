@@ -56,6 +56,10 @@ function qcLog(fmaId: string, gridId?: string): any {
       portLandedCodeId: '22648',
       soakDuration: '2',
       baitEntries: JSON.stringify([{ type: 'Mackerel, Atlantic', lbs: '100' }]),
+      // S110 G1: LAT/LONG now mandatory for QC (rows 82/83) — needed for the valid:true asserts
+      gpsLat: '48.4488',
+      gpsLng: '-68.5236',
+      gpsSrc: 'gps',
       useCrInd: 'Y',
       carrierVrn: '106460',
       prtnshpId: '39468',

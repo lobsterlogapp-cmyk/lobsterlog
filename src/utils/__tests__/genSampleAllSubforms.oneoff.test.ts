@@ -61,6 +61,10 @@ const FIXTURES: { name: string; file: string; log: any }[] = [
     log.data.portLandedCodeId = '22648';
     log.data.soakDuration = '2'; // days (Rule 286) — wire converts to minutes
     log.data.baitEntries = JSON.stringify([{ type: 'Mackerel, Atlantic', lbs: '100' }]);
+    // S110 G1: EFFORT_DETAIL LAT/LONG mandatory for QC (rows 82/83) — GPS-sourced → MODE="G"
+    log.data.gpsLat = '48.4488';
+    log.data.gpsLng = '-68.5236';
+    log.data.gpsSrc = 'gps';
     // QC-only: USE_CR_IND + carrier VRN (Rules 639/642), PRTNSHP_ID, TRANSFER (Rules 248-252)
     log.data.useCrInd = 'Y';
     log.data.carrierVrn = '106460';
@@ -79,6 +83,10 @@ const FIXTURES: { name: string; file: string; log: any }[] = [
     log.data.portLandedCodeId = '19322'; // MV_PORT — Aboiteau (NB); LANDING.PORT_ID now mandatory all subforms
     log.data.soakDuration = '2'; // days (Rule 286) — wire converts to minutes
     log.data.baitEntries = JSON.stringify([{ type: 'Squid, Illex', lbs: '100' }]);
+    // S110 G1: EFFORT_DETAIL LAT/LONG mandatory for GLF (rows 82/83) — typed → MODE="M"
+    log.data.gpsLat = '46.2412';
+    log.data.gpsLng = '-64.5433';
+    log.data.gpsSrc = 'manual';
     return { name: 'GLF-89', file: '/tmp/sample_glf89.xml', log };
   })(),
   (() => {
