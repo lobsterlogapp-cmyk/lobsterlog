@@ -70,6 +70,13 @@ export interface Form222Entry {
   observerNm: string;
   contactInfo: string;
   remarks: string;           // optional free-text
+  // Form 222 T6 free-text fields (XSD 39588.222, all string_150, minOccurs=0). Session 111.
+  // Stored as raw text (not codeIds) — additive optional fields; old entries parse unchanged.
+  siteDsc?: string;      // → MM_INTER.SITE_DSC        (Location / Emplacement)
+  gearDmgRem?: string;   // → MM_INTER.GEAR_DMG_REM    (Remark (lost gear) / Remarque (dommages))
+  docRem?: string;       // → MM_INTER.DOC_REM         (Remark / Remarque)
+  eventDsc?: string;     // → MM_INTER.EVENT_DSC       (Event description / Description de l'évènement)
+  incdntRem?: string;    // → MM_INTER_INCDNT.INCDNT_REM (Remark (Incident type) / Remarque (type d'incident))
   // Optional MM_INTER detail (XSD minOccurs=0) — human-readable labels resolved to codeIds
   // via CONFIDENCE_LEVELS / SPECIMEN_CONDITIONS / LENGTH_CATEGORIES at emit.
   confidenceLabel?: string;   // → ID_CNFDNCE_ID
@@ -157,6 +164,8 @@ export function generateForm222Xml(entry: Form222Entry, profile: CaptainProfile)
 
   if (entry.interactInd === 'Y') {
     mm += tag('INTERACT_DT', toDate12(entry.interactionDate, entry.interactionTime), '    ');
+    // SITE_DSC (string_150, opt) — XSD sequence: after INTERACT_DT, before LAT.
+    mm += tag('SITE_DSC', entry.siteDsc ?? '', '    ');
     // LAT/LONG: typed manually on this form → MODE="M" (Standard v6.1 §11.3).
     // Clamped to ≤4 decimals at emit (XSD LAT/LONG types) to avoid WS1038.
     if (entry.lat.trim()) mm += `    <LAT MODE="M">${xmlEscape(clampCoord4(entry.lat))}</LAT>\n`;
@@ -178,11 +187,17 @@ export function generateForm222Xml(entry: Form222Entry, profile: CaptainProfile)
     const cond = SPECIMEN_CONDITIONS.find(c => c.label === entry.specimenCondLabel);
     const len  = LENGTH_CATEGORIES.find(c => c.label === entry.lengthCatLabel);
     mm += tag('GEAR_DMG_IND', entry.gearDamageInd, '    ');
+    // GEAR_DMG_REM (string_150, opt) — XSD sequence: after the gear indicators (…CAUS_KNOWN_IND), before NOAA_SPECIE_COD.
+    mm += tag('GEAR_DMG_REM', entry.gearDmgRem ?? '', '    ');
     mm += tag('NOAA_SPECIE_COD', specie?.codeId ?? '', '    ');
     mm += tag('ID_CNFDNCE_ID', conf?.codeId ?? '', '    ');
     mm += tag('SPCMN_COND_ID', cond?.codeId ?? '', '    ');
     mm += tag('NB_SPCMN_BEST', entry.nbAnimals, '    ');
+    // DOC_REM (string_150, opt) — XSD sequence: after the documentation indicators (…OTHR_DOC_IND), before BDY_LEN_ID.
+    mm += tag('DOC_REM', entry.docRem ?? '', '    ');
     mm += tag('BDY_LEN_ID', len?.codeId ?? '', '    ');
+    // EVENT_DSC (string_150, opt) — XSD sequence: after BDY_LEN, before DG_CLOSE_DT.
+    mm += tag('EVENT_DSC', entry.eventDsc ?? '', '    ');
   }
 
   mm += tag('DG_CLOSE_DT', toCloseTimestamp(), '    ');
@@ -201,9 +216,13 @@ export function generateForm222Xml(entry: Form222Entry, profile: CaptainProfile)
     if (entry.entangleInd === 'Y') codes.add(INCDNT_ENTANGLEMENT);
     if (entry.injuryInd === 'Y') codes.add(INCDNT_SICK_OR_INJURED);
     if (entry.deathInd === 'Y') codes.add(INCDNT_DEAD_ANIMAL);
-    for (const code of codes) {
-      mm += `    <MM_INTER_INCDNT>\n${tag('INCDNT_TYP_ID', code, '      ')}    </MM_INTER_INCDNT>\n`;
-    }
+    // INCDNT_REM (string_150, opt) rides the FIRST incident node — the selected
+    // interaction type (added to `codes` first, and Set preserves insertion order).
+    // XSD sequence within MMinter_incdnt_type: after INCDNT_TYP_ID, before REM.
+    Array.from(codes).forEach((code, i) => {
+      const incdntRem = i === 0 ? tag('INCDNT_REM', entry.incdntRem ?? '', '      ') : '';
+      mm += `    <MM_INTER_INCDNT>\n${tag('INCDNT_TYP_ID', code, '      ')}${incdntRem}    </MM_INTER_INCDNT>\n`;
+    });
   }
 
   mm += '  </MM_INTER>\n';
@@ -250,6 +269,12 @@ export function validateForm222Xml(
 
   const lgbkRef = elem('LGBK_NUM_REF');
   if (lgbkRef !== null && lgbkRef.length > 15) errors.push(`LGBK_NUM_REF exceeds string_15: ${lgbkRef}`);
+
+  // T6 free-text fields (all string_150, optional) — length backstop mirroring LGBK_NUM_REF.
+  (['SITE_DSC', 'GEAR_DMG_REM', 'DOC_REM', 'EVENT_DSC', 'INCDNT_REM'] as const).forEach(name => {
+    const v = elem(name);
+    if (v !== null && v.length > 150) errors.push(`${name} exceeds string_150: ${v}`);
+  });
 
   // When INTERACT_IND = Y, the detail fields this app always collects are required
   if (interactInd === 'Y') {

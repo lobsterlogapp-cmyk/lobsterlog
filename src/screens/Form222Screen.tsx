@@ -83,6 +83,12 @@ interface FormState {
   observerNm: string;
   contactInfo: string;
   remarks: string;
+  // T6 free-text fields (all string_150, optional) — Session 111
+  siteDsc: string;      // → SITE_DSC
+  gearDmgRem: string;   // → GEAR_DMG_REM
+  docRem: string;       // → DOC_REM
+  eventDsc: string;     // → EVENT_DSC
+  incdntRem: string;    // → INCDNT_REM (rides the first incident node)
   confidenceLabel: string;   // → ID_CNFDNCE_ID (optional)
   specimenCondLabel: string; // → SPCMN_COND_ID (optional)
   lengthCatLabel: string;    // → BDY_LEN_ID (optional)
@@ -109,6 +115,11 @@ const EMPTY_FORM: FormState = {
   observerNm: '',
   contactInfo: '',
   remarks: '',
+  siteDsc: '',
+  gearDmgRem: '',
+  docRem: '',
+  eventDsc: '',
+  incdntRem: '',
   confidenceLabel: '',
   specimenCondLabel: '',
   lengthCatLabel: '',
@@ -338,6 +349,11 @@ export default function Form222Screen({ onClose }: Props) {
                 observerNm: form.observerNm,
                 contactInfo: form.contactInfo,
                 remarks: form.remarks,
+                siteDsc: form.siteDsc,
+                gearDmgRem: form.gearDmgRem,
+                docRem: form.docRem,
+                eventDsc: form.eventDsc,
+                incdntRem: form.incdntRem,
                 confidenceLabel: form.confidenceLabel,
                 specimenCondLabel: form.specimenCondLabel,
                 lengthCatLabel: form.lengthCatLabel,
@@ -622,7 +638,7 @@ export default function Form222Screen({ onClose }: Props) {
                 {!!latError && <Text style={styles.errorText}>{latError}</Text>}
               </View>
 
-              <View style={styles.lastInputGroup}>
+              <View style={styles.inputGroup}>
                 <Text style={styles.label}>{t('form222.lonLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
                 <TextInput
                   style={[styles.input, lonError ? styles.inputError : null]}
@@ -633,6 +649,19 @@ export default function Form222Screen({ onClose }: Props) {
                   keyboardType="numeric"
                 />
                 {!!lonError && <Text style={styles.errorText}>{lonError}</Text>}
+              </View>
+
+              {/* SITE_DSC (string_150, optional) — free-text description of the interaction site */}
+              <View style={styles.lastInputGroup}>
+                <Text style={styles.label}>{t('form222.siteDscLabel')}</Text>
+                <TextInput
+                  style={styles.input}
+                  value={form.siteDsc}
+                  onChangeText={set('siteDsc')}
+                  placeholder={t('form222.siteDscPlaceholder')}
+                  placeholderTextColor="#CBD5E1"
+                  maxLength={150}
+                />
               </View>
             </View>
 
@@ -728,6 +757,31 @@ export default function Form222Screen({ onClose }: Props) {
               {form.entangleInd === 'Y' &&
                 renderYNToggle(t('form222.releaseIndLabel'),   form.releaseInd,    toggleYN('releaseInd'))}
               {renderYNToggle(t('form222.gearDamageIndLabel'), form.gearDamageInd, toggleYN('gearDamageInd'))}
+
+              {/* GEAR_DMG_REM (string_150, optional) — remark about gear damage */}
+              <View style={[styles.inputGroup, { marginTop: 12 }]}>
+                <Text style={styles.label}>{t('form222.gearDmgRemLabel')}</Text>
+                <TextInput
+                  style={styles.input}
+                  value={form.gearDmgRem}
+                  onChangeText={set('gearDmgRem')}
+                  placeholder={t('form222.gearDmgRemPlaceholder')}
+                  placeholderTextColor="#CBD5E1"
+                  maxLength={150}
+                />
+              </View>
+              {/* INCDNT_REM (string_150, optional) — remark about the incident type */}
+              <View style={styles.lastInputGroup}>
+                <Text style={styles.label}>{t('form222.incdntRemLabel')}</Text>
+                <TextInput
+                  style={styles.input}
+                  value={form.incdntRem}
+                  onChangeText={set('incdntRem')}
+                  placeholder={t('form222.incdntRemPlaceholder')}
+                  placeholderTextColor="#CBD5E1"
+                  maxLength={150}
+                />
+              </View>
             </View>
 
             {/* Observer */}
@@ -761,6 +815,32 @@ export default function Form222Screen({ onClose }: Props) {
             {/* Remarks */}
             <View style={styles.card}>
               <Text style={styles.cardHeader}>{t('form222.remarksCard')}</Text>
+
+              {/* EVENT_DSC (string_150, optional) — narrative description of the event */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>{t('form222.eventDscLabel')}</Text>
+                <TextInput
+                  style={styles.input}
+                  value={form.eventDsc}
+                  onChangeText={set('eventDsc')}
+                  placeholder={t('form222.eventDscPlaceholder')}
+                  placeholderTextColor="#CBD5E1"
+                  maxLength={150}
+                />
+              </View>
+              {/* DOC_REM (string_150, optional) — remark about available documentation */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>{t('form222.docRemLabel')}</Text>
+                <TextInput
+                  style={styles.input}
+                  value={form.docRem}
+                  onChangeText={set('docRem')}
+                  placeholder={t('form222.docRemPlaceholder')}
+                  placeholderTextColor="#CBD5E1"
+                  maxLength={150}
+                />
+              </View>
+              {/* Existing general Comments (REM, string_2000) — untouched */}
               <View style={styles.lastInputGroup}>
                 <TextInput
                   style={[styles.input, styles.remarksInput]}
