@@ -285,6 +285,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
 
   // MAR-specific fields (Task 2)
   const [nbSpcmnBrd, setNbSpcmnBrd] = useState('');
+  // NL-only (S110 Phase 2): CATCH.NB_SPCMN_KEPT — mandatory on the NL lobster catch
+  // (Rule 976), blocked for QC/GLF/MAR (Subforms row 93).
+  const [nbSpcmnKept, setNbSpcmnKept] = useState('');
   const [hlinCompany, setHlinCompany] = useState('');
   const [hlinConfirmNo, setHlinConfirmNo] = useState('');
   const [hlinEta, setHlinEta] = useState('');
@@ -483,6 +486,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           // lostGear* keys (if any) are simply ignored, no longer surfaced or re-emitted.
           // MAR-specific fields
           setNbSpcmnBrd(d.nbSpcmnBrd || '');
+          setNbSpcmnKept(d.nbSpcmnKept || '');
           setHlinCompany(d.hlinCompany || '');
           setHlinConfirmNo(d.hlinConfirmNo || '');
           setHlinEta(d.hlinEta || '');
@@ -635,6 +639,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     // lostGear* write-out removed (S93) — LOST_GEAR_IND Blocked in 234.12, no longer captured.
     // MAR-specific
     nbSpcmnBrd,
+    // NL-specific (S110 Phase 2)
+    nbSpcmnKept,
     hlinCompany, hlinConfirmNo, hlinEta, hlinTotalWeight,
     hloutCompany, hloutConfirmNo,
   });
@@ -1186,6 +1192,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       portId:      portLanded,
       trapSize,
       gearSubtypeId,
+      // S110 Phase 2: NL-only NB_SPCMN_KEPT (Rule 976) — listed in FULL_DFO_REQUIRED_FIELDS[91] only.
+      nbSpcmnKept,
       operName:    'ok',
       // S110 G1: EFFORT_DETAIL LAT/LONG Mandatory for QC(88)/GLF(89) (Subforms rows 82/83).
       // Listed in FULL_DFO_REQUIRED_FIELDS for 88/89 only, so MAR/NL gates are unchanged.
@@ -1209,6 +1217,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       portId:      'Port Landed',
       trapSize:    'Trap Size',
       gearSubtypeId: 'Gear Subtype',
+      nbSpcmnKept: 'Number of specimens kept',
       operName:    'Operator Name (Captain Profile)',
       gpsCoords:   'GPS Coordinates (Latitude/Longitude)',
       sailTime:      'Time Sailed',
@@ -1604,6 +1613,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                     )}
           {renderField(t('form234.catchWeightLabel'), catchWeight, setCatchWeight, '0', false, false, 'numeric', isRequired('catchWeight'))}
           {renderField(t('form234.trapHaulsLabel'), trapHauls, setTrapHauls, '0', false, false, 'numeric', isRequired('trapHauls'))}
+          {/* NB_SPCMN_KEPT: NL(91) only — mandatory on the lobster catch (Rule 976), blocked
+              for QC/GLF/MAR (Subforms row 93). isVisible-gated so 88/89/90 screens are
+              pixel-identical to pre-S110 (S110 Phase 2). */}
+          {isVisible('nbSpcmnKept') &&
+            renderField(t('form234.nbSpcmnKeptLabel'), nbSpcmnKept, setNbSpcmnKept, '0', false, false, 'numeric', true)}
           {/* NB_VNTCH / NB_VNTCH_YOU: QC(88) only, mandatory in the Rule 623/625 FMA lists, blocked elsewhere */}
           {subformId === 88 && fmaId != null && DFO_FMA_NB_VNTCH.has(fmaId) &&
             renderField(t('form234.nbVntchLabel'), vNotchCount, setVNotchCount, '0', false, false, 'numeric', true)}

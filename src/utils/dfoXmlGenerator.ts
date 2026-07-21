@@ -311,6 +311,13 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   effort += `          <CATCH>\n`;
   effort += tag('SPECIE_ID',     '1312', '            ');
   effort += tag('KEPT_WT',       catchWtKg, '            ');
+  // NB_SPCMN_KEPT: NL(91) only — mandatory for the lobster catch (Rule 976), blocked for
+  // the non-lobster case (Rule 977) and for QC/GLF/MAR (Subforms row 93). The single CATCH
+  // node is always the lobster target (Rule 2020), so the gate is subform-only (S110 Phase 2).
+  // XSD catch_type sequence: after KEPT_WT, before SPECIE_FRM_ID.
+  if (subformId === 91) {
+    effort += tag('NB_SPCMN_KEPT', d.nbSpcmnKept ?? '', '            ');
+  }
   effort += tag('SPECIE_FRM_ID', String(DFO_SPECIE_FRM_ID), '            ');
   // NB_SPCMN_BRD: lobster in MAR(90) FMA 38b only — mandatory there (Rule 654),
   // blocked for every other FMA (Rule 655) and species (Rule 653)
@@ -906,6 +913,19 @@ export function validateElogXml(xml: string, subformId: number): { valid: boolea
             }
             if (subformId === 90 && get(c, 'NB_SPCMN_DISC').length > 0) {
               errors.push(`${dp}.CATCH[${ci + 1}]: NB_SPCMN_DISC is blocked for MAR(90)`);
+            }
+            // NB_SPCMN_KEPT (S110 Phase 2): blocked for QC(88)/GLF(89) too (Subforms row 93);
+            // NL(91) — mandatory on the lobster catch (Rule 976), blocked on any
+            // non-lobster catch (Rule 977).
+            const kept = get(c, 'NB_SPCMN_KEPT').length > 0;
+            if ((subformId === 88 || subformId === 89) && kept) {
+              errors.push(`${dp}.CATCH[${ci + 1}]: NB_SPCMN_KEPT is blocked for subform ${subformId} (row 93)`);
+            }
+            if (subformId === 91 && specie === '1312' && !kept) {
+              errors.push(`${dp}.CATCH[${ci + 1}]: NB_SPCMN_KEPT is mandatory for NL lobster catches (Rule 976)`);
+            }
+            if (subformId === 91 && specie !== '1312' && kept) {
+              errors.push(`${dp}.CATCH[${ci + 1}]: NB_SPCMN_KEPT is blocked for non-lobster catches (Rule 977)`);
             }
           });
         });

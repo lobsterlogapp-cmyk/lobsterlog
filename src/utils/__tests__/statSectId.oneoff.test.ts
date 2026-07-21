@@ -54,6 +54,8 @@ function nlLog(fmaId: string, statSectId?: string): any {
       soakDuration: '2',
       gearSubtypeId: '39684',
       trapSize: '39682',
+      // S110 P2: NB_SPCMN_KEPT mandatory on the NL lobster catch (Rule 976) — needed for valid:true
+      nbSpcmnKept: '120',
       baitEntries: JSON.stringify([{ type: 'Squid, Illex', lbs: '100' }]),
     },
   };

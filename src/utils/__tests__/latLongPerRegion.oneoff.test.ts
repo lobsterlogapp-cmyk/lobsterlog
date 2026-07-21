@@ -103,6 +103,8 @@ function makeLog(subformId: number): any {
   log.data.soakDuration = '2';
   log.data.trapSize = '39682';
   log.data.gearSubtypeId = '39684';
+  // S110 P2: NB_SPCMN_KEPT mandatory on the NL lobster catch (Rule 976) — needed for valid:true
+  log.data.nbSpcmnKept = '120';
   log.data.baitEntries = JSON.stringify([{ type: 'Squid, Illex', lbs: '100' }]);
   return log;
 }

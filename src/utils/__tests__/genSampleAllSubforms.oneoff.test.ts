@@ -117,6 +117,7 @@ const FIXTURES: { name: string; file: string; log: any }[] = [
     log.data.soakDuration = '2'; // days (Rule 286) — wire converts to minutes
     log.data.gearSubtypeId = '39684'; // Wooden traps
     log.data.trapSize = '39682'; // TRP_SZ_ID — Standard (mandatory for NL-91, Rule 611)
+    log.data.nbSpcmnKept = '120'; // CATCH.NB_SPCMN_KEPT — mandatory on the NL lobster catch (Rule 976, S110 P2)
     log.data.baitEntries = JSON.stringify([{ type: 'Squid, Illex', lbs: '100' }]);
     return { name: 'NL-91', file: '/tmp/sample_nl91.xml', log };
   })(),

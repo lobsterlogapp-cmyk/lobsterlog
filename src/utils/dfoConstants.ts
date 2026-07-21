@@ -1518,10 +1518,12 @@ export const DFO_SUBFORM_FIELD_CONFIG: Record<number, SubformFieldConfig> = {
   // ── NL (subform 91) ─────────────────────────────────────
   // trapSize (EFFORT_DETAIL.TRP_SZ_ID) mandatory for NL only — Subforms_requirements_234.xlsx
   // row 79; gearSubtypeId (EFFORT_BY_GEAR.GEAR_SBTYP_ID) mandatory for NL only — row 75.
-  // Both blocked for 88/89/90 (absent from their config = not rendered, not required).
+  // nbSpcmnKept (CATCH.NB_SPCMN_KEPT) NL only — mandatory on the lobster catch (Rule 976),
+  // blocked for 88/89/90 (row 93) — S110 Phase 2.
+  // All blocked for 88/89/90 (absent from their config = not rendered, not required).
   91: {
-    visible:  ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'baitEntries', 'mammalIncident', 'sarIncident', 'lostGear', 'catchWeight', 'trapHauls', 'fmaId', 'departurePort', 'portId', 'trapSize', 'gearSubtypeId'],
-    required: ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'fmaId', 'catchWeight', 'trapHauls', 'baitEntries', 'departurePort', 'portId', 'trapSize', 'gearSubtypeId'],
+    visible:  ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'baitEntries', 'mammalIncident', 'sarIncident', 'lostGear', 'catchWeight', 'trapHauls', 'fmaId', 'departurePort', 'portId', 'trapSize', 'gearSubtypeId', 'nbSpcmnKept'],
+    required: ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'fmaId', 'catchWeight', 'trapHauls', 'baitEntries', 'departurePort', 'portId', 'trapSize', 'gearSubtypeId', 'nbSpcmnKept'],
   },
 };
 
