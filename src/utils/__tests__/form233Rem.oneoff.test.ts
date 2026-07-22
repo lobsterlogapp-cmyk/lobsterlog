@@ -62,3 +62,45 @@ test('writes the REM sample for the xmllint gate', () => {
   fs.writeFileSync(`${dir}/sample_233_rem.xml`, xml);
   expect(validateForm233Xml(xml).valid).toBe(true);
 });
+
+// ---- Session 112: REPORT_DTL.REM (the section note) ----
+// A separate FR-accented note (distinct text from REMARK) so both REMs can be told apart.
+const DTL_REMARK = "Période d'inactivité prolongée — attente d'une pièce du fournisseur";
+const DTL_ESCAPED = "Période d&apos;inactivité prolongée — attente d&apos;une pièce du fournisseur";
+const REPORT_ESCAPED = "Bateau immobilisé au quai à cause d&apos;une panne de moteur — pièce en commande";
+
+test('REPORT_DTL.REM emits as the last child of REPORT_DTL (after REASON)', () => {
+  const xml = generateForm233Xml({ ...base, reportDtlRemarks: DTL_REMARK }, profile);
+  const dtlBlock = xml.slice(xml.indexOf('<REPORT_DTL>'), xml.indexOf('</REPORT_DTL>'));
+  expect(dtlBlock).toContain(`<REM>${DTL_ESCAPED}</REM>`);
+  expect(dtlBlock.indexOf('<REM>')).toBeGreaterThan(dtlBlock.indexOf('<REASON>')); // last child
+  expect(validateForm233Xml(xml).valid).toBe(true);
+});
+
+test('empty section note omits REPORT_DTL.REM; REPORT.REM is unaffected', () => {
+  const xml = generateForm233Xml({ ...base, remarks: REMARK }, profile); // no reportDtlRemarks
+  const dtlBlock = xml.slice(xml.indexOf('<REPORT_DTL>'), xml.indexOf('</REPORT_DTL>'));
+  expect(dtlBlock).not.toContain('<REM>'); // REPORT_DTL.REM cleanly absent
+  expect(xml).toContain(`<REM>${REPORT_ESCAPED}</REM>`); // REPORT-level REM still present
+  expect(validateForm233Xml(xml).valid).toBe(true);
+});
+
+test('both REMs filled with different text → each carries its own text (R-C)', () => {
+  const xml = generateForm233Xml({ ...base, remarks: REMARK, reportDtlRemarks: DTL_REMARK }, profile);
+  // REPORT.REM sits OUTSIDE/before REPORT_DTL; REPORT_DTL.REM sits INSIDE it.
+  const iReportRem = xml.indexOf(`<REM>${REPORT_ESCAPED}</REM>`);
+  const iDtlOpen = xml.indexOf('<REPORT_DTL>');
+  expect(iReportRem).toBeGreaterThan(-1);
+  expect(iReportRem).toBeLessThan(iDtlOpen);
+  const dtlBlock = xml.slice(iDtlOpen, xml.indexOf('</REPORT_DTL>'));
+  expect(dtlBlock).toContain(`<REM>${DTL_ESCAPED}</REM>`);
+  expect(dtlBlock).not.toContain(REPORT_ESCAPED); // the two texts never cross
+  expect(validateForm233Xml(xml).valid).toBe(true);
+});
+
+test('writes the REPORT_DTL.REM sample for the xmllint gate', () => {
+  const xml = generateForm233Xml({ ...base, remarks: REMARK, reportDtlRemarks: DTL_REMARK }, profile);
+  const dir = process.env.CLAUDE_JOB_DIR ? `${process.env.CLAUDE_JOB_DIR}/tmp` : '/tmp';
+  fs.writeFileSync(`${dir}/sample_233_dtl_rem.xml`, xml);
+  expect(validateForm233Xml(xml).valid).toBe(true);
+});

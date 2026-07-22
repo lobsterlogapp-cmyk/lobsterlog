@@ -24,6 +24,7 @@ export interface Form233Entry {
   licenceNo: string;         // snapshotted from profile at save time
   fin: string;               // snapshotted from profile at save time
   remarks?: string;          // → REPORT.REM (string_2000, optional) — Session 111; additive
+  reportDtlRemarks?: string; // → REPORT_DTL.REM (string_2000, optional) — Session 112; additive
   sentToDfo: boolean;
   sentAt?: number;
 }
@@ -94,6 +95,9 @@ export function generateForm233Xml(entry: Form233Entry, profile: CaptainProfile)
   dtl += tag('END_DT',   endDt, '      ');
   dtl += tag('LIC_NO',   entry.licenceNo, '      ');
   dtl += tag('REASON',   entry.reason, '      ');
+  // REM (string_2000, opt) — REPORT_DTL-level note. XSD report_dtl_type sequence: LAST child,
+  // after REASON. Distinct from REPORT.REM above — the two carry separate text (never the same).
+  dtl += tag('REM',      entry.reportDtlRemarks ?? '', '      ');
   dtl += '    </REPORT_DTL>\n';
 
   let report = '  <REPORT>\n';

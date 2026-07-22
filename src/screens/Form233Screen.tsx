@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronLeft, ChevronDown, Calendar } from 'lucide-react-native';
+import { ChevronLeft, ChevronDown, Calendar, StickyNote } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import {
   Form233Entry,
@@ -40,7 +40,8 @@ interface FormState {
   periodStartDate: string;
   periodEndDate: string;
   reason: string;
-  remarks: string;   // → REPORT.REM (string_2000, optional) — Session 111
+  remarks: string;            // → REPORT.REM (string_2000, optional) — Session 111
+  reportDtlRemarks: string;   // → REPORT_DTL.REM (string_2000, optional) — Session 112
 }
 
 const EMPTY_FORM: FormState = {
@@ -48,6 +49,7 @@ const EMPTY_FORM: FormState = {
   periodEndDate: '',
   reason: '',
   remarks: '',
+  reportDtlRemarks: '',
 };
 
 // Mirror of FullDfoForm.formatDate — picker Date → YYYY-MM-DD (the string the generator accepts).
@@ -75,6 +77,7 @@ export default function Form233Screen({ onClose }: Props) {
   const [profile, setProfile] = useState<CaptainProfile>(EMPTY_PROFILE);
   const [reasonOpen, setReasonOpen] = useState(false);
   const [sending, setSending] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
 
   useEffect(() => {
     loadCaptainProfile().then(setProfile);
@@ -82,6 +85,30 @@ export default function Form233Screen({ onClose }: Props) {
 
   const set = (key: keyof FormState) => (value: string) =>
     setForm(prev => ({ ...prev, [key]: value }));
+
+  // Section note → REPORT_DTL.REM (S112). Mirrors the logbook FullDfoForm "Add a note" affordance
+  // (renderNoteButton/renderNoteInput are inline closures over state there — the recon confirmed
+  // it is NOT an importable component, so it is re-implemented locally here). R-A: same
+  // interaction as the 234 — collapse/expand, text held in form state, no badge/count/filled
+  // styling. Collapsing preserves the text (it lives in form.reportDtlRemarks); persisted at send.
+  const renderNoteButton = () => (
+    <TouchableOpacity style={styles.addNoteBtn} onPress={() => setNoteOpen(o => !o)} activeOpacity={0.7}>
+      <StickyNote size={13} color="#1E3A8A" />
+      <Text style={styles.addNoteBtnText}>{t('form234.addNote')}</Text>
+    </TouchableOpacity>
+  );
+  const renderNoteInput = () =>
+    noteOpen ? (
+      <TextInput
+        style={styles.noteInput}
+        value={form.reportDtlRemarks}
+        onChangeText={set('reportDtlRemarks')}
+        placeholder={t('form234.notePlaceholder')}
+        placeholderTextColor="#94A3B8"
+        multiline
+        maxLength={2000}
+      />
+    ) : null;
 
   // Date pickers (mirror FullDfoForm's platform-split). Both fields are date-only.
   const insets = useSafeAreaInsets(); // S95: edge-to-edge safe-area top for the modal header
@@ -148,6 +175,7 @@ export default function Form233Screen({ onClose }: Props) {
                 licenceNo: profile.fishingNumber,
                 fin: profile.licenceHolderFin,
                 remarks: form.remarks,
+                reportDtlRemarks: form.reportDtlRemarks,
                 sentToDfo: false,
               };
 
@@ -276,6 +304,12 @@ export default function Form233Screen({ onClose }: Props) {
               </Text>
               <Calendar size={18} color="#94A3B8" />
             </TouchableOpacity>
+          </View>
+
+          {/* Section note → REPORT_DTL.REM (S112). Mirrors the logbook "Add a note" affordance. */}
+          <View style={styles.noteBlock}>
+            <View style={styles.noteButtonRow}>{renderNoteButton()}</View>
+            {renderNoteInput()}
           </View>
         </View>
 
@@ -443,6 +477,22 @@ const styles = StyleSheet.create({
   },
   lastInputGroup: {
     marginBottom: 0,
+  },
+  // Section note affordance — copied verbatim from FullDfoForm.tsx addNoteBtn/addNoteBtnText/noteInput
+  // so the 233 note reads identically to the logbook's (R-A). noteBlock/noteButtonRow are local
+  // layout wrappers (the 233 card has no flex header row to hang the button on — see gate doc).
+  noteBlock: { marginTop: 14 },
+  noteButtonRow: { flexDirection: 'row' },
+  addNoteBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6,
+    backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#BFDBFE',
+  },
+  addNoteBtnText: { fontSize: 11, fontWeight: '700', color: '#1E3A8A' },
+  noteInput: {
+    borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8,
+    padding: 10, fontSize: 14, color: '#1E293B', backgroundColor: '#F8FAFC',
+    minHeight: 64, textAlignVertical: 'top', marginBottom: 12,
   },
   label: {
     fontSize: 10,
