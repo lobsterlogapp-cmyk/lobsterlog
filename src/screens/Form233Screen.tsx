@@ -9,6 +9,7 @@ import {
   StatusBar,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -39,12 +40,14 @@ interface FormState {
   periodStartDate: string;
   periodEndDate: string;
   reason: string;
+  remarks: string;   // → REPORT.REM (string_2000, optional) — Session 111
 }
 
 const EMPTY_FORM: FormState = {
   periodStartDate: '',
   periodEndDate: '',
   reason: '',
+  remarks: '',
 };
 
 // Mirror of FullDfoForm.formatDate — picker Date → YYYY-MM-DD (the string the generator accepts).
@@ -144,6 +147,7 @@ export default function Form233Screen({ onClose }: Props) {
                 reason: form.reason,
                 licenceNo: profile.fishingNumber,
                 fin: profile.licenceHolderFin,
+                remarks: form.remarks,
                 sentToDfo: false,
               };
 
@@ -315,6 +319,24 @@ export default function Form233Screen({ onClose }: Props) {
           </View>
         </View>
 
+        {/* Comments (REPORT.REM, string_2000, optional) */}
+        <View style={styles.card}>
+          <Text style={styles.cardHeader}>{t('form233.remarksCard')}</Text>
+          <View style={styles.lastInputGroup}>
+            <TextInput
+              style={[styles.input, styles.remarksInput]}
+              value={form.remarks}
+              onChangeText={set('remarks')}
+              placeholder={t('form233.remarksPlaceholder')}
+              placeholderTextColor="#CBD5E1"
+              maxLength={2000}
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+            />
+          </View>
+        </View>
+
         {sending ? (
           <View style={styles.submitButtonSending}>
             <ActivityIndicator size="small" color="#FFFFFF" />
@@ -437,6 +459,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#334155',
+  },
+  remarksInput: {
+    height: 100,
+    fontWeight: '400',
   },
   readOnlyField: {
     backgroundColor: '#F1F5F9',

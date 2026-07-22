@@ -23,6 +23,7 @@ export interface Form233Entry {
   reason: string;            // human-readable label
   licenceNo: string;         // snapshotted from profile at save time
   fin: string;               // snapshotted from profile at save time
+  remarks?: string;          // → REPORT.REM (string_2000, optional) — Session 111; additive
   sentToDfo: boolean;
   sentAt?: number;
 }
@@ -99,6 +100,9 @@ export function generateForm233Xml(entry: Form233Entry, profile: CaptainProfile)
   report += tag('REPORT_UID',  entry.uid || generateForm233Uid(), '    ');
   // LOGBOOK_UID_REFERED omitted — inactivity not tied to a specific logbook
   report += tag('DG_CLOSE_DT', toCloseTimestamp(), '    ');
+  // REM (string_2000, opt) — REPORT-level "Comments on the inactivity". XSD report_type
+  // sequence: after DG_CLOSE_DT, before REPORT_DTL. (REPORT_DTL.REM left unused.)
+  report += tag('REM', entry.remarks ?? '', '    ');
   report += dtl;
   report += '  </REPORT>\n';
 
@@ -144,6 +148,10 @@ export function validateForm233Xml(xml: string): { valid: boolean; errors: strin
   const end = elem('END_DT');
   if (start && end && /^\d{12}$/.test(start) && /^\d{12}$/.test(end) && end < start)
     errors.push('END_DT is before START_DT');
+
+  // REM (REPORT-level, optional) — string_2000 length backstop
+  const rem = elem('REM');
+  if (rem !== null && rem.length > 2000) errors.push(`REM exceeds string_2000: ${rem}`);
 
   return { valid: errors.length === 0, errors };
 }

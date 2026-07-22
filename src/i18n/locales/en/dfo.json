@@ -302,6 +302,8 @@
     "reasonCard": "Reason for Inactivity",
     "reasonLabel": "REASON",
     "reasonPlaceholder": "Select reason…",
+    "remarksCard": "Comments (Optional)",
+    "remarksPlaceholder": "Comments on the inactivity",
     "reasonOptions": {
       "Weather": "Weather",
       "Mechanical": "Mechanical",
