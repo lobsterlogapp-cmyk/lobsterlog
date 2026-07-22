@@ -104,3 +104,18 @@ test('writes the REPORT_DTL.REM sample for the xmllint gate', () => {
   fs.writeFileSync(`${dir}/sample_233_dtl_rem.xml`, xml);
   expect(validateForm233Xml(xml).valid).toBe(true);
 });
+
+// ---- Session 112 Phase 2: both REMs are length-checked (string_2000) ----
+test('validator catches an over-length REPORT_DTL.REM', () => {
+  const xml = generateForm233Xml({ ...base, reportDtlRemarks: 'x'.repeat(2001) }, profile);
+  const res = validateForm233Xml(xml);
+  expect(res.valid).toBe(false);
+  expect(res.errors.some(e => e.includes('REPORT_DTL.REM') && e.includes('string_2000'))).toBe(true);
+});
+
+test('validator still catches an over-length REPORT.REM (first-match regression)', () => {
+  const xml = generateForm233Xml({ ...base, remarks: 'y'.repeat(2001) }, profile);
+  const res = validateForm233Xml(xml);
+  expect(res.valid).toBe(false);
+  expect(res.errors.some(e => e.includes('REPORT.REM') && e.includes('string_2000'))).toBe(true);
+});

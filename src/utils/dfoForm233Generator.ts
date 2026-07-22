@@ -153,9 +153,18 @@ export function validateForm233Xml(xml: string): { valid: boolean; errors: strin
   if (start && end && /^\d{12}$/.test(start) && /^\d{12}$/.test(end) && end < start)
     errors.push('END_DT is before START_DT');
 
-  // REM (REPORT-level, optional) — string_2000 length backstop
-  const rem = elem('REM');
-  if (rem !== null && rem.length > 2000) errors.push(`REM exceeds string_2000: ${rem}`);
+  // REM appears at TWO optional levels — REPORT.REM (report_type) and REPORT_DTL.REM
+  // (report_dtl_type), both string_2000. elem('REM') only sees the first, so length-check each
+  // level by name (S112: two REMs now emit; a single first-match check left the second unbounded).
+  const remIn = (fragment: string): string | null => {
+    const m = fragment.match(/<REM>([\s\S]*?)<\/REM>/);
+    return m ? m[1].trim() : null;
+  };
+  const dtlMatch = xml.match(/<REPORT_DTL>([\s\S]*?)<\/REPORT_DTL>/);
+  const reportRem = remIn(xml.replace(/<REPORT_DTL>[\s\S]*?<\/REPORT_DTL>/g, '')); // REPORT.REM (outside DTL)
+  const dtlRem = dtlMatch ? remIn(dtlMatch[1]) : null;                              // REPORT_DTL.REM
+  if (reportRem !== null && reportRem.length > 2000) errors.push(`REPORT.REM exceeds string_2000: ${reportRem}`);
+  if (dtlRem !== null && dtlRem.length > 2000) errors.push(`REPORT_DTL.REM exceeds string_2000: ${dtlRem}`);
 
   return { valid: errors.length === 0, errors };
 }
