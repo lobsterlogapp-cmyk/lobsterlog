@@ -149,7 +149,7 @@ and that this gate doc, the passenger PDFs, the recon/prompt/sweep docs, and CLA
 ```
 git commit -m "Form 233 section note REPORT_DTL.REM: emit/UI/guard"
 ```
-**COMMITTED — 18dda9d** (Jonny ran it; 3 files changed, 98 insertions, 2 deletions, all M; NOT pushed).
+**COMMITTED — 18dda9d** (Jonny ran it; 3 files changed, 98 insertions, 2 deletions, all M; pushed).
 
 ---
 
@@ -200,7 +200,7 @@ and that CLAUDE.md + this gate doc + passengers remain unstaged. Then:
 ```
 git commit -m "Form 233 validator: length-check both REPORT.REM and REPORT_DTL.REM"
 ```
-**COMMITTED — <hash PENDING VERIFICATION>** (Jonny fills after running the block).
+**COMMITTED — fbb71a0.**
 
 ---
 
@@ -219,8 +219,7 @@ git commit -m "Form 233 validator: length-check both REPORT.REM and REPORT_DTL.R
   this session's four rulings), Current-goals → "SESSION 112 — COMPLETE" + "SESSION 113 — TBD", and a
   new **Not yet built** bullet for the filename-uniqueness fix (A).
 - **Burned filenames:** `1004-104460-20260722162144.XML` (CONF 163704 EN + 163705 FR — the collision).
-- **PENDING VERIFICATION:** Phase 2 commit hash, closeout commit hash, and the push (Phase 1 18dda9d is
-  NOT pushed) — Jonny fills / runs.
+- **Commit hashes:** Phase 1 = 18dda9d, Phase 2 = fbb71a0, closeout = 1236356.
 
 ### Closeout commit block — READY (Jonny runs AFTER the Phase 2 commit)
 Stage by exact path (never `-A`). Staged = CLAUDE.md + this gate doc. NOT staged (stay untracked): the
@@ -240,4 +239,43 @@ A  docs/GATE_S112_233_NOTE.md
 ```
 git commit -m "S112 closeout: 233 section note gate doc + CLAUDE.md"
 ```
-**COMMITTED — <hash PENDING VERIFICATION>** (Jonny fills). Push (all three S112 commits) when ready.
+**COMMITTED — 1236356.**
+
+---
+
+## FOLLOW-UP (post-closeout) — hash backfill + §22 User's Guide v1.4 doc references
+
+Housekeeping after the three S112 commits landed + pushed (origin/main == HEAD == 1236356):
+- **Hash backfill:** the `<hash PENDING VERIFICATION>` markers replaced with the real hashes —
+  Phase 2 = fbb71a0, closeout = 1236356 (this doc + CLAUDE.md). Stale `(NOT pushed)` → `(pushed)`
+  (all verified pushed).
+- **§22 User's Guide → v1.4:** the on-disk `assets/docs` §22 pair swapped `…v1_2…` → `…v1_4…`
+  (untracked passengers — NOT staged, unchanged policy). `CLAUDE.md` gained one current-state line
+  (§22 now v1.4; history untouched). `docs/SWEEP_MASTER_PLAN_S112.md:230` reconcile-note rewritten
+  to "unified at v1.4". §17 stays v1.2, §25 stays v1.0 — untouched.
+
+### Commit block — READY (Jonny runs, one line at a time; do NOT push until ruled)
+Stage by exact path (never `-A`, never `git add .`). Three files:
+`CLAUDE.md` (M), `docs/GATE_S112_233_NOTE.md` (M), `docs/SWEEP_MASTER_PLAN_S112.md` (newly tracked).
+**NOT staged (stay untracked):** the `assets/docs` v1_4 §22 PDFs + §25 v1.0 PDFs, and the
+`docs/CC_PROMPT_S112_*` / `docs/RECON_S10[89]/S110/S112_*` / `docs/S113_22_FIGURE_SWAP_REPORT.md`.
+
+```
+git add CLAUDE.md
+git add docs/GATE_S112_233_NOTE.md
+git add docs/SWEEP_MASTER_PLAN_S112.md
+git status --short
+```
+Verify `git status --short` shows **exactly** these three staged (col 1), everything else `??`:
+```
+M  CLAUDE.md
+M  docs/GATE_S112_233_NOTE.md
+A  docs/SWEEP_MASTER_PLAN_S112.md
+```
+Then commit (bare one-line subject, NO trailer):
+```
+git commit -m "S112 hash backfill; §22 doc refs + sweep plan to v1.4"
+```
+Do NOT push until Jonny says. After pushing, prove it: `git log origin/main..HEAD --oneline`
+(empty output = pushed).
+**COMMITTED — <hash PENDING>** (Jonny fills).
