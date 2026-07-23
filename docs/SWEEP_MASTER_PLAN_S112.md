@@ -31,7 +31,7 @@ S109 listed five gates. Three have been built out:
 | **R2** — GPS section visible on NL where sheet says Blocked | Over-collection hazard | **CLOSED** — S110 P3 (8c7afac); NL renders no GPS section |
 | **G2** — 222 T6's five missing text elements | T6 unmeetable as written | **CLOSED** — S111 P1 (4a02ae9); all six T6 elements now have a path |
 | **G3** — 233 emits no REM at all | T1 unmeetable as written | **PARTIALLY closed** — S111 P2 (d9d290d) built `REPORT.REM`. See §3.1 |
-| **G5** — 222 T2 Y-path emits hardcoded optionals | Interpretation | **STILL OPEN** — see §3.2 |
+| **G5** — 222 T2 Y-path emits hardcoded optionals | Interpretation | **CLOSED** — S114 recon (`docs/RECON_S114_KANE_QS.md`) + founder ruling S115: 222 Rule 593 makes every always-emitted Y-path element MANDATORY when INTERACT_IND=Y — they are not optionals in the T2 context. See §3.2 |
 
 ---
 
@@ -61,9 +61,8 @@ S109 listed five gates. Three have been built out:
 
 ## 3. RULINGS NEEDED BEFORE THE RUN STARTS
 
-These are not day-of decisions. One remaining ruling changes what gets sent — §3.2; phase
-order (§3.6) also needs picking before the day starts. §3.1, §3.3, §3.4 and §3.5 are
-SETTLED below.
+These are not day-of decisions. §3.1, §3.2, §3.3, §3.4 and §3.5 are ALL SETTLED below —
+no ruling gates any send. Only the phase order (§3.6) needs picking before the day starts.
 
 ### 3.1 — 233 T1 — SETTLED: `REPORT_DTL.REM` BUILT (S112); `LOGBOOK_UID_REFERED` omitted by design
 
@@ -80,19 +79,35 @@ Reflects BUILT state — no open ruling:
 - **`LOGBOOK_UID_REFERED` stays omitted by design** (S111 R-D, held at S112) — the omission
   is recorded as a Comments-cell note on the T1 row.
 
-### 3.2 — 222 T2 "mandatory only" (G5) ⚠ DECIDES A SEND
+### 3.2 — 222 T2 "mandatory only" (G5) — SETTLED (S115 ruling on the S114 recon): SEND-AS-EMITTED-AND-NOTE
 
-With `INTERACT_IND=Y` the generator unconditionally emits `TGT_SPECIE_ID` (1312) and
-`GEAR_ID` (925) hardcoded, plus `INTERACT_DT`, NAME/ADDR and one incident node. A
-dictionary-strict Y+mandatory-only file is impossible without a code change.
-Same class: **233 T2** always emits FIN and VRN, both optional in the 233 CSV.
+The old framing — that the Y-path "hardcoded optionals" (`TGT_SPECIE_ID` 1312, `GEAR_ID`
+925, `GEAR_DMG_IND`, plus `INTERACT_DT`/LAT/LONG/NAME/ADDR/`NOAA_SPECIE_COD`/
+`NB_SPCMN_BEST`) make a dictionary-strict Y+mandatory-only file impossible — was wrong on
+source. **S114 recon (`docs/RECON_S114_KANE_QS.md`), settled by the DFO documents
+themselves:**
 
-**Options:** (a) accept as-emitted and note it; (b) ask Kane whether "mandatory … still
-accessible" is graded against the app's own required set; (c) build a strict path.
+- **222:** fact-sheet **Rule 593** (FS-NAT-222-1-EN p.7) makes capture of EVERY
+  always-emitted Y-path element **MANDATORY when `INTERACT_IND=Y`** — the S7 file the app
+  produces IS the "mandatory … still accessible" set under the fact sheet's own
+  definitions. Twin Rule 594 blocks that set when N, and the generator's Y-gate matches it
+  exactly. The only rule-Blocked elements (DOC_UID R588, MM_INTER_INCDNT.REM R595, BDY_LEN
+  R575) are never emitted.
+- **233:** **Rule 961** makes FIN **MANDATORY** for every non-Arctic region (all four app
+  regions); VRN is identity-only (format Rule 528, no requirement rule); **nothing on the
+  233 is Blocked** (zero `maxOccurs="0"` in the XSD, no Blocked class in CSV or fact
+  sheet). The app emitting FIN + VRN on S2 cannot be a defect.
 
-**STATUS (S114): OPEN — route (b) taken: asked, awaiting Kane (Ticket #2478).** TWO sends
-wait on this — **S2 AND S7** — both deferred to the end of the run (see §6): they fire when
-Kane answers, or on a founder decision to send-as-emitted-and-note (route (a)).
+**RULING (S115): S2 and S7 RUN on this source backing — ungated, restored to list
+position, send-as-emitted with the basis noted in each row's Comments cell.** Kane
+Ticket #2478 remains open as **confirmation only** — flagged "asked," NOT blocking; his
+answer is filed when it arrives but no send waits on it.
+
+**Recon carry baked into the rows:** (a) **S7 MUST use a NON-entanglement incident type**
+— `entangleInd=Y` force-fills the optional `REM` ("Released: yes/no"), and REM is NOT in
+the Rule 593 mandatory list, which would break the mandatory-only shape; (b) **S1's
+Comments cell records `LOGBOOK_UID_REFERED` omitted-by-design** (spec-optional per XSD
+`minOccurs=0` + CSV `REQUIRED?=N` + Rule 953).
 
 ### 3.3 — Supplementals — SETTLED (S112 close, decision 1): BOTH RUN
 
@@ -173,8 +188,8 @@ duplicate filename; WS1038 = XSD, and it may blame the element *after* the real 
 
 | # | Row | Shape | Verify |
 |---|---|---|---|
-| **S1** | 233 T1 | All nodes + all elements, **French accents in BOTH comment fields** — `REPORT.REM` (S111) + `REPORT_DTL.REM` (S112), distinct text. | Grep the sent bytes for BOTH `<REM>`s with accented bytes — first live accent-path proof (create-and-send-only screen: complete in one sitting). Comments cell: `LOGBOOK_UID_REFERED` omitted by design. READY — §3.1 settled, no gate |
-| **S2** | 233 T2 | Mandatory only: REG/CIE/FORM_VER/SOFT_VER + REPORT_UID + DG_CLOSE_DT + REPORT_DTL(START/END/LIC_NO/REASON). No REM. | ⚠ Gated on §3.2 (asked, awaiting Kane — Ticket #2478) — app always emits FIN + VRN (optional per CSV). DEFERRED to end of run. Grep to confirm no REM present |
+| **S1** | 233 T1 | All nodes + all elements, **French accents in BOTH comment fields** — `REPORT.REM` (S111) + `REPORT_DTL.REM` (S112), distinct text. | Grep the sent bytes for BOTH `<REM>`s with accented bytes — first live accent-path proof (create-and-send-only screen: complete in one sitting). Comments cell: `LOGBOOK_UID_REFERED` omitted by design (spec-optional — XSD `minOccurs=0`, CSV `REQUIRED?=N`, Rule 953; S114 recon). READY — §3.1 settled, no gate |
+| **S2** | 233 T2 | Mandatory only: REG/CIE/FORM_VER/SOFT_VER + REPORT_UID + DG_CLOSE_DT + REPORT_DTL(START/END/LIC_NO/REASON). No REM. App also emits FIN + VRN — send as emitted. | READY — §3.2 settled (S115 ruling on S114 recon). Comments cell basis: FIN is Rule-961 MANDATORY for all non-Arctic regions; VRN identity-only (Rule 528 format); nothing on the 233 is Blocked. Grep to confirm no REM present |
 
 ### PHASE 2 — Form 222 (6 sends, MAR demo identity throughout)
 
@@ -184,7 +199,7 @@ duplicate filename; WS1038 = XSD, and it may blame the element *after* the real 
 | **S4** | 222 T3 | `INTERACT_IND=N`, all accessible elements | On N the accessible set == the T4 set. Same shape, **fresh filename** |
 | **S5** | 222 T1 | `INTERACT_IND=Y`, every implemented field filled — coords, observer name/contact, species, count, the optional trio, all five new T6 text fields, remarks | Strict "all elements" still rides the "still accessible" reading: ~15 dictionary-optional elements remain unimplemented after S111 (DOC_UID, PHONE, EMAIL, PROV_ID, VNAME, GEAR_LOST_IND, CAUS_KNOWN_IND, SPCMN_DSC, NB_SPCMN_MIN/MAX, VID/PHOTO/SMPL/OTHR_DOC_IND, BDY_LEN, MM_INTER_INCDNT.REM) |
 | **S6** | 222 T5 | Three-node: type = **Entanglement**, then **Y** to Entanglement, Injury and Death → dedup set {39609, 39610, 39615} | ⚠ **Exactly three** `<MM_INTER_INCDNT>` before sending — any other interaction type yields four. ⭐ **INCDNT_REM stays BLANK** on this send (S111 R-A: one input, first node only) |
-| **S7** | 222 T2 | `Y`, mandatory only | ⚠ Gated on §3.2 (asked, awaiting Kane — Ticket #2478). DEFERRED to end of run |
+| **S7** | 222 T2 | `Y`, mandatory only — ⚠ **MUST pick a NON-entanglement incident type** (entanglement force-fills the optional REM "Released: yes/no", which is NOT in the Rule 593 mandatory list and would break the mandatory-only shape). Leave every suppressible optional blank (SITE_DSC, GEAR_DMG_REM, trio, DOC_REM, BDY_LEN_ID, EVENT_DSC, INCDNT_REM, remarks). | READY — §3.2 settled (S115 ruling on S114 recon). Comments cell basis: every emitted Y-path element is Rule-593 MANDATORY when INTERACT_IND=Y; no Blocked element emitted. Grep: no REM, no optional stragglers |
 | **S8** | 222 T6 | French accents in **all six**: SITE_DSC, GEAR_DMG_REM, DOC_REM, EVENT_DSC, REM, INCDNT_REM | ⭐ Single incident node so INCDNT_REM emits. Grep all six for accented bytes. ⚠ EN label still reads "REMARK (LOST GEAR)" — cosmetic, does not affect the send |
 
 ### PHASE 3 — 234.12 logbooks (10 core sends)
@@ -208,9 +223,9 @@ duplicate filename; WS1038 = XSD, and it may blame the element *after* the real 
 supplementals S9b + S10b) = **21 sends**. Nothing optional — the supplementals are part of
 the run (§3.3, settled at S112 close).
 
-**Deferral note (§3.2):** S2 and S7 fire LAST — the other 19 sends run first (list order
-otherwise unchanged); those two go when Kane answers Ticket #2478, or on a founder decision
-to send-as-emitted-and-note.
+**No deferrals (§3.2 settled, S115):** all 21 sends run in list order — S2 and S7 in their
+positions above, send-as-emitted-and-note on the S114 source backing. Kane Ticket #2478 is
+confirmation-only ("asked," not blocking).
 
 ---
 
