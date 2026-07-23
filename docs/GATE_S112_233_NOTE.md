@@ -278,4 +278,4 @@ git commit -m "S112 hash backfill; §22 doc refs + sweep plan to v1.4"
 ```
 Do NOT push until Jonny says. After pushing, prove it: `git log origin/main..HEAD --oneline`
 (empty output = pushed).
-**COMMITTED — <hash PENDING>** (Jonny fills).
+**COMMITTED — d96264b** (backfilled at S114).
