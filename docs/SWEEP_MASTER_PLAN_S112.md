@@ -39,8 +39,9 @@ S109 listed five gates. Three have been built out:
 
 1. **Fresh filename, always.** WS1034 is checked *before* content validation, so a reused
    name never revalidates. Filenames are `[REG_ID]-[LIC_NO]-[YYYYMMDDHHMMSS].XML`, stamped
-   at generation. Never re-POST a stored envelope; never fire two sends on the same identity
-   inside the same clock second. Burned already: 163581–586, 163698.
+   at generation. Never re-POST a stored envelope; never fire two sends inside the same
+   clock second — unqualified (S112 discipline B): stagger dual-sim >1 s or run
+   sequentially. Burned already: 163581–586, 163698.
 2. **Verify before the next send.** After each send, complete the verify gate for that row
    (§5) and write the result into the grid *before* firing the next one. Never stack two
    unverified sends — if something is wrong you want one suspect, not five.
@@ -60,23 +61,24 @@ S109 listed five gates. Three have been built out:
 
 ## 3. RULINGS NEEDED BEFORE THE RUN STARTS
 
-These are not day-of decisions. Settle them first — three of them change what gets sent.
+These are not day-of decisions. One remaining ruling changes what gets sent — §3.2; phase
+order (§3.6) also needs picking before the day starts. §3.1, §3.3, §3.4 and §3.5 are
+SETTLED below.
 
-### 3.1 — 233 T1 vs `REPORT_DTL.REM` and `LOGBOOK_UID_REFERED` ⚠ DECIDES A SEND
+### 3.1 — 233 T1 — SETTLED: `REPORT_DTL.REM` BUILT (S112); `LOGBOOK_UID_REFERED` omitted by design
 
 T1 reads: *"Send an inactivity report that includes ALL nodes and elements, whether optional
 or required. Include French accented characters in the comment fields."* No "still
 accessible" qualifier.
 
-S111 built `REPORT.REM` and ruled `REPORT_DTL.REM` deliberately unused (R-D).
-`LOGBOOK_UID_REFERED` remains omitted by design. Against T1's plain wording, both are
-elements the report does not include.
+Reflects BUILT state — no open ruling:
 
-**Options:** (a) build both before the run — small, additive, XSD-optional; (b) send as-is
-and record the omission in the grid's Comments column; (c) ask Kane first.
-S109B's N/A-convention finding matters here: **the workbooks contain no sanctioned
-"not applicable" answer** — only Y/N grading and free-text Comments. Route (b) means
-writing an explanation into a cell that DFO grades.
+- **`REPORT_DTL.REM` is BUILT (S112)** and live-proven — both REMs in the sent bytes,
+  WS0000 CONF 163704 (EN) / 163705 (FR); it emits as the LAST child of `report_dtl_type`,
+  after REASON. **S1 (233 T1) exercises BOTH REMs with distinct accented text** (the S112
+  walk sends were ASCII — S1 is the first live accent-path proof).
+- **`LOGBOOK_UID_REFERED` stays omitted by design** (S111 R-D, held at S112) — the omission
+  is recorded as a Comments-cell note on the T1 row.
 
 ### 3.2 — 222 T2 "mandatory only" (G5) ⚠ DECIDES A SEND
 
@@ -88,23 +90,35 @@ Same class: **233 T2** always emits FIN and VRN, both optional in the 233 CSV.
 **Options:** (a) accept as-emitted and note it; (b) ask Kane whether "mandatory … still
 accessible" is graded against the app's own required set; (c) build a strict path.
 
-### 3.3 — Supplementals (Q1 / Q1b)
+**STATUS (S114): OPEN — route (b) taken: asked, awaiting Kane (Ticket #2478).** TWO sends
+wait on this — **S2 AND S7** — both deferred to the end of the run (see §6): they fire when
+Kane answers, or on a founder decision to send-as-emitted-and-note (route (a)).
 
-- **MAR LGRID_ID** is only accessible on FMAs 1581–1593, and 38b (28599) has no settlement
-  grids — so S9 (38b) cannot show it. Run supplemental **S9b** on LFA 34, or accept LGRID
-  undemonstrated? *S109 recommendation: run it — one cheap send closes the argument.*
-- **QC NB_VNTCH / NB_VNTCH_YOU** live on the 19/20/21-series FMAs, disjoint from the GRID
-  FMAs — so S10 (LFA 22) cannot show them. Supplemental QC send, or accept undemonstrated?
+### 3.3 — Supplementals — SETTLED (S112 close, decision 1): BOTH RUN
 
-### 3.4 — Cross-midnight placement (Q4)
+Both supplementals are committed sends, not options:
 
-Standalone pre-sweep send S0, or fold into S13? *S109 recommendation: standalone and first —
-verify-first isolates the multi-day date engine from the graded sends.*
+- **S9b** (MAR-90, LFA 34): LGRID_ID is only accessible on FMAs 1581–1593, and 38b (28599)
+  has no settlement grids — so S9 (38b) cannot show it.
+- **S10b** (QC-88, an LFA-20x — specific area chosen at run time from Test_values / the
+  reftables, one where NB_VNTCH / NB_VNTCH_YOU are accessible and different from S10's
+  GRID_ID LFA): the NB_VNTCH areas do not overlap the GRID areas — so S10 (LFA 22) cannot
+  show them.
 
-### 3.5 — Identity rows (Q5)
+Rationale (carried in both rows' Comments cells): a second logbook per region because the
+FMA sets are disjoint; T1 asks for all elements "whether optional or mandatory" — no "still
+accessible" qualifier, and no sanctioned N/A convention exists in the workbooks (S109B).
 
-The 6-digit-VRN `…460` family is recommended throughout (VRN = LIC holds; passes the Rule 528
-4–6 digit gate). Pick one family and keep it constant across the whole sweep.
+### 3.4 — Cross-midnight placement — SETTLED: S0 standalone and first
+
+Implemented as the §6 S0 row: a standalone pre-sweep send, run first — verify-first
+isolates the multi-day date engine from the graded sends.
+
+### 3.5 — Identity rows — SETTLED: the 6-digit `…460` family throughout
+
+The 6-digit-VRN `…460` family is used for every send (VRN = LIC holds; passes the Rule 528
+4–6 digit gate), constant across the whole sweep — as already baked into §4's identity
+table.
 
 ### 3.6 — Phase order (Q6)
 
@@ -159,8 +173,8 @@ duplicate filename; WS1038 = XSD, and it may blame the element *after* the real 
 
 | # | Row | Shape | Verify |
 |---|---|---|---|
-| **S1** | 233 T1 | All nodes + all elements, **French accents in the comment field**. `REPORT.REM` now exists (S111). | Grep for `<REM>` with accented bytes. ⚠ Gated on §3.1 — decide `REPORT_DTL.REM` + `LOGBOOK_UID_REFERED` first |
-| **S2** | 233 T2 | Mandatory only: REG/CIE/FORM_VER/SOFT_VER + REPORT_UID + DG_CLOSE_DT + REPORT_DTL(START/END/LIC_NO/REASON). No REM. | ⚠ App always emits FIN + VRN (optional per CSV) — §3.2 class. Grep to confirm no REM present |
+| **S1** | 233 T1 | All nodes + all elements, **French accents in BOTH comment fields** — `REPORT.REM` (S111) + `REPORT_DTL.REM` (S112), distinct text. | Grep the sent bytes for BOTH `<REM>`s with accented bytes — first live accent-path proof (create-and-send-only screen: complete in one sitting). Comments cell: `LOGBOOK_UID_REFERED` omitted by design. READY — §3.1 settled, no gate |
+| **S2** | 233 T2 | Mandatory only: REG/CIE/FORM_VER/SOFT_VER + REPORT_UID + DG_CLOSE_DT + REPORT_DTL(START/END/LIC_NO/REASON). No REM. | ⚠ Gated on §3.2 (asked, awaiting Kane — Ticket #2478) — app always emits FIN + VRN (optional per CSV). DEFERRED to end of run. Grep to confirm no REM present |
 
 ### PHASE 2 — Form 222 (6 sends, MAR demo identity throughout)
 
@@ -170,7 +184,7 @@ duplicate filename; WS1038 = XSD, and it may blame the element *after* the real 
 | **S4** | 222 T3 | `INTERACT_IND=N`, all accessible elements | On N the accessible set == the T4 set. Same shape, **fresh filename** |
 | **S5** | 222 T1 | `INTERACT_IND=Y`, every implemented field filled — coords, observer name/contact, species, count, the optional trio, all five new T6 text fields, remarks | Strict "all elements" still rides the "still accessible" reading: ~15 dictionary-optional elements remain unimplemented after S111 (DOC_UID, PHONE, EMAIL, PROV_ID, VNAME, GEAR_LOST_IND, CAUS_KNOWN_IND, SPCMN_DSC, NB_SPCMN_MIN/MAX, VID/PHOTO/SMPL/OTHR_DOC_IND, BDY_LEN, MM_INTER_INCDNT.REM) |
 | **S6** | 222 T5 | Three-node: type = **Entanglement**, then **Y** to Entanglement, Injury and Death → dedup set {39609, 39610, 39615} | ⚠ **Exactly three** `<MM_INTER_INCDNT>` before sending — any other interaction type yields four. ⭐ **INCDNT_REM stays BLANK** on this send (S111 R-A: one input, first node only) |
-| **S7** | 222 T2 | `Y`, mandatory only | ⚠ Gated on §3.2 |
+| **S7** | 222 T2 | `Y`, mandatory only | ⚠ Gated on §3.2 (asked, awaiting Kane — Ticket #2478). DEFERRED to end of run |
 | **S8** | 222 T6 | French accents in **all six**: SITE_DSC, GEAR_DMG_REM, DOC_REM, EVENT_DSC, REM, INCDNT_REM | ⭐ Single incident node so INCDNT_REM emits. Grep all six for accented bytes. ⚠ EN label still reads "REMARK (LOST GEAR)" — cosmetic, does not affect the send |
 
 ### PHASE 3 — 234.12 logbooks (10 core sends)
@@ -178,8 +192,9 @@ duplicate filename; WS1038 = XSD, and it may blame the element *after* the real 
 | # | Row | Region / identity | Shape |
 |---|---|---|---|
 | **S9** | 234 T1 | **MAR-90, FMA 38b (28599)** — demo | All elements + a note in every data group. 38b unlocks HLIN + HLOUT (Rules 2024/2025), EFFORT_DETAIL LAT/LONG MODE=G (Rule 3059), NB_SPCMN_BRD (Rule 654), OBS_TRIP_NUM. PCONS = **personal-use node only** (USG_ID Mandatory-MAR). SAR_IND=Y + full SAR node. MM_INTER_IND=N. CREW_NB, bait + condition, landing port, KEPT_WT. LGRID not accessible on 38b |
-| **S9b** | supplemental | MAR-90, LFA 34 | Demonstrates LGRID_ID. ⚠ Gated on §3.3 |
+| **S9b** | supplemental (committed) | MAR-90, LFA 34 | Demonstrates LGRID_ID. Comments cell: a second MAR logbook was needed because the FMA sets are disjoint — LGRID_ID is only accessible on FMAs 1581–1593 and 38b has no settlement grids, and T1 asks for all elements "whether optional or mandatory" (no "still accessible" qualifier, no N/A convention) |
 | **S10** | 234 T1 | **QC-88, LFA 22 (1534)** | All elements: GRID_ID, CREW_NB, departure PORT_ID, PRTNSHP_ID, USE_CR_IND=Y + LANDING.VRN, full TRANSFER + TRANSFER_DTL, bait + condition, **PCONS = Rock Crab (1287) bycatch — no personal-use** (USG_ID Blocked off-MAR), SAR=Y, notes everywhere. ⭐ Coords now emit (S110) |
+| **S10b** | supplemental (committed) | QC-88, an LFA-20x — specific area chosen at run time from Test_values / the reftables (one where NB_VNTCH / NB_VNTCH_YOU are accessible, a different area than S10's GRID_ID LFA) | Demonstrates NB_VNTCH / NB_VNTCH_YOU. Comments cell: a second QC logbook was needed because the FMA sets are disjoint — the NB_VNTCH areas do not overlap the GRID_ID areas, so S10 (LFA 22) cannot show them, and T1 asks for all elements "whether optional or mandatory" (no "still accessible" qualifier, no N/A convention) |
 | **S11** | 234 T1 | **GLF-89** | All elements; no port/crew/partnership (Blocked); bait + condition; PCONS with mandatory SPECIE_SZ_ID (Rock Crab → 10670, Lobster → 826); no personal-use; SAR=Y; notes. ⭐ Coords now emit |
 | **S12** | 234 T1 | **NL-91, LFA 3 (1653)** | All elements: TRP_SZ_ID, GEAR_SBTYP_ID, STAT_SECT_ID (1653 is in the Rule-621 seventeen), ⭐ **NB_SPCMN_KEPT** (Rule 976 — built S110), NB_SPCMN_DISC, NB_VNTCH_YOU, departure port, bait **without condition** (Blocked, row 27), PCONS = Rock Crab bycatch, SAR=Y, notes. ⭐ No GPS section renders on NL (S110) — coords correctly absent |
 | **S13** | 234 T2 | MAR-90, **LFA 34** — demo | Mandatory only. Outside 38b → HLIN/HLOUT/coords/BRD legitimately absent; no OBS_TRIP_NUM; personal-use PCONS **with** USG_ID; **KEPT_WT** (Rule 631 — lobster ⇒ mandatory regardless of the 234.12 flip to Optional); SAR node mandatory fields only; **no notes anywhere** |
@@ -189,8 +204,13 @@ duplicate filename; WS1038 = XSD, and it may blame the element *after* the real 
 | **S17** | 234 T3 | MAR-90, LFA 34 — demo | Effort with no catch. Rule 2020 still requires the lobster CATCH node; Rule 630 satisfied by **KEPT_WT = 0 entered manually** (Rule 789: a null must never be read as 0). ⚠ Confirm on-device the form accepts a literal 0 before firing |
 | **S18** | 234 T4 | MAR-90, LFA 34 — demo | French accented characters in a comment field (grid's own example: Trip.Rem) |
 
-**Running total:** 1 pre-sweep + 2 (233) + 6 (222) + 10 (234) = **19 sends**, plus up to two
-optional supplementals from §3.3.
+**Running total:** 1 pre-sweep + 2 (233) + 6 (222) + 12 (234, incl. the two committed
+supplementals S9b + S10b) = **21 sends**. Nothing optional — the supplementals are part of
+the run (§3.3, settled at S112 close).
+
+**Deferral note (§3.2):** S2 and S7 fire LAST — the other 19 sends run first (list order
+otherwise unchanged); those two go when Kane answers Ticket #2478, or on a founder decision
+to send-as-emitted-and-note.
 
 ---
 
@@ -221,8 +241,9 @@ optional supplementals from §3.3.
 ## 9. OPEN ITEMS CARRIED IN FROM S112
 
 - **931 FIN label** — "LICENCE HOLDER'S FIN" is a mandated-verbatim label (931 is on the
-  mandated list); it now appears in a shipped §22 figure. Verify against the dictionary
-  before the package goes out.
+  mandated list); it now appears in a shipped §22 figure. ✅ CLOSED S114 (STEP 0 · 2c):
+  MATCH — fact-sheet authority FS-NAT-234-12 (Rule 931); app EN/FR labels byte-match,
+  casing-aside per the S111 corollary. See docs/GATE_S114_STEP0.md.
 - §22 §8 body text does not mention the five new optional 222 fields, in either language.
 - Proofreader pile: "(Optional)" missing from « Remarques » and « Commentaires »;
   empêtrement vs enchevêtrement on the 222; FR Résultats rows phrased as questions where EN
