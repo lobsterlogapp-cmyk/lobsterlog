@@ -13,9 +13,7 @@
     },
     "production": {
       "autoIncrement": true,
-      "env": {
-        "MAPBOX_DOWNLOADS_TOKEN": "$MAPBOX_DOWNLOADS_TOKEN"
-      }
+      "environment": "production"
     }
   },
   "submit": {
