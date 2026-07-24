@@ -32,7 +32,7 @@ Complete enumeration via `git status --ignored` over `android/`, `ios/`, and roo
 | `EXPO_PUBLIC_STORMGLASS_API_KEY` | `src/utils/helpers.ts`, `src/utils/weatherService.ts` | **Yes** |
 | `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN` | `src/screens/Garminmapbox.tsx` (runtime map render) | **Yes** |
 | `EXPO_PUBLIC_NAVIONICS_TOKEN_IOS` / `_ANDROID` | `src/utils/navionicsPurchase.ts` | **Yes** |
-| `EXPO_PUBLIC_GARMIN_PURCHASE_PRIVATE_KEY` | `src/utils/navionicsPurchase.ts` (RSA signing of purchase) | **Yes** |
+| `EXPO_PUBLIC_GARMIN_PURCHASE_PRIVATE_KEY` | `src/utils/navionicsPurchase.ts` (RSA signing of purchase) | **No — moved server-side (SECURITY_AUDIT_S115)** |
 | `MAPBOX_DOWNLOADS_TOKEN` | `app.config.js:41` plugin prop (prebuild-only, inert here) + local `android/gradle.properties` | Via (B) as `RNMAPBOX_MAPS_DOWNLOAD_TOKEN`, optional |
 | `EXPO_PUBLIC_DFO_TEST_ELOG_KEY` | `src/screens/DfoTestHarnessScreen.tsx` — `__DEV__`-gated, stripped from release | No (skip) |
 | `EXPO_PUBLIC_FIREBASE_APP_CHECK_DEBUG_TOKEN` | `firebaseConfig.js` — App Check skipped entirely in DEV; debug token is dev-only | No (skip) |
@@ -67,10 +67,9 @@ eas env:create --environment production --name EXPO_PUBLIC_STORMGLASS_API_KEY   
 eas env:create --environment production --name EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN        --visibility sensitive --scope project
 eas env:create --environment production --name EXPO_PUBLIC_NAVIONICS_TOKEN_IOS        --visibility sensitive --scope project
 eas env:create --environment production --name EXPO_PUBLIC_NAVIONICS_TOKEN_ANDROID    --visibility sensitive --scope project
-eas env:create --environment production --name EXPO_PUBLIC_GARMIN_PURCHASE_PRIVATE_KEY --visibility secret   --scope project
 eas env:create --environment production --name RNMAPBOX_MAPS_DOWNLOAD_TOKEN           --visibility secret    --scope project   # optional belt-and-braces; Mapbox auth no longer required
 ```
-Notes: `EXPO_PUBLIC_*` values embed in the shipped JS bundle whatever their EAS visibility — `sensitive` keeps them out of logs/UI. **No `build.gradle` edit is needed to read `RNMAPBOX_MAPS_DOWNLOAD_TOKEN`** — the generated maven block already does, and editing a sync-hashed `@generated` block would break the next prebuild sync. Skip the stale/dev-only vars (table in §1).
+Notes: `EXPO_PUBLIC_*` values embed in the shipped JS bundle whatever their EAS visibility — `sensitive` keeps them out of logs/UI. **No `build.gradle` edit is needed to read `RNMAPBOX_MAPS_DOWNLOAD_TOKEN`** — the generated maven block already does, and editing a sync-hashed `@generated` block would break the next prebuild sync. Skip the stale/dev-only vars (table in §1). `EXPO_PUBLIC_GARMIN_PURCHASE_PRIVATE_KEY` is deliberately NOT created — the key is being removed from the client and moved server-side (see docs/SECURITY_AUDIT_S115.md §4).
 
 ### (C) Firebase configs — COMMIT (all four files), not EAS secret-files
 Commit `android/app/google-services.json`, `ios/LobsterLog/GoogleService-Info.plist`, and the two byte-identical root copies. Why: these are app *configuration*, not credentials — every value ships inside the released APK/IPA and is trivially extractable, which is why Google documents them as safe to embed; actual security is enforced server-side (UID-scoped Firestore rules, S84/S86) plus App Check (Play Integrity / DeviceCheck). Committing keeps the no-prebuild build hermetic. The alternative (EAS file-type env vars) delivers the file at an env-var path and would need a build lifecycle hook to copy it into `ios/LobsterLog/` — extra machinery with no security gain here. Caveat: valid while the repo is private; if it ever goes public, add API-key restrictions in Google Cloud console.
