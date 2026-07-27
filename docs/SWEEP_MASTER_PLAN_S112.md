@@ -61,10 +61,10 @@ S109 listed five gates. Three have been built out:
 
 ## 3. RULINGS NEEDED BEFORE THE RUN STARTS
 
-These are not day-of decisions. §3.1, §3.2, §3.3, §3.4 and §3.5 are ALL SETTLED below —
-no ruling gates any send. Only the phase order (§3.6) needs picking before the day starts.
+§3.1 through §3.6 are ALL SETTLED below — no ruling gates any send, and no day-of decision
+remains. The phase order is locked (§3.6). Read the rulings; nothing here is left to pick.
 
-### 3.1 — 233 T1 — SETTLED: `REPORT_DTL.REM` BUILT (S112); `LOGBOOK_UID_REFERED` omitted by design
+### 3.1 — 233 T1 — SETTLED: `REPORT_DTL.REM` BUILT (S112); `LOGBOOK_UID_REFERED` BUILT (S116) and INCLUDED
 
 T1 reads: *"Send an inactivity report that includes ALL nodes and elements, whether optional
 or required. Include French accented characters in the comment fields."* No "still
@@ -76,10 +76,16 @@ Reflects BUILT state — no open ruling:
   WS0000 CONF 163704 (EN) / 163705 (FR); it emits as the LAST child of `report_dtl_type`,
   after REASON. **S1 (233 T1) exercises BOTH REMs with distinct accented text** (the S112
   walk sends were ASCII — S1 is the first live accent-path proof).
-- **`LOGBOOK_UID_REFERED` stays omitted by design** (S111 R-D, held at S112) — the omission
-  is recorded as a Comments-cell note on the T1 row.
+- **`LOGBOOK_UID_REFERED` is BUILT (S116) and IS INCLUDED on S1** (supersedes the S111/S112
+  omit ruling). T1 asks for all elements "whether optional or required," and the field now
+  exists, so it belongs in the file. It prefills from the most recent 234 log — on the
+  sandbox that is S0's logbook (S0 runs first of all), so the Referred ELOG UID card arrives
+  pre-filled with a real six-letter code, no typing. ON THE DAY: confirm the card shows a
+  real code — NOT blank, NOT the dictionary sample `AFUERF` — before sending; if blank, type
+  S0's code. Record the code in the Comments cell and grep the sent bytes to confirm
+  `<LOGBOOK_UID_REFERED>` carries it.
 
-### 3.2 — 222 T2 "mandatory only" (G5) — SETTLED (S115 ruling on the S114 recon): SEND-AS-EMITTED-AND-NOTE
+### 3.2 — 222 T2 "mandatory only" (G5) — SETTLED (S115, refined S118): SEND-AS-EMITTED (S7) / BLANK-VRN-THEN-RESTORE (S2)
 
 The old framing — that the Y-path "hardcoded optionals" (`TGT_SPECIE_ID` 1312, `GEAR_ID`
 925, `GEAR_DMG_IND`, plus `INTERACT_DT`/LAT/LONG/NAME/ADDR/`NOAA_SPECIE_COD`/
@@ -94,20 +100,24 @@ themselves:**
   exactly. The only rule-Blocked elements (DOC_UID R588, MM_INTER_INCDNT.REM R595, BDY_LEN
   R575) are never emitted.
 - **233:** **Rule 961** makes FIN **MANDATORY** for every non-Arctic region (all four app
-  regions); VRN is identity-only (format Rule 528, no requirement rule); **nothing on the
-  233 is Blocked** (zero `maxOccurs="0"` in the XSD, no Blocked class in CSV or fact
-  sheet). The app emitting FIN + VRN on S2 cannot be a defect.
+  regions). VRN is identity-only (format Rule 528, no requirement rule) — i.e. **OPTIONAL**
+  on the 233. Under Lisa's July 24 mandatory-only grading rule, a mandatory-only file fails
+  if it carries ANY optional element, so **S2 must NOT carry VRN**: blank the profile VRN,
+  send, then restore it (the VRN gate was loosened at S116 to allow this). FIN still rides.
+  Nothing on the 233 is Blocked (zero `maxOccurs="0"` in the XSD).
 
-**RULING (S115): S2 and S7 RUN on this source backing — ungated, restored to list
-position, send-as-emitted with the basis noted in each row's Comments cell.** Kane
-Ticket #2478 remains open as **confirmation only** — flagged "asked," NOT blocking; his
-answer is filed when it arrives but no send waits on it.
+**RULING (S115, refined S118): S2 and S7 both RUN, ungated, in list position — but they
+differ. S7 is SEND-AS-EMITTED (every Y-path element is Rule-593 mandatory). S2 is
+BLANK-VRN-THEN-RESTORE: VRN is optional on the 233, so under the July-24 mandatory-only
+rule it is blanked for the send and restored after. Each row's basis is noted in its
+Comments cell.** Kane Ticket #2478 remains open as **confirmation only** — flagged "asked,"
+NOT blocking; his answer is filed when it arrives but no send waits on it.
 
 **Recon carry baked into the rows:** (a) **S7 MUST use a NON-entanglement incident type**
 — `entangleInd=Y` force-fills the optional `REM` ("Released: yes/no"), and REM is NOT in
-the Rule 593 mandatory list, which would break the mandatory-only shape; (b) **S1's
-Comments cell records `LOGBOOK_UID_REFERED` omitted-by-design** (spec-optional per XSD
-`minOccurs=0` + CSV `REQUIRED?=N` + Rule 953).
+the Rule 593 mandatory list, which would break the mandatory-only shape; (b) **S1 INCLUDES
+`LOGBOOK_UID_REFERED` (S116-built)** — prefilled from S0's logbook, code recorded in the
+Comments cell (supersedes the S111/S112 omit ruling; see §3.1).
 
 ### 3.3 — Supplementals — SETTLED (S112 close, decision 1): BOTH RUN
 
@@ -135,10 +145,13 @@ The 6-digit-VRN `…460` family is used for every send (VRN = LIC holds; passes 
 4–6 digit gate), constant across the whole sweep — as already baked into §4's identity
 table.
 
-### 3.6 — Phase order (Q6)
+### 3.6 — Phase order — SETTLED (S118): 233 → 222 → 234, LOCKED
 
-Listed below as 233 → 222 → 234 so the simplest forms burn in the process first. Equally
-defensible to run 234 first. Founder's call, but pick before the day starts.
+The graded sends run 233 → 222 → 234 so the simplest forms burn the process in first.
+**Safe because S0 still runs first of all:** S0 is the cross-midnight 234, so a real 234
+logbook exists before S1 (the first 233) needs one to reference. The phase order governs
+only the graded sends AFTER S0 — the 233-before-234 choice does not starve S1 of a logbook
+to point at.
 
 ---
 
@@ -188,8 +201,8 @@ duplicate filename; WS1038 = XSD, and it may blame the element *after* the real 
 
 | # | Row | Shape | Verify |
 |---|---|---|---|
-| **S1** | 233 T1 | All nodes + all elements, **French accents in BOTH comment fields** — `REPORT.REM` (S111) + `REPORT_DTL.REM` (S112), distinct text. | Grep the sent bytes for BOTH `<REM>`s with accented bytes — first live accent-path proof (create-and-send-only screen: complete in one sitting). Comments cell: `LOGBOOK_UID_REFERED` omitted by design (spec-optional — XSD `minOccurs=0`, CSV `REQUIRED?=N`, Rule 953; S114 recon). READY — §3.1 settled, no gate |
-| **S2** | 233 T2 | Mandatory only: REG/CIE/FORM_VER/SOFT_VER + REPORT_UID + DG_CLOSE_DT + REPORT_DTL(START/END/LIC_NO/REASON). No REM. App also emits FIN + VRN — send as emitted. | READY — §3.2 settled (S115 ruling on S114 recon). Comments cell basis: FIN is Rule-961 MANDATORY for all non-Arctic regions; VRN identity-only (Rule 528 format); nothing on the 233 is Blocked. Grep to confirm no REM present |
+| **S1** | 233 T1 | All nodes + all elements, **French accents in BOTH comment fields** — `REPORT.REM` (S111) + `REPORT_DTL.REM` (S112), distinct text. | Grep the sent bytes for BOTH `<REM>`s with accented bytes — first live accent-path proof (create-and-send-only screen: complete in one sitting). `LOGBOOK_UID_REFERED` INCLUDED (S116-built) — prefills from S0's logbook; confirm a real six-letter code (not blank, not `AFUERF`), record it in Comments, grep the bytes for `<LOGBOOK_UID_REFERED>`. READY — §3.1 settled, no gate |
+| **S2** | 233 T2 | Mandatory only: REG/CIE/FORM_VER/SOFT_VER + REPORT_UID + DG_CLOSE_DT + REPORT_DTL(START/END/LIC_NO/REASON) + FIN. **No REM. No VRN. No LOGBOOK_UID_REFERED.** BLANK the profile VRN before sending, RESTORE it after. While blank, 222/234 sends are correctly blocked — expected; S2 is the only blanked send. | READY — §3.2 settled (refined S118). Comments cell basis: FIN is Rule-961 MANDATORY; VRN is optional (Rule 528 format-only) so blanked-and-restored for the July-24 mandatory-only rule; nothing on the 233 is Blocked. Grep to confirm NO `<VRN>`, NO `<REM>`, NO `<LOGBOOK_UID_REFERED>`. Note the blank-and-restore in the row. |
 
 ### PHASE 2 — Form 222 (6 sends, MAR demo identity throughout)
 
@@ -223,9 +236,10 @@ duplicate filename; WS1038 = XSD, and it may blame the element *after* the real 
 supplementals S9b + S10b) = **21 sends**. Nothing optional — the supplementals are part of
 the run (§3.3, settled at S112 close).
 
-**No deferrals (§3.2 settled, S115):** all 21 sends run in list order — S2 and S7 in their
-positions above, send-as-emitted-and-note on the S114 source backing. Kane Ticket #2478 is
-confirmation-only ("asked," not blocking).
+**No deferrals (§3.2 settled S115, refined S118):** all 21 sends run in list order — S2 and
+S7 in their positions above. S7 is send-as-emitted (every Y-path element Rule-593 mandatory);
+S2 is blank-VRN-then-restore (§3.2). Kane Ticket #2478 is confirmation-only ("asked," not
+blocking).
 
 ---
 
@@ -243,9 +257,9 @@ confirmation-only ("asked," not blocking).
 
 ## 8. AFTER THE SWEEP
 
-1. Fill all three TRGs — header carries: LobsterLog · 1.8.6 (76) · Jonathon Nickerson ·
-   Iteration #1 · RFQ Id **"Requested — pending DFO assignment"** (never fabricate) ·
-   form ids 234.12 / 222.1 / 233.2.
+1. Fill all three TRGs — header carries: LobsterLog · **1.9.1** (confirmed on both stores) ·
+   Jonathon Nickerson · Iteration #1 · RFQ Id **BLANK** (Lisa July 23: internal-only, leave
+   empty) · form ids 234.12 / 222.1 / 233.2.
 2. Capture the register shots (234 T6, 222 T9, 233 T5).
 3. Sign the Letter of Attestation (234.12).
 4. Fill Appendix B — 7 cases.
@@ -263,8 +277,8 @@ confirmation-only ("asked," not blocking).
 - Proofreader pile: "(Optional)" missing from « Remarques » and « Commentaires »;
   empêtrement vs enchevêtrement on the 222; FR Résultats rows phrased as questions where EN
   uses nouns; the unlabelled REM box on the 222 Remarks card.
-- §22 guides unified at **v1.4** — filenames, title, and footers now all agree; the earlier
-  `v1_3`-filename vs internal-"Version 1.2" mismatch is resolved (supersedes v1_2/v1_3).
+- §22 guides now at **v1.5** (S117) — figures current, app version 1.9.1, page-number field
+  rebuilt, uploaded to Drive. Supersedes v1.4/v1.3/v1.2.
 
 ---
 
