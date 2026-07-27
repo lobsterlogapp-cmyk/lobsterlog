@@ -25,6 +25,7 @@ export interface Form233Entry {
   fin: string;               // snapshotted from profile at save time
   remarks?: string;          // → REPORT.REM (string_2000, optional) — Session 111; additive
   reportDtlRemarks?: string; // → REPORT_DTL.REM (string_2000, optional) — Session 112; additive
+  logbookUidRefered?: string; // → REPORT.LOGBOOK_UID_REFERED (string_6, optional; "REFERED" is DFO's schema spelling) — S116; additive
   sentToDfo: boolean;
   sentAt?: number;
 }
@@ -102,7 +103,10 @@ export function generateForm233Xml(entry: Form233Entry, profile: CaptainProfile)
 
   let report = '  <REPORT>\n';
   report += tag('REPORT_UID',  entry.uid || generateForm233Uid(), '    ');
-  // LOGBOOK_UID_REFERED omitted — inactivity not tied to a specific logbook
+  // LOGBOOK_UID_REFERED (string_6, opt) — XSD report_type sequence: between REPORT_UID and
+  // DG_CLOSE_DT. Rule 953: refers to TRIP.LGBK_UID of another logbook, six uppercase A-Z.
+  // Blank → tag() drops the element entirely (an empty tag is schema-invalid, minLength 1).
+  report += tag('LOGBOOK_UID_REFERED', entry.logbookUidRefered ?? '', '    ');
   report += tag('DG_CLOSE_DT', toCloseTimestamp(), '    ');
   // REM (string_2000, opt) — REPORT-level "Comments on the inactivity". XSD report_type
   // sequence: after DG_CLOSE_DT, before REPORT_DTL. (REPORT_DTL.REM left unused.)
@@ -147,6 +151,12 @@ export function validateForm233Xml(xml: string): { valid: boolean; errors: strin
 
   const uid = elem('REPORT_UID');
   if (uid !== null && !/^.{1,6}$/.test(uid)) errors.push(`REPORT_UID must be 1-6 characters (string_6): ${uid}`);
+
+  // LOGBOOK_UID_REFERED is optional — NO presence check. When present, Rule 953 requires
+  // exactly six uppercase letters A-Z (it refers to TRIP.LGBK_UID of another logbook).
+  const lgbkRef = elem('LOGBOOK_UID_REFERED');
+  if (lgbkRef !== null && !/^[A-Z]{6}$/.test(lgbkRef))
+    errors.push(`LOGBOOK_UID_REFERED must be six uppercase letters A-Z (Rule 953): ${lgbkRef}`);
 
   const start = elem('START_DT');
   const end = elem('END_DT');

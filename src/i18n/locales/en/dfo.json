@@ -295,6 +295,8 @@
     "licenceNoPlaceholder": "Set in Captain Profile",
     "finLabel": "LICENCE HOLDER’S FIN",
     "finPlaceholder": "Set in Captain Profile",
+    "logbookUidRefLabel": "REFERRED ELOG UID",
+    "logbookUidRefPlaceholder": "Logbook this report refers to",
     "reportingPeriodCard": "Reporting Period",
     "startDateLabel": "START DATE",
     "endDateLabel": "END DATE",

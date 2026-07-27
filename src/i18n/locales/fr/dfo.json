@@ -296,6 +296,8 @@
     "licenceNoPlaceholder": "Défini dans le profil capitaine",
     "finLabel": "NIP DU DÉTENTEUR DE PERMIS",
     "finPlaceholder": "Défini dans le profil capitaine",
+    "logbookUidRefLabel": "IDU JBE RÉFÉRÉ",
+    "logbookUidRefPlaceholder": "Journal auquel ce rapport se réfère",
     "reportingPeriodCard": "Période de déclaration",
     "startDateLabel": "DATE DE DÉBUT",
     "endDateLabel": "DATE DE FIN",

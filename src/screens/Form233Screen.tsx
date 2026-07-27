@@ -30,6 +30,7 @@ import { submitDfoXml, isValidFormVrn } from '../utils/submitDfoXml';
 import { triggerBackup } from '../utils/dfoBackup';
 import { generateDfoXmlFileName } from '../utils/dfoXmlGenerator';
 import { loadCaptainProfile, CaptainProfile, EMPTY_PROFILE } from '../utils/captainStorage';
+import { loadLastLog } from '../utils/dfoLogStorage';
 import { REQUIRED_ASTERISK_COLOR } from '../styles/GlobalStyles';
 
 interface Props {
@@ -42,6 +43,7 @@ interface FormState {
   reason: string;
   remarks: string;            // → REPORT.REM (string_2000, optional) — Session 111
   reportDtlRemarks: string;   // → REPORT_DTL.REM (string_2000, optional) — Session 112
+  logbookUidRefered: string;  // → REPORT.LOGBOOK_UID_REFERED (string_6, optional) — S116
 }
 
 const EMPTY_FORM: FormState = {
@@ -50,6 +52,7 @@ const EMPTY_FORM: FormState = {
   reason: '',
   remarks: '',
   reportDtlRemarks: '',
+  logbookUidRefered: '',
 };
 
 // Mirror of FullDfoForm.formatDate — picker Date → YYYY-MM-DD (the string the generator accepts).
@@ -81,6 +84,11 @@ export default function Form233Screen({ onClose }: Props) {
 
   useEffect(() => {
     loadCaptainProfile().then(setProfile);
+    // LOGBOOK_UID_REFERED prefill: the most recent logbook this inactivity likely follows
+    // (mirrors the Form 222 LGBK_NUM_REF prefill — same guard, never overwrites typed text).
+    loadLastLog().then(last => {
+      if (last?.lgbkUid) setForm(prev => prev.logbookUidRefered ? prev : { ...prev, logbookUidRefered: last.lgbkUid });
+    });
   }, []);
 
   const set = (key: keyof FormState) => (value: string) =>
@@ -176,6 +184,7 @@ export default function Form233Screen({ onClose }: Props) {
                 fin: profile.licenceHolderFin,
                 remarks: form.remarks,
                 reportDtlRemarks: form.reportDtlRemarks,
+                logbookUidRefered: form.logbookUidRefered.trim(),
                 sentToDfo: false,
               };
 
@@ -310,6 +319,28 @@ export default function Form233Screen({ onClose }: Props) {
           <View style={styles.noteBlock}>
             <View style={styles.noteButtonRow}>{renderNoteButton()}</View>
             {renderNoteInput()}
+          </View>
+        </View>
+
+        {/* Related logbook → REPORT.LOGBOOK_UID_REFERED (string_6, optional) — S116.
+            Identifier, not a remark: plain TextInput, own card (one concept per card).
+            Prefilled from the most recent complete log's lgbkUid; fully editable.
+            No optional-marker on the header: unmarked-means-optional is the screen
+            convention (required fields carry the asterisk); the "(Optional)" class is
+            cleared in one later pass per the S113 ruling. */}
+        <View style={styles.card}>
+          <Text style={styles.cardHeader}>{t('form233.logbookUidRefLabel')}</Text>
+          <View style={styles.lastInputGroup}>
+            <TextInput
+              style={styles.input}
+              value={form.logbookUidRefered}
+              onChangeText={v => set('logbookUidRefered')(v.toUpperCase())}
+              placeholder={t('form233.logbookUidRefPlaceholder')}
+              placeholderTextColor="#CBD5E1"
+              maxLength={6}
+              autoCapitalize="characters"
+              autoCorrect={false}
+            />
           </View>
         </View>
 
