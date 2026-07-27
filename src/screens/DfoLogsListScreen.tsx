@@ -395,6 +395,11 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
           <View style={{ flex: 1 }}>
             <Text style={styles.draftId}>{log.id}</Text>
             <Text style={styles.draftDate}>{log.dateFished}</Text>
+            {/* LGBK_UID surface (S116 P3) — the value the 222/233 reference boxes want.
+                Rendered only when present: no stray label beside nothing. */}
+            {!!log.lgbkUid && (
+              <Text style={styles.draftUidLine}>{`${t('logs.elogUidLabel')} · ${log.lgbkUid}`}</Text>
+            )}
           </View>
           <View style={styles.pctBadge}>
             <Text style={styles.pctBadgeText}>{pct}%</Text>
@@ -435,6 +440,10 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
       <View key={log.id} style={[styles.logCard, !!failError && styles.logCardFailed]}>
         <Text style={styles.logId}>{log.id}</Text>
         <Text style={styles.logDate}>{log.dateFished}</Text>
+        {/* LGBK_UID surface (S116 P3) — rendered only when present */}
+        {!!log.lgbkUid && (
+          <Text style={styles.logUidLine}>{`${t('logs.elogUidLabel')} · ${log.lgbkUid}`}</Text>
+        )}
 
         {!sent && renderCountdown(log)}
 
@@ -944,6 +953,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#B45309',
   },
+  draftUidLine: {
+    fontSize: 12,
+    color: '#B45309',
+    opacity: 0.8,
+    marginTop: 2,
+  },
   pctBadge: {
     backgroundColor: '#FEF3C7',
     borderRadius: 20,
@@ -1024,6 +1039,12 @@ const styles = StyleSheet.create({
   logDate: {
     fontSize: 13,
     color: '#64748B',
+    marginBottom: 12,
+  },
+  logUidLine: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginTop: -8,
     marginBottom: 12,
   },
   logActions: {

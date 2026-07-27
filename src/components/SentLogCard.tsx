@@ -84,6 +84,8 @@ export const SentLogCard: React.FC<SentLogCardProps> = ({ log, record, onPress }
 
       <View style={styles.fieldGrid}>
         {tripNum !== undefined && <Field label={t('logs.regTripLabel')} value={`#${tripNum}`} />}
+        {/* LGBK_UID surface (S116 P3) — read from the log, not the record (B0 route) */}
+        {!!log.lgbkUid && <Field label={t('logs.elogUidLabel')} value={log.lgbkUid} />}
         {!!record?.vrn && <Field label={t('logs.regVesselLabel')} value={record.vrn} />}
         {!!record?.confNumber && <Field label={t('logs.regConfLabel')} value={record.confNumber} />}
         <Field label={t('logs.regSentLabel')} value={formatSentDate(record?.attemptedAt)} />
@@ -141,6 +143,11 @@ export const SentLogDetailModal: React.FC<SentLogDetailModalProps> = ({ visible,
 
               <View style={styles.detailCard}>
                 {log && <DetailRow label={t('logs.regTripLabel')} value={tripNum !== undefined ? `#${tripNum}` : '—'} />}
+                {/* LGBK_UID surface (S116 P3) — resolved from the originating log (B0 route:
+                    the record stores no lgbkUid). Hidden when there is no backing log
+                    (form records, deleted logs) — no stray row, historical records degrade
+                    gracefully. */}
+                {!!log?.lgbkUid && <DetailRow label={t('logs.elogUidLabel')} value={log.lgbkUid} />}
                 <DetailRow label={t('logs.regVesselLabel')} value={record.vrn || '—'} />
                 <DetailRow label={t('logs.regConfLabel')} value={record.confNumber || '—'} />
                 <DetailRow label={t('logs.regSentLabel')} value={formatSentDate(record.attemptedAt)} />
