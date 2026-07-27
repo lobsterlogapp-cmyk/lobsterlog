@@ -152,9 +152,13 @@ export default function Form233Screen({ onClose }: Props) {
 
   const handleSubmit = async () => {
     if (sending) return; // re-tap guard while a send is in flight (mirror logbook)
-    // Rule 528 — VRN must be 4-6 digits on the Form 233 path (FS-NAT-233-2-EN.pdf).
-    // Hard block before any envelope/submit: no send, no mark-sent, no archive.
-    if (!isValidFormVrn(profile.vesselNumber.trim())) {
+    // Rule 528 — a format restriction that applies only when the VRN element is used
+    // (FS-NAT-233-2-EN.pdf §5.2.3 note; VRN is CSV-optional on the 233). Conformant gate:
+    // present → must be 4-6 digits; BLANK → allowed, the generator omits <VRN> entirely
+    // (tag() drops empty). Hard block on malformed only: no send, no mark-sent, no archive.
+    // (Form 222 keeps its unconditional gate — VRN is MANDATORY there, CSV REQUIRED?=Y.)
+    const vrn = profile.vesselNumber.trim();
+    if (vrn && !isValidFormVrn(vrn)) {
       Alert.alert(t('sendGate.vrnRule528Title'), t('sendGate.vrnRule528'));
       return;
     }
