@@ -306,7 +306,7 @@
     "reasonCard": "Raison de l'inactivité",
     "reasonLabel": "RAISON",
     "reasonPlaceholder": "Sélectionne une raison…",
-    "remarksCard": "Commentaires",
+    "remarksCard": "Commentaires (Facultatif)",
     "remarksPlaceholder": "Commentaires au sujet de l'inactivité",
     "reasonOptions": {
       "Weather": "Météo",
