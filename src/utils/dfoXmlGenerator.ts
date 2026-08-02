@@ -43,9 +43,13 @@ function localToUtcIso(dateStr: string, timeStr: string): string {
   return new Date(y, mo - 1, d, h, mi, 0, 0).toISOString();
 }
 
-function kgStr(lbs: string, inLbs: boolean): string {
+// allowZero: a typed 0 is a declarable quantity ONLY where a rule says so — currently
+// just CATCH.KEPT_WT (Rule 2020 zero-catch + Rules 630/631). Every other caller keeps
+// the default, so 0 still suppresses the element/node there (e.g. the personal-use
+// PCONS node whose hardcoded USG_ID is Blocked on 88/89/91).
+function kgStr(lbs: string, inLbs: boolean, allowZero: boolean = false): string {
   const n = parseFloat(lbs);
-  if (isNaN(n) || n <= 0) return '';
+  if (isNaN(n) || (allowZero ? n < 0 : n <= 0)) return '';
   return (inLbs ? n / 2.20462 : n).toFixed(2);
 }
 
@@ -98,7 +102,9 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
     if (Array.isArray(crew) && crew.length > 0) crewNb = String(crew.length);
   } catch { /* noop */ }
 
-  const catchWtKg = kgStr(d.catchWeight, inLbs);
+  // KEPT_WT: a typed 0 must emit as 0.00 (Rule 2020 — "the fisher must enter 0 in the
+  // quantity kept" — with Rules 630/631 making KEPT_WT mandatory on the lobster CATCH).
+  const catchWtKg = kgStr(d.catchWeight, inLbs, true);
 
   // BAIT_USED — XSD bait_used_type: BT_TYP_ID, BT_WT, BT_COND_ID?, DG_CLOSE_DT, REM?
   // One repeating <BAIT_USED> node per bait entry.
