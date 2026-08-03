@@ -5,7 +5,7 @@
 // digits only). Flat ISO-8601 fields still inside TRIP are S2/S3 scope.
 
 import forge from 'node-forge';
-import { DfoLog } from './dfoLogStorage';
+import { DfoLog, ExtraEffortDetail, ExtraSarDetail } from './dfoLogStorage';
 import { CaptainProfile } from './captainStorage';
 import { getDfoBaitTypeList, baitConditionState, getDfoPconsSpeciesList, DFO_SPECIE_FRM_ID, DFO_PCONS_OTHER_SIZE_ID, DFO_GEAR_ID, DFO_SOFT_VER, DFO_CIE_ID, DFO_FORM_VER_ID, DFO_HLIN_COMPANY_LIST, DFO_HLOUT_COMPANY_LIST, DFO_SUBFORM_REGISTRY, DFO_FMA_38B, DFO_FMA_NB_VNTCH, DFO_FMA_NB_VNTCH_YOU, DFO_FMA_STAT_SECT_REQUIRED, DFO_STAT_SECT_BY_FMA, DFO_FMA_GRID_MAP, DFO_GRID_BLOCKED_FMA, clampCoord4 } from './dfoConstants';
 import { MV_PARTNERSHIP_TYPE, MV_GRID } from '../data/reftables';
@@ -102,9 +102,25 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
     if (Array.isArray(crew) && crew.length > 0) crewNb = String(crew.length);
   } catch { /* noop */ }
 
-  // KEPT_WT: a typed 0 must emit as 0.00 (Rule 2020 — "the fisher must enter 0 in the
-  // quantity kept" — with Rules 630/631 making KEPT_WT mandatory on the lobster CATCH).
-  const catchWtKg = kgStr(d.catchWeight, inLbs, true);
+  // S121 multi-grid: uniform per-EFFORT_DETAIL view. Block 1 = the legacy top-level d.*
+  // fields, so every pre-S121 log and every single-grid log emits byte-identically; blocks
+  // 2+ come from the additive d.extraEffortDetails JSON array written by FullDfoForm when
+  // the user adds more catch efforts. XSD allows EFFORT_DETAIL 1..9999 per EFFORT_BY_GEAR.
+  let extraDetails: ExtraEffortDetail[] = [];
+  try {
+    const parsed = JSON.parse(d.extraEffortDetails || '[]');
+    if (Array.isArray(parsed)) extraDetails = parsed;
+  } catch { /* noop */ }
+  const effortDetails: ExtraEffortDetail[] = [
+    {
+      lgridCodeId: d.lgridCodeId, gridId: d.gridId, statSectId: d.statSectId,
+      catchWeight: d.catchWeight, trapHauls: d.trapHauls, soakDuration: d.soakDuration,
+      gpsLat: d.gpsLat, gpsLng: d.gpsLng, gpsSrc: d.gpsSrc, trapSize: d.trapSize,
+      nbSpcmnKept: d.nbSpcmnKept, nbSpcmnBrd: d.nbSpcmnBrd,
+      vNotchCount: d.vNotchCount, nbVntchYou: d.nbVntchYou,
+    },
+    ...extraDetails,
+  ];
 
   // BAIT_USED — XSD bait_used_type: BT_TYP_ID, BT_WT, BT_COND_ID?, DG_CLOSE_DT, REM?
   // One repeating <BAIT_USED> node per bait entry.
@@ -255,85 +271,91 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   if (subformId === 91) effort += tag('GEAR_SBTYP_ID', d.gearSubtypeId ?? '', '        ');
   // REM: EFFORT_BY_GEAR note (after GEAR_SBTYP_ID, before EFFORT_DETAIL) — same 'haul' text
   effort += tag('REM', rem.haul ?? '', '        ');
+  // S121: one <EFFORT_DETAIL> per catch-effort block (multi-grid). Index 0 is the legacy
+  // block; with no extras the loop runs once and the output is byte-identical to pre-S121.
+  effortDetails.forEach((det, di) => {
   effort += `        <EFFORT_DETAIL>\n`;
   // SOAKED_DUR: blocked for MAR (subform 90) per subforms requirements v234.11.
   // UI captures DAYS (Rule 286); the wire unit is MINUTES (XML dictionary
   // UNIT_OF_MEASURE_ID 11850 = MIN), so convert days → minutes here.
   // Rule 165 cap (216 h = 12960 min) is enforced by the validator.
   if (subformId !== 90) {
-    const soakDays = parseFloat(d.soakDuration);
+    const soakDays = parseFloat(det.soakDuration ?? '');
     const soakMin = isNaN(soakDays) || soakDays <= 0 ? '' : String(Math.round(soakDays * 1440));
     effort += tag('SOAKED_DUR', soakMin, '          ');
   }
   // NB_VNTCH / NB_VNTCH_YOU: QC(88) only, mandatory/blocked by FMA (Rules 623-626)
   if (subformId === 88 && DFO_FMA_NB_VNTCH.has(Number(d.fmaId))) {
-    effort += tag('NB_VNTCH', d.vNotchCount ?? '', '          ');
+    effort += tag('NB_VNTCH', det.vNotchCount ?? '', '          ');
   }
   if (subformId === 88 && DFO_FMA_NB_VNTCH_YOU.has(Number(d.fmaId))) {
-    effort += tag('NB_VNTCH_YOU', d.nbVntchYou ?? '', '          ');
+    effort += tag('NB_VNTCH_YOU', det.nbVntchYou ?? '', '          ');
   }
-  effort += tag('NB_GEAR_HLD',  d.trapHauls, '          ');
+  effort += tag('NB_GEAR_HLD',  det.trapHauls ?? '', '          ');
   // LGRID_ID: Optional for MAR(90) ONLY; Blocked for QC(88)/GLF(89)/NL(91) per
   // Subforms_requirements_234.xlsx row 85 (Session 59 recon). Subform-gated to 90 with
-  // the value-gate AND-ed in — tag() emits nothing when d.lgridCodeId is empty, so it
-  // only appears on 90 when populated.
-  if (subformId === 90) effort += tag('LGRID_ID', d.lgridCodeId, '          ');
+  // the value-gate AND-ed in — tag() emits nothing when the block's lgridCodeId is empty,
+  // so it only appears on 90 when populated.
+  if (subformId === 90) effort += tag('LGRID_ID', det.lgridCodeId ?? '', '          ');
   // GRID_ID: QC(88) only, FMA-gated (NOT subform-gated like LGRID). Mandatory for required
   // (non-blocked) QC FMAs — those in DFO_FMA_GRID_MAP (Rule 1012). The 29 Rule-1011 blocked
   // FMAs are absent from the map, so the gate is false and nothing emits (Rule 1011). Value =
   // stored MV_GRID code_id; value-gate AND-ed via tag(). XSD sequence: after LGRID_ID, before
   // GEAR_GRP_NUM (EFFORT_DETAIL_SPEC). Map digit (613x="4"/614x="1") is enforced by the validator.
   if (subformId === 88 && d.fmaId != null && (Number(d.fmaId) in DFO_FMA_GRID_MAP)) {
-    effort += tag('GRID_ID', d.gridId ?? '', '          ');
+    effort += tag('GRID_ID', det.gridId ?? '', '          ');
   }
-  // GEAR_GRP_NUM: sequential from 1 per EFFORT node (Rule 609x); always 1 for single-effort log
-  effort += tag('GEAR_GRP_NUM', '1', '          ');
+  // GEAR_GRP_NUM: sequential from 1 per EFFORT node (Rule 609x) — the block index
+  effort += tag('GEAR_GRP_NUM', String(di + 1), '          ');
   // LAT/LONG per subform — Subforms_requirements rows 82/83 + Rule 3059 (S110 G1 fix):
   //   QC(88)/GLF(89): Mandatory (rows 82/83) — emit whenever captured;
   //   MAR(90): Rule 3059 — FMA 38b only (mandatory there, blocked in all other MAR FMAs);
   //   NL(91): Blocked (rows 82/83) — never emitted, even if coords exist on an old draft.
   // MODE attribute per Standard v6.1 §11.3: G = GPS-captured, M = manual
-  // entry/edit (open question 3 resolution; d.gpsSrc tracked by FullDfoForm).
+  // entry/edit (open question 3 resolution; gpsSrc tracked per block by FullDfoForm).
   const emitEffortCoords = subformId === 88 || subformId === 89 ||
     (subformId === 90 && Number(d.fmaId) === DFO_FMA_38B);
-  if (emitEffortCoords && d.gpsLat && d.gpsLng) {
-    const coordMode = d.gpsSrc === 'gps' ? 'G' : 'M';
+  if (emitEffortCoords && det.gpsLat && det.gpsLng) {
+    const coordMode = det.gpsSrc === 'gps' ? 'G' : 'M';
     // Clamp to the XSD's ≤4-decimal LAT/LONG limit at emit (shared clampCoord4), matching
     // the 222 form path — a high-precision GPS read would otherwise draw WS1038. Emit-only.
-    effort += `          <LAT MODE="${coordMode}">${xmlEscape(clampCoord4(d.gpsLat))}</LAT>\n`;
-    effort += `          <LONG MODE="${coordMode}">${xmlEscape(clampCoord4(d.gpsLng))}</LONG>\n`;
+    effort += `          <LAT MODE="${coordMode}">${xmlEscape(clampCoord4(det.gpsLat))}</LAT>\n`;
+    effort += `          <LONG MODE="${coordMode}">${xmlEscape(clampCoord4(det.gpsLng))}</LONG>\n`;
   }
   // TRP_SZ_ID: Mandatory for NL(91), Blocked for QC/GLF/MAR (88/89/90) per
   // Subforms_requirements_234.xlsx row 79. Values constrained to 39682=Standard /
   // 39683=Large (Rule 611, DFO_TRAP_SIZE_LIST). XSD sequence: after LONG, before CATCH.
-  if (subformId === 91) effort += tag('TRP_SZ_ID', d.trapSize ?? '', '          ');
+  if (subformId === 91) effort += tag('TRP_SZ_ID', det.trapSize ?? '', '          ');
   // STAT_SECT_ID: Mandatory for the Rule 621 FMAs, Blocked elsewhere (Rule 608). Unlike
   // LGRID/TRP_SZ_ID this is FMA-GATED, NOT subform-gated — emit only when the effort FMA is
   // in DFO_FMA_STAT_SECT_REQUIRED (those 17 FMAs are all NL-91). Value-gate AND-ed in via
   // tag() (blank → absent). XSD sequence: after TRP_SZ_ID, before REM.
-  if (DFO_FMA_STAT_SECT_REQUIRED.has(Number(d.fmaId))) effort += tag('STAT_SECT_ID', d.statSectId ?? '', '          ');
+  if (DFO_FMA_STAT_SECT_REQUIRED.has(Number(d.fmaId))) effort += tag('STAT_SECT_ID', det.statSectId ?? '', '          ');
   // REM: EFFORT_DETAIL note (last child before CATCH) — same 'haul' text
   effort += tag('REM', rem.haul ?? '', '          ');
   effort += `          <CATCH>\n`;
   effort += tag('SPECIE_ID',     '1312', '            ');
-  effort += tag('KEPT_WT',       catchWtKg, '            ');
+  // KEPT_WT: a typed 0 must emit as 0.00 (Rule 2020 — "the fisher must enter 0 in the
+  // quantity kept" — with Rules 630/631 making KEPT_WT mandatory on the lobster CATCH).
+  effort += tag('KEPT_WT',       kgStr(det.catchWeight ?? '', inLbs, true), '            ');
   // NB_SPCMN_KEPT: NL(91) only — mandatory for the lobster catch (Rule 976), blocked for
-  // the non-lobster case (Rule 977) and for QC/GLF/MAR (Subforms row 93). The single CATCH
-  // node is always the lobster target (Rule 2020), so the gate is subform-only (S110 Phase 2).
+  // the non-lobster case (Rule 977) and for QC/GLF/MAR (Subforms row 93). Every CATCH
+  // node is the lobster target (Rule 2020), so the gate is subform-only (S110 Phase 2).
   // XSD catch_type sequence: after KEPT_WT, before SPECIE_FRM_ID.
   if (subformId === 91) {
-    effort += tag('NB_SPCMN_KEPT', d.nbSpcmnKept ?? '', '            ');
+    effort += tag('NB_SPCMN_KEPT', det.nbSpcmnKept ?? '', '            ');
   }
   effort += tag('SPECIE_FRM_ID', String(DFO_SPECIE_FRM_ID), '            ');
   // NB_SPCMN_BRD: lobster in MAR(90) FMA 38b only — mandatory there (Rule 654),
   // blocked for every other FMA (Rule 655) and species (Rule 653)
   if (subformId === 90 && Number(d.fmaId) === DFO_FMA_38B) {
-    effort += tag('NB_SPCMN_BRD', d.nbSpcmnBrd ?? '', '            ');
+    effort += tag('NB_SPCMN_BRD', det.nbSpcmnBrd ?? '', '            ');
   }
   // REM: CATCH note (last child of catch_type)
   effort += tag('REM', rem.catch ?? '', '            ');
   effort += `          </CATCH>\n`;
   effort += `        </EFFORT_DETAIL>\n`;
+  });
   effort += `      </EFFORT_BY_GEAR>\n`;
   effort += `    </EFFORT>\n`;
 
@@ -346,17 +368,32 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   // absent when N/null. LAT/LONG carry the required MODE attr (§11.3): G=GPS, M=manual
   // (d.sarGpsSrc, mirrors EFFORT_DETAIL). WT optional → omitted. DG_CLOSE_DT auto-stamps.
   if (sarInc === 'Y') {
-    const sarMode = d.sarGpsSrc === 'gps' ? 'G' : 'M';
-    body += `    <SAR>\n`;
-    body += tag('SAR_DT', toDate12(localToUtcIso(d.sarDate ?? '', d.sarTime ?? '')), '      ');
-    body += `      <LAT MODE="${sarMode}">${xmlEscape(d.sarLat ?? '')}</LAT>\n`;
-    body += `      <LONG MODE="${sarMode}">${xmlEscape(d.sarLng ?? '')}</LONG>\n`;
-    body += tag('SPECIE_ID',     d.sarSpecies ?? '', '      ');
-    body += tag('NB_SPCMN',      d.sarNbSpcmn ?? '', '      ');
-    body += tag('SPCMN_COND_ID', d.sarCondId ?? '', '      ');
-    body += tag('DG_CLOSE_DT',   toCloseTimestamp(d.dgCloseSar), '      ');
-    body += tag('REM',           rem.sar ?? '', '      ');
-    body += `    </SAR>\n`;
+    // S121 multi-SAR: block 1 = the legacy d.sar* fields; blocks 2+ = the additive
+    // d.extraSars JSON array (XSD allows SAR 0..unbounded under TRIP). A single-SAR log
+    // emits byte-identically to pre-S121.
+    let extraSars: ExtraSarDetail[] = [];
+    try {
+      const parsed = JSON.parse(d.extraSars || '[]');
+      if (Array.isArray(parsed)) extraSars = parsed;
+    } catch { /* noop */ }
+    const sars: ExtraSarDetail[] = [
+      { species: d.sarSpecies, lat: d.sarLat, lng: d.sarLng, gpsSrc: d.sarGpsSrc,
+        date: d.sarDate, time: d.sarTime, nbSpcmn: d.sarNbSpcmn, condId: d.sarCondId },
+      ...extraSars,
+    ];
+    sars.forEach(s => {
+      const sarMode = s.gpsSrc === 'gps' ? 'G' : 'M';
+      body += `    <SAR>\n`;
+      body += tag('SAR_DT', toDate12(localToUtcIso(s.date ?? '', s.time ?? '')), '      ');
+      body += `      <LAT MODE="${sarMode}">${xmlEscape(s.lat ?? '')}</LAT>\n`;
+      body += `      <LONG MODE="${sarMode}">${xmlEscape(s.lng ?? '')}</LONG>\n`;
+      body += tag('SPECIE_ID',     s.species ?? '', '      ');
+      body += tag('NB_SPCMN',      s.nbSpcmn ?? '', '      ');
+      body += tag('SPCMN_COND_ID', s.condId ?? '', '      ');
+      body += tag('DG_CLOSE_DT',   toCloseTimestamp(d.dgCloseSar), '      ');
+      body += tag('REM',           rem.sar ?? '', '      ');
+      body += `    </SAR>\n`;
+    });
   }
   // HLIN/HLOUT: Rules 2024/2025/1018 — emit only for FMA 28599 (38b) and 1595 (41)
   if (Number(d.fmaId) === 28599 || Number(d.fmaId) === 1595) {

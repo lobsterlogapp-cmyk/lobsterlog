@@ -30,6 +30,39 @@ export interface LogRemarks {
   sar?: string;
 }
 
+// S121 multi-grid: one ADDITIONAL catch-effort block (EFFORT_DETAIL 2..n + its CATCH).
+// Block 1 stays the legacy top-level data keys, so old logs and single-grid logs are
+// untouched; blocks 2+ ride data.extraEffortDetails as a JSON array of these. All values
+// are strings, matching the DfoLog.data map convention. The *Display twins are UI labels
+// (grid number / section name); only the *Id/code fields reach the XML.
+// S121 multi-SAR: one ADDITIONAL species-at-risk encounter (SAR node 2..n). Block 1 stays
+// the legacy d.sar* keys; blocks 2+ ride data.extraSars as a JSON array of these. Emitted
+// only when SAR_IND='Y' (same gate as block 1). `speciesOther`/`what` are UI-only, matching
+// the block-1 fields that never reach the XML.
+export interface ExtraSarDetail {
+  species?: string;       // MV_SAR_LIST codeId → SAR.SPECIE_ID
+  speciesOther?: string;  // UI-only free text (no XSD element)
+  what?: string;          // UI-only description (stored, not emitted — matches block 1)
+  lat?: string; lng?: string; gpsSrc?: string;
+  date?: string; time?: string;   // YYYY-MM-DD / HH:MM → SAR_DT
+  nbSpcmn?: string;
+  condId?: string;        // MV_SPECIMENS_CONDITION codeId → SPCMN_COND_ID
+}
+
+export interface ExtraEffortDetail {
+  lgridCodeId?: string; lgridDisplay?: string;   // MAR settlement grid
+  gridId?: string; gridDisplay?: string;         // QC grid (MV_GRID codeId)
+  statSectId?: string; statSectDisplay?: string; // NL statistical section
+  catchWeight?: string;
+  trapHauls?: string;
+  soakDuration?: string;                         // days in UI; minutes on the wire
+  gpsLat?: string; gpsLng?: string; gpsSrc?: string;
+  trapSize?: string;                             // NL TRP_SZ_ID
+  nbSpcmnKept?: string;                          // NL CATCH count (Rule 976)
+  nbSpcmnBrd?: string;                           // MAR 38b CATCH count (Rule 654)
+  vNotchCount?: string; nbVntchYou?: string;     // QC FMA-gated v-notch counts
+}
+
 export interface DfoLog {
   id: string;                    // e.g. "LL-20260421-001"
   lgbkUid: string;               // Rule 181: 6 random uppercase letters, permanent per log

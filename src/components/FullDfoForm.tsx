@@ -31,6 +31,7 @@ import {
   Plus,
   Trash2,
   ChevronDown,
+  ChevronUp,
   ChevronLeft,
   AlertTriangle,
   LocateFixed,
@@ -48,6 +49,8 @@ import {
   clearActiveDraft,
   DfoLog,
   LogRemarks,
+  ExtraEffortDetail,
+  ExtraSarDetail,
 } from '../utils/dfoLogStorage';
 import { triggerBackup } from '../utils/dfoBackup';
 import { REQUIRED_ASTERISK_COLOR } from '../styles/GlobalStyles';
@@ -193,6 +196,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const [gridDisplay, setGridDisplay] = useState('');
   const [gridPickerOpen, setGridPickerOpen] = useState(false);
   const [gridSearch, setGridSearch] = useState('');
+  // S121 multi-grid: ADDITIONAL catch-effort blocks (EFFORT_DETAIL 2..n). Block 1 stays the
+  // legacy scalar fields below, so existing logs, figures, and emitted bytes are untouched.
+  const [extraEfforts, setExtraEfforts] = useState<ExtraEffortDetail[]>([]);
+  const [extraCollapsed, setExtraCollapsed] = useState<Record<number, boolean>>({});
+  const [extraDropdown, setExtraDropdown] = useState<{ idx: number; kind: 'lgrid' | 'statSect' | 'trapSize' } | null>(null);
+  // Which block the QC grid Modal is picking for: -1 = the block-1 scalars, n = extraEfforts[n]
+  const [gridPickerTarget, setGridPickerTarget] = useState<number>(-1);
   const [catchWeight, setCatchWeight] = useState('');
   const [trapHauls, setTrapHauls] = useState('');
   const [portLanded, setPortLanded] = useState('');
@@ -355,6 +365,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const [sarNbSpcmn, setSarNbSpcmn] = useState('');
   const [sarCondId, setSarCondId] = useState('');
   const [sarCondPickerOpen, setSarCondPickerOpen] = useState(false);
+  // S121 multi-SAR: ADDITIONAL species-at-risk encounters (SAR node 2..n). Block 1 stays
+  // the legacy sar* scalars above; gated on sarYes === true like block 1.
+  const [extraSars, setExtraSars] = useState<ExtraSarDetail[]>([]);
+  const [extraSarDropdown, setExtraSarDropdown] = useState<{ idx: number; kind: 'species' | 'cond' } | null>(null);
   const [sarGpsSrc, setSarGpsSrc] = useState<'gps' | 'manual'>('manual');
 
   // Lost Gear — REMOVED (S93): LOST_GEAR_IND is Blocked in the 234.12 XSD (maxOccurs=0).
@@ -438,6 +452,16 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           setPrtnshpId(d.prtnshpId ? Number(d.prtnshpId) : 39468);
           setTrapSize(d.trapSize || '');
           setGearSubtypeId(d.gearSubtypeId || '');
+          // S121 multi-grid: additional catch-effort blocks (absent on pre-S121 logs).
+          // Loaded blocks start collapsed to their one-line summary.
+          try {
+            const ex = JSON.parse(d.extraEffortDetails || '[]');
+            const arr: ExtraEffortDetail[] = Array.isArray(ex) ? ex : [];
+            setExtraEfforts(arr);
+            const coll: Record<number, boolean> = {};
+            arr.forEach((_, i) => { coll[i] = true; });
+            setExtraCollapsed(coll);
+          } catch { setExtraEfforts([]); }
           try {
             const bc = JSON.parse(d.baitEntries || '[]');
             setBaitEntries(bc);
@@ -478,6 +502,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             setSarNbSpcmn(d.sarNbSpcmn || '');
             setSarCondId(d.sarCondId || '');
             setSarGpsSrc(d.sarGpsSrc === 'gps' ? 'gps' : 'manual');
+            // S121 multi-SAR: additional encounters (absent on pre-S121 logs)
+            try {
+              const ex = JSON.parse(d.extraSars || '[]');
+              setExtraSars(Array.isArray(ex) ? ex : []);
+            } catch { setExtraSars([]); }
           } else if (d.sarYes === 'false') {
             setSarYes(false);
           }
@@ -631,11 +660,17 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     useCrInd, carrierVrn, prtnshpId: String(prtnshpId),
     trapSize,
     gearSubtypeId,
+    // S121: additional catch-effort blocks — key written only when blocks exist, so
+    // pre-S121 logs and single-grid logs keep their exact stored shape.
+    ...(extraEfforts.length > 0 ? { extraEffortDetails: JSON.stringify(extraEfforts) } : {}),
     mmYes: String(mmYes),
     mmSpecies, mmSpeciesOther, mmWhat, mmLat, mmLng, mmDate, mmTime,
     sarYes: String(sarYes),
     sarSpecies, sarSpeciesOther, sarWhat, sarLat, sarLng, sarDate, sarTime,
     sarNbSpcmn, sarCondId, sarGpsSrc,
+    // S121: additional SAR encounters — key written only when blocks exist (see
+    // extraEffortDetails above for the rationale)
+    ...(extraSars.length > 0 ? { extraSars: JSON.stringify(extraSars) } : {}),
     // lostGear* write-out removed (S93) — LOST_GEAR_IND Blocked in 234.12, no longer captured.
     // MAR-specific
     nbSpcmnBrd,
@@ -828,6 +863,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       setSarLat(''); setSarLng(''); setSarDate(''); setSarTime('');
       setSarNbSpcmn(''); setSarCondId(''); setSarGpsSrc('manual');
       setSarDropdownOpen(false); setSarCondPickerOpen(false);
+      setExtraSars([]); setExtraSarDropdown(null); // S121: No clears the extra encounters too
     }
   };
 
@@ -983,6 +1019,420 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         </Text>
         <Clock size={16} color="#64748B" />
       </TouchableOpacity>
+    </View>
+  );
+
+  // ── S121 multi-grid helpers ─────────────────────────────────────────────────────────
+  const updateExtra = (idx: number, patch: Partial<ExtraEffortDetail>) => {
+    setExtraEfforts(prev => prev.map((e, i) => (i === idx ? { ...e, ...patch } : e)));
+  };
+
+  const addExtraEffort = () => {
+    // Collapse the filled blocks to their summaries, open the new one
+    setExtraCollapsed(prev => {
+      const next = { ...prev };
+      extraEfforts.forEach((_, i) => { next[i] = true; });
+      next[extraEfforts.length] = false;
+      return next;
+    });
+    setExtraEfforts(prev => [...prev, {}]);
+  };
+
+  const removeExtraEffort = (idx: number) => {
+    setExtraEfforts(prev => prev.filter((_, i) => i !== idx));
+    setExtraCollapsed(prev => {
+      const next: Record<number, boolean> = {};
+      Object.entries(prev).forEach(([k, v]) => {
+        const i = Number(k);
+        if (i < idx) next[i] = v;
+        else if (i > idx) next[i - 1] = v;
+      });
+      return next;
+    });
+    if (extraDropdown?.idx === idx) setExtraDropdown(null);
+  };
+
+  // Collapsed one-line summary — S121 STOP-1a ruled format: "Grid 1589 — 420 lbs — 225 hauls".
+  // Regions without a grid drop that segment; NL leads with its Statistical Section.
+  const extraSummary = (e: ExtraEffortDetail): string => {
+    const parts: string[] = [];
+    if (subformId === 90 && e.lgridDisplay) parts.push(t('form234.summaryLgrid', { g: e.lgridDisplay }));
+    if (subformId === 88 && e.gridDisplay) parts.push(t('form234.summaryGrid', { g: e.gridDisplay }));
+    if (subformId === 91 && e.statSectDisplay) parts.push(e.statSectDisplay);
+    if (e.catchWeight?.trim()) parts.push(t('form234.lbsSuffix', { lbs: e.catchWeight.trim() }));
+    if (e.trapHauls?.trim()) parts.push(t('form234.haulsSuffix', { n: e.trapHauls.trim() }));
+    return parts.length > 0 ? parts.join(' — ') : t('form234.effortBlockEmpty');
+  };
+
+  const extraField = (
+    idx: number, label: string, key: keyof ExtraEffortDetail,
+    keyboardType: any = 'numeric', isReq: boolean = false,
+    onChange?: (v: string) => void
+  ) => (
+    <View style={styles.fieldRow}>
+      <View style={styles.labelRow}>
+        <Text style={styles.label}>{label}{isReq && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
+      </View>
+      <TextInput
+        style={[styles.input, readOnly && styles.inputReadOnly]}
+        value={(extraEfforts[idx]?.[key] as string) ?? ''}
+        onChangeText={onChange ?? ((v: string) => updateExtra(idx, { [key]: v }))}
+        placeholder="0"
+        placeholderTextColor="#94A3B8"
+        editable={!readOnly}
+        keyboardType={keyboardType}
+      />
+    </View>
+  );
+
+  // One additional catch-effort block — region-aware per the S121 STOP-1b ruling (full XSD
+  // EFFORT_DETAIL/CATCH field set per block): MAR grid (+38b GPS/broodstock), QC grid + soak
+  // + GPS + v-notch, GLF soak + GPS, NL soak + trap size + specimens kept + stat section.
+  const renderExtraEffortBlock = (e: ExtraEffortDetail, i: number) => {
+    const collapsed = !!extraCollapsed[i];
+    const showBlockCoords = subformId === 88 || subformId === 89 ||
+      (subformId === 90 && fmaId === DFO_FMA_38B);
+    return (
+      <View key={i} style={styles.effortBlock}>
+        <View style={styles.effortBlockHeader}>
+          <Text style={styles.effortBlockTitle}>{t('form234.catchEffortBlock', { n: i + 2 })}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            {!readOnly && (
+              <TouchableOpacity style={styles.deleteBtn} onPress={() => removeExtraEffort(i)}>
+                <Trash2 size={16} color="#EF4444" />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={styles.deleteBtn} onPress={() => setExtraCollapsed(prev => ({ ...prev, [i]: !collapsed }))}>
+              {collapsed ? <ChevronDown size={18} color="#64748B" /> : <ChevronUp size={18} color="#64748B" />}
+            </TouchableOpacity>
+          </View>
+        </View>
+        {collapsed ? (
+          <TouchableOpacity onPress={() => setExtraCollapsed(prev => ({ ...prev, [i]: false }))}>
+            <Text style={styles.effortBlockSummary} numberOfLines={1}>{extraSummary(e)}</Text>
+          </TouchableOpacity>
+        ) : (
+          <>
+            {/* MAR settlement grid — same list/gate as block 1 */}
+            {subformId === 90 && fmaId !== null && (DFO_LGRID_BY_FMA[fmaId] ?? []).length > 0 && (
+              <View style={styles.fieldRow}>
+                <Text style={styles.label}>{t('form234.lgridLabel')}</Text>
+                <TouchableOpacity
+                  style={styles.timeButton}
+                  onPress={() => { if (readOnly) return; setExtraDropdown(cur => (cur?.idx === i && cur.kind === 'lgrid') ? null : { idx: i, kind: 'lgrid' }); }}
+                >
+                  <Text style={[styles.timeButtonText, !e.lgridDisplay && styles.timeButtonPlaceholder]}>
+                    {e.lgridDisplay || t('form234.selectGrid')}
+                  </Text>
+                  <ChevronDown size={16} color="#64748B" />
+                </TouchableOpacity>
+                {extraDropdown?.idx === i && extraDropdown.kind === 'lgrid' && (
+                  <View style={[styles.dropdownList, { maxHeight: 200 }]}>
+                    <ScrollView nestedScrollEnabled>
+                      {(DFO_LGRID_BY_FMA[fmaId] ?? []).map(g => (
+                        <TouchableOpacity
+                          key={g.codeId}
+                          style={[styles.dropdownItem, e.lgridCodeId === String(g.codeId) && styles.dropdownItemActive]}
+                          onPress={() => { updateExtra(i, { lgridCodeId: String(g.codeId), lgridDisplay: String(g.display) }); setExtraDropdown(null); }}
+                        >
+                          <Text style={[styles.dropdownItemText, e.lgridCodeId === String(g.codeId) && styles.dropdownItemTextActive]}>
+                            {g.display}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+              </View>
+            )}
+            {/* QC grid — reuses the block-1 search Modal via gridPickerTarget */}
+            {subformId === 88 && fmaId !== null && fmaId in DFO_FMA_GRID_MAP && (
+              <View style={styles.fieldRow}>
+                <Text style={styles.label}>{t('form234.gridLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+                <TouchableOpacity
+                  style={styles.timeButton}
+                  onPress={() => { if (readOnly) return; setGridSearch(''); setGridPickerTarget(i); setGridPickerOpen(true); }}
+                >
+                  <Text style={[styles.timeButtonText, !e.gridDisplay && styles.timeButtonPlaceholder]}>
+                    {e.gridDisplay || t('form234.selectQcGrid')}
+                  </Text>
+                  <ChevronDown size={16} color="#64748B" />
+                </TouchableOpacity>
+              </View>
+            )}
+            {/* NL statistical section — same FMA gate as block 1 */}
+            {subformId === 91 && fmaId !== null && DFO_FMA_STAT_SECT_REQUIRED.has(fmaId) && (
+              <View style={styles.fieldRow}>
+                <Text style={styles.label}>{t('form234.statSectLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+                <TouchableOpacity
+                  style={styles.timeButton}
+                  onPress={() => { if (readOnly) return; setExtraDropdown(cur => (cur?.idx === i && cur.kind === 'statSect') ? null : { idx: i, kind: 'statSect' }); }}
+                >
+                  <Text style={[styles.timeButtonText, !e.statSectDisplay && styles.timeButtonPlaceholder]}>
+                    {e.statSectDisplay || t('form234.selectStatSect')}
+                  </Text>
+                  <ChevronDown size={16} color="#64748B" />
+                </TouchableOpacity>
+                {extraDropdown?.idx === i && extraDropdown.kind === 'statSect' && (
+                  <View style={[styles.dropdownList, { maxHeight: 200 }]}>
+                    <ScrollView nestedScrollEnabled>
+                      {(DFO_STAT_SECT_BY_FMA[fmaId] ?? []).map(r => {
+                        const label = i18n.language.startsWith('fr') ? r.statSectDescFr : r.statSectDescEn;
+                        return (
+                          <TouchableOpacity
+                            key={r.statSectCodeId}
+                            style={[styles.dropdownItem, e.statSectId === String(r.statSectCodeId) && styles.dropdownItemActive]}
+                            onPress={() => { updateExtra(i, { statSectId: String(r.statSectCodeId), statSectDisplay: label }); setExtraDropdown(null); }}
+                          >
+                            <Text style={[styles.dropdownItemText, e.statSectId === String(r.statSectCodeId) && styles.dropdownItemTextActive]}>
+                              {label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                )}
+              </View>
+            )}
+            {extraField(i, t('form234.catchWeightLabel'), 'catchWeight', 'numeric', isRequired('catchWeight'))}
+            {extraField(i, t('form234.trapHaulsLabel'), 'trapHauls', 'numeric', isRequired('trapHauls'))}
+            {/* SOAKED_DUR: blocked for MAR(90); per-EFFORT_DETAIL for 88/89/91 */}
+            {subformId !== 90 &&
+              extraField(i, t('form234.soakDurationLabel'), 'soakDuration', 'decimal-pad', isRequired('soakDuration'))}
+            {/* NB_VNTCH / NB_VNTCH_YOU: QC(88) FMA-gated (Rules 623-626) */}
+            {subformId === 88 && fmaId != null && DFO_FMA_NB_VNTCH.has(fmaId) &&
+              extraField(i, t('form234.nbVntchLabel'), 'vNotchCount', 'numeric', true)}
+            {subformId === 88 && fmaId != null && DFO_FMA_NB_VNTCH_YOU.has(fmaId) &&
+              extraField(i, t('form234.nbVntchYouLabel'), 'nbVntchYou', 'numeric', true)}
+            {/* NL: specimens kept + trap size */}
+            {subformId === 91 &&
+              extraField(i, t('form234.nbSpcmnKeptLabel'), 'nbSpcmnKept', 'numeric', true)}
+            {subformId === 91 && (
+              <View style={styles.fieldRow}>
+                <Text style={styles.label}>{t('form234.trapSizeLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+                <TouchableOpacity
+                  style={styles.timeButton}
+                  onPress={() => { if (readOnly) return; setExtraDropdown(cur => (cur?.idx === i && cur.kind === 'trapSize') ? null : { idx: i, kind: 'trapSize' }); }}
+                >
+                  <Text style={[styles.timeButtonText, !e.trapSize && styles.timeButtonPlaceholder]}>
+                    {e.trapSize ? t(`form234.trapSizeOption_${e.trapSize}`, { defaultValue: DFO_TRAP_SIZE_LIST.find(s => String(s.codeId) === e.trapSize)?.label ?? t('form234.selectTrapSize') }) : t('form234.selectTrapSize')}
+                  </Text>
+                  <ChevronDown size={16} color="#64748B" />
+                </TouchableOpacity>
+                {extraDropdown?.idx === i && extraDropdown.kind === 'trapSize' && (
+                  <View style={styles.dropdownList}>
+                    {DFO_TRAP_SIZE_LIST.map(s => (
+                      <TouchableOpacity
+                        key={s.codeId}
+                        style={[styles.dropdownItem, e.trapSize === String(s.codeId) && styles.dropdownItemActive]}
+                        onPress={() => { updateExtra(i, { trapSize: String(s.codeId) }); setExtraDropdown(null); }}
+                      >
+                        <Text style={[styles.dropdownItemText, e.trapSize === String(s.codeId) && styles.dropdownItemTextActive]}>
+                          {t(`form234.trapSizeOption_${s.codeId}`, { defaultValue: s.label })}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
+            {/* MAR 38b: broodstock count per CATCH (Rule 654) */}
+            {subformId === 90 && fmaId === DFO_FMA_38B &&
+              extraField(i, t('form234.nbSpcmnBrdLabel'), 'nbSpcmnBrd', 'numeric', true)}
+            {/* Per-block GPS — QC/GLF mandatory (rows 82/83); MAR 38b (Rule 3059); NL blocked */}
+            {showBlockCoords && (
+              <>
+                {!readOnly && (
+                  <TouchableOpacity
+                    style={styles.captureGpsBtn}
+                    onPress={async () => {
+                      setGpsCapturing(true);
+                      await captureGps(
+                        (v: string) => updateExtra(i, { gpsLat: v }),
+                        (v: string) => updateExtra(i, { gpsLng: v }),
+                        { alertOnFail: true }
+                      );
+                      updateExtra(i, { gpsSrc: 'gps' }); // §11.3: GPS-read coordinates → MODE="G"
+                      setGpsCapturing(false);
+                    }}
+                    disabled={gpsCapturing}
+                    activeOpacity={0.8}
+                  >
+                    <LocateFixed size={15} color="#4338CA" />
+                    <Text style={styles.captureGpsBtnText}>
+                      {gpsCapturing ? t('form234.capturingGps') : t('form234.captureGpsButton')}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                {extraField(i, t('form234.latitudeLabel'), 'gpsLat', 'numeric', subformId !== 90,
+                  (v: string) => updateExtra(i, { gpsLat: v, gpsSrc: 'manual' }))}
+                {extraField(i, t('form234.longitudeLabel'), 'gpsLng', 'numeric', subformId !== 90,
+                  (v: string) => updateExtra(i, { gpsLng: v, gpsSrc: 'manual' }))}
+              </>
+            )}
+          </>
+        )}
+      </View>
+    );
+  };
+
+  // ── S121 multi-SAR helpers ──────────────────────────────────────────────────────────
+  const updateExtraSar = (idx: number, patch: Partial<ExtraSarDetail>) => {
+    setExtraSars(prev => prev.map((s, i) => (i === idx ? { ...s, ...patch } : s)));
+  };
+
+  const addExtraSar = async () => {
+    // Mirror handleSarYes: stamp the encounter's date/time now and try a GPS fix
+    const now = new Date();
+    const idx = extraSars.length;
+    setExtraSars(prev => [...prev, { date: formatDate(now), time: formatTime(now), gpsSrc: 'manual' }]);
+    await captureGps(
+      (v: string) => updateExtraSar(idx, { lat: v }),
+      (v: string) => updateExtraSar(idx, { lng: v }),
+    );
+    updateExtraSar(idx, { gpsSrc: 'gps' }); // §11.3: GPS-read SAR coords → MODE="G"
+  };
+
+  const removeExtraSar = (idx: number) => {
+    setExtraSars(prev => prev.filter((_, i) => i !== idx));
+    if (extraSarDropdown?.idx === idx) setExtraSarDropdown(null);
+  };
+
+  const extraSarInput = (
+    idx: number, label: string, key: keyof ExtraSarDetail,
+    placeholder: string, keyboardType: any = 'default', isReq: boolean = false,
+    onChange?: (v: string) => void
+  ) => (
+    <View style={styles.fieldRow}>
+      <View style={styles.labelRow}>
+        <Text style={styles.label}>{label}{isReq && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
+      </View>
+      <TextInput
+        style={[styles.input, readOnly && styles.inputReadOnly]}
+        value={(extraSars[idx]?.[key] as string) ?? ''}
+        onChangeText={onChange ?? ((v: string) => updateExtraSar(idx, { [key]: v }))}
+        placeholder={placeholder}
+        placeholderTextColor="#94A3B8"
+        editable={!readOnly}
+        keyboardType={keyboardType}
+      />
+    </View>
+  );
+
+  // One additional SAR encounter — mirrors the block-1 field set (species / description /
+  // date+time / coords / count / condition). Date and time are plain inputs seeded from
+  // the moment the block was added, same auto-stamp as handleSarYes.
+  const renderExtraSarBlock = (s: ExtraSarDetail, i: number) => (
+    <View key={i} style={[styles.incidentBlock, { marginTop: 10 }]}>
+      <View style={styles.effortBlockHeader}>
+        <Text style={styles.effortBlockTitle}>{t('form234.sarBlockTitle', { n: i + 2 })}</Text>
+        {!readOnly && (
+          <TouchableOpacity style={styles.deleteBtn} onPress={() => removeExtraSar(i)}>
+            <Trash2 size={16} color="#EF4444" />
+          </TouchableOpacity>
+        )}
+      </View>
+      <Text style={styles.label}>{t('form234.speciesLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+      <TouchableOpacity
+        style={styles.dropdownBtn}
+        onPress={() => { if (readOnly) return; setExtraSarDropdown(cur => (cur?.idx === i && cur.kind === 'species') ? null : { idx: i, kind: 'species' }); }}
+      >
+        <Text style={[styles.dropdownBtnText, !s.species && styles.dropdownPlaceholder]}>
+          {s.species
+            ? (refDesc(MV_SAR_LIST.find(o => String(o.codeId) === s.species), isFr) ?? t('form234.selectSpecies'))
+            : t('form234.selectSpecies')}
+        </Text>
+        <ChevronDown size={16} color="#64748B" />
+      </TouchableOpacity>
+      {extraSarDropdown?.idx === i && extraSarDropdown.kind === 'species' && (
+        <View style={styles.dropdownList}>
+          {MV_SAR_LIST.map(o => (
+            <TouchableOpacity
+              key={o.codeId}
+              style={[styles.dropdownItem, s.species === String(o.codeId) && styles.dropdownItemActive]}
+              onPress={() => { updateExtraSar(i, { species: String(o.codeId) }); setExtraSarDropdown(null); }}
+            >
+              <Text style={[styles.dropdownItemText, s.species === String(o.codeId) && styles.dropdownItemTextActive]}>
+                {refDesc(o, isFr)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+      <View style={{ height: 10 }} />
+      {extraSarInput(i, t('form234.whatHappenedLabel'), 'what', t('form234.describeInteraction'))}
+      <Text style={styles.label}>{t('form234.dateTimeLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+      <View style={styles.gpsRow}>
+        <TextInput
+          style={[styles.input, { flex: 1 }, readOnly && styles.inputReadOnly]}
+          value={s.date ?? ''}
+          onChangeText={(v: string) => updateExtraSar(i, { date: v })}
+          placeholder="YYYY-MM-DD"
+          placeholderTextColor="#94A3B8"
+          editable={!readOnly}
+        />
+        <View style={{ width: 8 }} />
+        <TextInput
+          style={[styles.input, { flex: 1 }, readOnly && styles.inputReadOnly]}
+          value={s.time ?? ''}
+          onChangeText={(v: string) => updateExtraSar(i, { time: v })}
+          placeholder="HH:MM"
+          placeholderTextColor="#94A3B8"
+          editable={!readOnly}
+          keyboardType="numbers-and-punctuation"
+        />
+      </View>
+      <Text style={styles.label}>{t('form234.gpsLocationLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+      <View style={styles.gpsRow}>
+        <TextInput
+          style={[styles.input, { flex: 1 }, readOnly && styles.inputReadOnly]}
+          value={s.lat ?? ''}
+          onChangeText={(v: string) => updateExtraSar(i, { lat: v, gpsSrc: 'manual' })}
+          placeholder={t('form234.latPlaceholder')}
+          placeholderTextColor="#94A3B8"
+          editable={!readOnly}
+          keyboardType="numeric"
+        />
+        <View style={{ width: 8 }} />
+        <TextInput
+          style={[styles.input, { flex: 1 }, readOnly && styles.inputReadOnly]}
+          value={s.lng ?? ''}
+          onChangeText={(v: string) => updateExtraSar(i, { lng: v, gpsSrc: 'manual' })}
+          placeholder={t('form234.lngPlaceholder')}
+          placeholderTextColor="#94A3B8"
+          editable={!readOnly}
+          keyboardType="numeric"
+        />
+      </View>
+      {extraSarInput(i, t('form234.sarNbSpcmnLabel'), 'nbSpcmn', '0', 'numeric', true)}
+      <View style={styles.fieldRow}>
+        <Text style={styles.label}>{t('form234.sarCondLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+        <TouchableOpacity
+          style={styles.timeButton}
+          onPress={() => { if (readOnly) return; setExtraSarDropdown(cur => (cur?.idx === i && cur.kind === 'cond') ? null : { idx: i, kind: 'cond' }); }}
+        >
+          <Text style={[styles.timeButtonText, !s.condId && styles.timeButtonPlaceholder]}>
+            {s.condId ? (refDesc(MV_SPECIMENS_CONDITION.find(c => String(c.codeId) === s.condId), isFr) ?? t('form234.sarCondPlaceholder')) : t('form234.sarCondPlaceholder')}
+          </Text>
+          <ChevronDown size={16} color="#64748B" />
+        </TouchableOpacity>
+        {extraSarDropdown?.idx === i && extraSarDropdown.kind === 'cond' && (
+          <View style={styles.dropdownList}>
+            {MV_SPECIMENS_CONDITION.map(c => (
+              <TouchableOpacity
+                key={c.codeId}
+                style={[styles.dropdownItem, s.condId === String(c.codeId) && styles.dropdownItemActive]}
+                onPress={() => { updateExtraSar(i, { condId: String(c.codeId) }); setExtraSarDropdown(null); }}
+              >
+                <Text style={[styles.dropdownItemText, s.condId === String(c.codeId) && styles.dropdownItemTextActive]}>
+                  {refDesc(c, isFr)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </View>
     </View>
   );
 
@@ -1177,6 +1627,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       Alert.alert(t('form234.missingFieldsTitle'), t('form234.missingSarFields'), [{ text: tc('nav.ok') }]);
       return;
     }
+    // S121 multi-SAR: every additional encounter must satisfy the same mandatory set
+    if (sarYes === true && extraSars.some(s => !s.species || !s.nbSpcmn?.trim() || !s.condId ||
+        !s.lat?.trim() || !s.lng?.trim() || !s.date || !s.time)) {
+      Alert.alert(t('form234.missingFieldsTitle'), t('form234.missingSarFields'), [{ text: tc('nav.ok') }]);
+      return;
+    }
 
     const fieldCheckMap: Record<string, string> = {
       startDt:     dateFished,
@@ -1231,6 +1687,25 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       const val = fieldCheckMap[field] ?? '';
       if (!val || val.trim() === '') missing.push(fieldLabels[field] ?? field);
     }
+
+    // S121: every additional catch-effort block must satisfy the same per-block required
+    // fields as block 1 (same FMA gates), plus soak where the validator mandates SOAKED_DUR
+    // (88/89/91) so the user gets a friendly prompt instead of a raw validator error.
+    extraEfforts.forEach((e, i) => {
+      const blockMissing: string[] = [];
+      if (!e.catchWeight?.trim()) blockMissing.push(fieldLabels.catchWeight);
+      if (!e.trapHauls?.trim()) blockMissing.push(fieldLabels.trapHauls);
+      if (subformId !== 90 && !e.soakDuration?.trim()) blockMissing.push(t('form234.soakDurationLabel'));
+      if ((subformId === 88 || subformId === 89) && !(e.gpsLat?.trim() && e.gpsLng?.trim())) blockMissing.push(fieldLabels.gpsCoords);
+      if (subformId === 90 && DFO_FMA_LGRID_REQUIRED.has(fmaId ?? 0) && !e.lgridDisplay) blockMissing.push(fieldLabels.lgridCodeId);
+      if (subformId === 88 && fmaId != null && fmaId in DFO_FMA_GRID_MAP && !e.gridDisplay) blockMissing.push(fieldLabels.gridId);
+      if (subformId === 91) {
+        if (DFO_FMA_STAT_SECT_REQUIRED.has(fmaId ?? 0) && !e.statSectDisplay) blockMissing.push(fieldLabels.statSectId);
+        if (!e.trapSize) blockMissing.push(fieldLabels.trapSize);
+        if (!e.nbSpcmnKept?.trim()) blockMissing.push(fieldLabels.nbSpcmnKept);
+      }
+      blockMissing.forEach(lbl => missing.push(`${t('form234.catchEffortBlock', { n: i + 2 })} — ${lbl}`));
+    });
 
     if (missing.length > 0) {
       Alert.alert(
@@ -1446,6 +1921,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                                 setGridId(null);
                                 setGridDisplay('');
                                 setGridSearch('');
+                                // S121: the extra blocks' grid/section picks are FMA-scoped too
+                                setExtraEfforts(prev => prev.map(e => ({
+                                  ...e, lgridCodeId: '', lgridDisplay: '', gridId: '', gridDisplay: '',
+                                  statSectId: '', statSectDisplay: '',
+                                })));
                                 setFmaPickerOpen(false);
                               }}
                             >
@@ -1545,7 +2025,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                         <Text style={styles.label}>{t('form234.gridLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
                         <TouchableOpacity
                           style={styles.timeButton}
-                          onPress={() => { if (readOnly) return; setGridSearch(''); setGridPickerOpen(true); setFmaPickerOpen(false); }}
+                          onPress={() => { if (readOnly) return; setGridSearch(''); setGridPickerTarget(-1); setGridPickerOpen(true); setFmaPickerOpen(false); }}
                         >
                           <Text style={[styles.timeButtonText, !gridDisplay && styles.timeButtonPlaceholder]}>
                             {gridDisplay || t('form234.selectQcGrid')}
@@ -1586,21 +2066,31 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                                   windowSize={10}
                                   maxToRenderPerBatch={20}
                                   removeClippedSubviews={true}
-                                  renderItem={({ item: g }) => (
+                                  renderItem={({ item: g }) => {
+                                    // S121: the Modal serves block 1 (target -1) AND the extra blocks
+                                    const active = gridPickerTarget === -1
+                                      ? gridId === g.codeId
+                                      : (extraEfforts[gridPickerTarget]?.gridId ?? '') === String(g.codeId);
+                                    return (
                                     <TouchableOpacity
-                                      style={[styles.dropdownItem, gridId === g.codeId && styles.dropdownItemActive]}
+                                      style={[styles.dropdownItem, active && styles.dropdownItemActive]}
                                       onPress={() => {
-                                        setGridId(g.codeId);
-                                        setGridDisplay(g.descFr);
+                                        if (gridPickerTarget === -1) {
+                                          setGridId(g.codeId);
+                                          setGridDisplay(g.descFr);
+                                        } else {
+                                          updateExtra(gridPickerTarget, { gridId: String(g.codeId), gridDisplay: g.descFr });
+                                        }
                                         setGridPickerOpen(false);
                                         setGridSearch('');
                                       }}
                                     >
-                                      <Text style={[styles.dropdownItemText, gridId === g.codeId && styles.dropdownItemTextActive]}>
+                                      <Text style={[styles.dropdownItemText, active && styles.dropdownItemTextActive]}>
                                         {g.descFr}
                                       </Text>
                                     </TouchableOpacity>
-                                  )}
+                                    );
+                                  }}
                                 />
                                 <TouchableOpacity style={styles.sheetCancelBtn} onPress={() => { setGridPickerOpen(false); setGridSearch(''); }}>
                                   <Text style={styles.sheetCancelText}>{tc('nav.cancel')}</Text>
@@ -1695,6 +2185,15 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 </View>
               )}
             </View>
+          )}
+          {/* S121 multi-grid: additional catch-effort blocks (EFFORT_DETAIL 2..n), each with
+              its own grid, weight, hauls, and region fields. Block 1 = the fields above. */}
+          {extraEfforts.map((e, i) => renderExtraEffortBlock(e, i))}
+          {!readOnly && (
+            <TouchableOpacity style={[styles.addBtn, { marginTop: 4 }]} onPress={addExtraEffort}>
+              <Plus size={16} color="#1E3A8A" />
+              <Text style={styles.addBtnText}>{t('form234.addCatchEffort')}</Text>
+            </TouchableOpacity>
           )}
         </View>
 
@@ -1882,6 +2381,15 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                     </View>
                   )}
                 </View>
+                {/* S121 multi-SAR: additional encounters (SAR node 2..n), each its own
+                    species/date/coords/count/condition. Block 1 = the fields above. */}
+                {extraSars.map((s, i) => renderExtraSarBlock(s, i))}
+                {!readOnly && (
+                  <TouchableOpacity style={[styles.addBtn, { marginTop: 10 }]} onPress={() => { void addExtraSar(); }}>
+                    <Plus size={16} color="#1E3A8A" />
+                    <Text style={styles.addBtnText}>{t('form234.addSarEncounter')}</Text>
+                  </TouchableOpacity>
+                )}
               </>
             )}
           </View>
@@ -2232,6 +2740,17 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: '#1E3A8A', borderStyle: 'dashed',
   },
   addBtnText: { fontSize: 13, fontWeight: '700', color: '#1E3A8A' },
+  // S121 multi-grid: additional catch-effort block chrome
+  effortBlock: {
+    backgroundColor: '#F8FAFC', borderRadius: 10, padding: 12,
+    marginBottom: 12, borderWidth: 1, borderColor: '#E2E8F0',
+  },
+  effortBlockHeader: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', marginBottom: 4,
+  },
+  effortBlockTitle: { fontSize: 13, fontWeight: '700', color: '#1E293B' },
+  effortBlockSummary: { fontSize: 12, color: '#64748B', marginBottom: 4 },
   yesNoRow: {
     flexDirection: 'row', alignItems: 'center',
     justifyContent: 'space-between', marginBottom: 12,
