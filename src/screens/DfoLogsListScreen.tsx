@@ -14,7 +14,8 @@ import {
   Platform,
   BackHandler,
 } from 'react-native';
-import { Plus, FileText, Send, Edit3, Eye, Play, Trash2, CheckCircle, User, Shield, RotateCcw, Archive } from 'lucide-react-native';
+import { Plus, FileText, Send, Edit3, Eye, Trash2, CheckCircle, User, Shield, RotateCcw, Archive, HelpCircle } from 'lucide-react-native';
+import HelpSupportScreen from './HelpSupportScreen';
 import { loadAllLogs, deleteLog, markSentToDfo, DfoLog, saveTransmissionRecord, TransmissionRecord, saveXmlArchiveEntry, loadTransmissionRegister, transmissionKind } from '../utils/dfoLogStorage';
 import { triggerBackup } from '../utils/dfoBackup';
 import { SentLogCard, SentLogDetailModal, indexSuccessRecords, indexFailureRecords } from '../components/SentLogCard';
@@ -28,7 +29,6 @@ import Form222Screen from './Form222Screen';
 import Form233Screen from './Form233Screen';
 import PrivacyNoticeModal from './PrivacyNoticeModal';
 import AttestationModal from './AttestationModal';
-import DfoTestHarnessScreen from './DfoTestHarnessScreen';
 
 let attestationShownThisSession = false;
 
@@ -116,8 +116,8 @@ interface DfoLogsListScreenProps {
   onViewLog: (logId: string) => void;
   onOpenHistory: () => void;
   refreshKey?: number;
-  // S101b F1: the harness is dev chrome — in a dev client __DEV__ is true for ANY
-  // account (a role-'dfo' tester saw it), so the button is admin-gated on top.
+  // Kept for the App.tsx call site; currently unused here (its sole consumer, the
+  // XML Test Harness button, was removed in S121 — DfoTestHarnessScreen.tsx stays on disk).
   isAdmin?: boolean;
 }
 
@@ -146,7 +146,7 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
   const [now, setNow] = useState(Date.now());
   const [captainProfileVisible, setCaptainProfileVisible] = useState(false);
   const [inspectionModeVisible, setInspectionModeVisible] = useState(false);
-  const [harnessVisible, setHarnessVisible] = useState(false);
+  const [helpVisible, setHelpVisible] = useState(false); // S121 Phase 3 — Help & Support
   const [form222Visible, setForm222Visible] = useState(false);
   const [form233Visible, setForm233Visible] = useState(false);
   const [failedSends, setFailedSends] = useState<Record<string, string>>({});
@@ -511,6 +511,24 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
   // `completed` is already newest-first (loadAllLogs sorts by createdAt desc).
   const completedUnsent = completed.filter(l => l.sentToDfo !== true);
   const sentLogs = completed.filter(l => l.sentToDfo === true);
+
+  // S121 Phase 4 — a completed-but-unsent log warns before starting a new ELOG (the
+  // in-progress/draft case is already covered by the S95 restore dialog; this closes the
+  // finished-unsent gap). "Review it" stays on the list, where the unsent log card sits.
+  const handleNewLogPress = () => {
+    if (completedUnsent.length > 0) {
+      Alert.alert(
+        t('logs.unsentWarnTitle'),
+        t('logs.unsentWarnBody'),
+        [
+          { text: t('logs.unsentWarnReview'), style: 'cancel' },
+          { text: t('logs.unsentWarnStartNew'), onPress: onNewLog },
+        ],
+      );
+      return;
+    }
+    onNewLog();
+  };
   const sentCapped = sentLogs.slice(0, SENT_DISPLAY_CAP);
 
   // FAIL rows come straight from the persisted register (one per attempt), so failures
@@ -582,17 +600,18 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
             </TouchableOpacity>
           )}
 
-          {/* XML Test Harness — DEV-only entry point (relocated from DfoSetupScreen);
-              admin-gated on top since S101b (F1: dev clients show __DEV__ chrome to any role) */}
-          {__DEV__ && isAdmin && (
-            <TouchableOpacity
-              style={styles.pillButton}
-              onPress={() => setHarnessVisible(true)}
-            >
-              <Play size={14} color="#1E3A8A" />
-              <Text style={styles.pillButtonText}>XML Test Harness</Text>
-            </TouchableOpacity>
-          )}
+          {/* XML Test Harness button REMOVED (S121) — no longer needed; the harness screen
+              itself (DfoTestHarnessScreen.tsx) stays on disk unimported for now. */}
+
+          {/* Help & Support (S121 Phase 3) — visible to ALL roles incl. the DFO demo
+              account (Appendix B TC1 step 5) */}
+          <TouchableOpacity
+            style={styles.pillButton}
+            onPress={() => setHelpVisible(true)}
+          >
+            <HelpCircle size={14} color="#1E3A8A" />
+            <Text style={styles.pillButtonText}>{t('logs.helpButton')}</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -600,7 +619,7 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
         style={styles.content}
         contentContainerStyle={{ paddingBottom: 40 }}
       >
-        <TouchableOpacity style={styles.newLogButton} onPress={onNewLog}>
+        <TouchableOpacity style={styles.newLogButton} onPress={handleNewLogPress}>
           <Plus size={22} color="#FFFFFF" />
           <Text style={styles.newLogButtonText}>{t('logs.newElogButton')}</Text>
         </TouchableOpacity>
@@ -721,14 +740,13 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
         <InspectionModeScreen onClose={() => setInspectionModeVisible(false)} />
       </Modal>
 
-      {/* ── XML Test Harness Modal (DEV) ── */}
+      {/* ── Help & Support Modal (S121 Phase 3) ── */}
       <Modal
-        visible={harnessVisible}
+        visible={helpVisible}
         animationType="slide"
-        presentationStyle="fullScreen"
-        onRequestClose={() => setHarnessVisible(false)}
+        onRequestClose={() => setHelpVisible(false)}
       >
-        <DfoTestHarnessScreen onClose={() => setHarnessVisible(false)} />
+        <HelpSupportScreen onClose={() => setHelpVisible(false)} />
       </Modal>
 
       {/* ── Form 222 · Marine Mammal Modal ── */}
@@ -829,6 +847,9 @@ const styles = StyleSheet.create({
   },
   headerSideRight: {
     justifyContent: 'flex-end',
+    // S121: the right slot can hold TWO pills on dev+admin builds (XML Test Harness + Help);
+    // release builds compile the harness out, so users only ever see the Help pill.
+    gap: 6,
   },
   pillButton: {
     flexDirection: 'row',
