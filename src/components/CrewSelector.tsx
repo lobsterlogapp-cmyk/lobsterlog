@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import {
   CrewMember,
   addCrewMember,
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export default function CrewSelector({ selected, onChange }: Props) {
+  const { t } = useTranslation('dfo');
   const [savedCrew, setSavedCrew] = useState<CrewMember[]>([]);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -89,7 +91,7 @@ export default function CrewSelector({ selected, onChange }: Props) {
           setShowAddForm(false);
         }}
       >
-        <Text style={styles.triggerText}>Add crew member...</Text>
+        <Text style={styles.triggerText}>{t('crewSelector.addMember')}</Text>
         <Text style={styles.arrow}>{dropdownOpen ? '▲' : '▼'}</Text>
       </TouchableOpacity>
 
@@ -109,7 +111,7 @@ export default function CrewSelector({ selected, onChange }: Props) {
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => handleDeleteSaved(member.id)}>
-                  <Text style={styles.deleteText}>Delete</Text>
+                  <Text style={styles.deleteText}>{t('crewSelector.delete')}</Text>
                 </TouchableOpacity>
               </View>
             ))}
@@ -120,7 +122,7 @@ export default function CrewSelector({ selected, onChange }: Props) {
               onPress={() => setShowAddForm(prev => !prev)}
             >
               <Text style={[styles.dropdownText, styles.otherText]}>
-                + Add new crew member
+                {t('crewSelector.addNew')}
               </Text>
             </TouchableOpacity>
           </ScrollView>
@@ -130,20 +132,20 @@ export default function CrewSelector({ selected, onChange }: Props) {
             <View style={styles.addForm}>
               <TextInput
                 style={styles.input}
-                placeholder="Full name"
+                placeholder={t('crewSelector.fullNamePlaceholder')}
                 placeholderTextColor="#999"
                 value={newName}
                 onChangeText={setNewName}
               />
               <TextInput
                 style={styles.input}
-                placeholder="Fisher number (optional)"
+                placeholder={t('crewSelector.fisherNumberPlaceholder')}
                 placeholderTextColor="#999"
                 value={newFisherNumber}
                 onChangeText={setNewFisherNumber}
               />
               <TouchableOpacity style={styles.addButton} onPress={handleAddNew}>
-                <Text style={styles.addButtonText}>Add & Save</Text>
+                <Text style={styles.addButtonText}>{t('crewSelector.addAndSave')}</Text>
               </TouchableOpacity>
             </View>
           )}

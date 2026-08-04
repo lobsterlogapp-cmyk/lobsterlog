@@ -433,6 +433,14 @@
     "clear": "Clear",
     "noMatch": "No matching ports — toggle \"{{allPorts}}\"."
   },
+  "crewSelector": {
+    "addMember": "Add crew member...",
+    "delete": "Delete",
+    "addNew": "+ Add new crew member",
+    "fullNamePlaceholder": "Full name",
+    "fisherNumberPlaceholder": "Fisher number (optional)",
+    "addAndSave": "Add & Save"
+  },
   "tripConfirm": {
     "headerTitle": "Confirm Trip Start",
     "headerSub": "Review your details before beginning a new ELOG",

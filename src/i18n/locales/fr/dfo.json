@@ -434,6 +434,14 @@
     "clear": "Effacer",
     "noMatch": "Aucun port correspondant — coche « {{allPorts}} »."
   },
+  "crewSelector": {
+    "addMember": "Ajouter un membre d'équipage...",
+    "delete": "Supprimer",
+    "addNew": "+ Ajouter un nouveau membre d'équipage",
+    "fullNamePlaceholder": "Nom complet",
+    "fisherNumberPlaceholder": "NIP du pêcheur (facultatif)",
+    "addAndSave": "Ajouter et enregistrer"
+  },
   "tripConfirm": {
     "headerTitle": "Confirmer le début du voyage",
     "headerSub": "Vérifiez vos informations avant de commencer un nouveau journal",
