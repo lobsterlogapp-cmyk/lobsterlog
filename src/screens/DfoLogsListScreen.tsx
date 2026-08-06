@@ -533,9 +533,10 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
     // a second stacked draft cannot be created. The escape hatch is Review (dismiss to the list,
     // where the amber card's Edit sits) or Delete. Fires on ANY draft; the completed-unsent
     // guard above wins when both exist (it carries a Rule 601 clock, a draft does not). Assume
-    // one draft; if more than one exists, act on the oldest (drafts is newest-first).
+    // one draft; if more than one exists, act on the oldest — picked explicitly by createdAt
+    // so it does not depend on the loadAllLogs sort order.
     if (drafts.length > 0) {
-      const target = drafts[drafts.length - 1];
+      const target = drafts.reduce((oldest, d) => (d.createdAt < oldest.createdAt ? d : oldest));
       const { filled, total } = getCompletionDetails(target);
       Alert.alert(
         t('logs.draftWarnTitle'),
