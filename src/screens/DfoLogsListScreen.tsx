@@ -527,6 +527,33 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
       );
       return;
     }
+    // S123 — an in-progress draft must be reviewed or deleted before a new ELOG can be
+    // started (Appendix B TC5 / §12.1: "previous trip data has not been closed … must review
+    // before proceeding"). BLOCK, not warn-and-choose: there is no "start new" button here, so
+    // a second stacked draft cannot be created. The escape hatch is Review (dismiss to the list,
+    // where the amber card's Edit sits) or Delete. Fires on ANY draft; the completed-unsent
+    // guard above wins when both exist (it carries a Rule 601 clock, a draft does not). Assume
+    // one draft; if more than one exists, act on the oldest (drafts is newest-first).
+    if (drafts.length > 0) {
+      const target = drafts[drafts.length - 1];
+      const { filled, total } = getCompletionDetails(target);
+      Alert.alert(
+        t('logs.draftWarnTitle'),
+        t('logs.draftWarnBody', { tripId: target.id, filled, total }),
+        [
+          { text: t('logs.draftWarnReview'), style: 'cancel' },
+          {
+            text: t('logs.draftWarnDelete'),
+            style: 'destructive',
+            onPress: async () => {
+              await deleteLog(target.id);
+              refresh();
+            },
+          },
+        ],
+      );
+      return;
+    }
     onNewLog();
   };
   const sentCapped = sentLogs.slice(0, SENT_DISPLAY_CAP);
