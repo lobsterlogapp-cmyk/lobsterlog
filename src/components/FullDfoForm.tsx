@@ -101,7 +101,7 @@ type BycatchEntry = { species: string; lbs: string; usage?: string; };
 // Phase 5. These are the keys hydrated into / written from the `closes` state.
 const CLOSE_DATA_KEYS = [
   'dgCloseEffort', 'dgCloseBaitUsed', 'dgClosePconsBycatch', 'dgClosePconsPersonal',
-  'dgCloseSar', 'dgCloseTransfer', 'dgCloseHlin', 'dgCloseHlout',
+  'dgCloseSar', 'dgCloseTransfer', 'dgCloseHlin', 'dgCloseHlout', 'dgCloseLanding',
 ] as const;
 
 const MARINE_MAMMAL_OPTIONS = ['North Atlantic Right Whale', 'Humpback Whale', 'Fin Whale', 'Minke Whale', 'Harbour Porpoise', 'Grey Seal', 'Harbour Seal', 'Atlantic White-sided Dolphin', 'Other'];
@@ -836,12 +836,19 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     } else {
       const now = new Date();
       const { time } = stopSail();
-      setTimeOfLanding(time); // Stop Sail = landed
-      setLandingDate(formatDate(now)); // companion date for the landing time
+      // S124: "Stop Sail = landed" writes the LANDING time. Skip the stamp if the Landing card
+      // is already closed — don't reach into a frozen group. The timer still stops normally.
+      if (!isClosed('dgCloseLanding')) {
+        setTimeOfLanding(time); // Stop Sail = landed
+        setLandingDate(formatDate(now)); // companion date for the landing time
+      }
     }
   };
 
   const handleHaulPress = async () => {
+      // S124: EFFORT is closeable. Once Catch & Effort is closed, Quick Capture must not write
+      // haul times / GPS into the frozen group — this closes the bypass (button also disabled).
+      if (isClosed('dgCloseEffort')) return;
       if (!haulActive) {
         const now = new Date();
         await startHaul();
@@ -1494,7 +1501,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   };
   // Foot control: nothing when the group is unused; a lock + timestamp banner when closed; the
   // Close & Save Section button otherwise (hidden in read-only view).
-  const renderCloseControl = (dataKey: string, sectionTitleKey: string, used: boolean) => {
+  const renderCloseControl = (dataKey: string, sectionTitleKey: string, used: boolean, onClose?: () => void) => {
     if (!used) return null;
     if (isClosed(dataKey)) {
       return (
@@ -1506,7 +1513,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     }
     if (readOnly) return null;
     return (
-      <TouchableOpacity style={styles.closeSectionBtn} onPress={() => closeSection(dataKey, sectionTitleKey)} activeOpacity={0.8}>
+      <TouchableOpacity style={styles.closeSectionBtn} onPress={onClose ?? (() => closeSection(dataKey, sectionTitleKey))} activeOpacity={0.8}>
         <Lock size={16} color="#B45309" />
         <Text style={styles.closeSectionBtnText}>{t('form234.closeSectionButton')}</Text>
       </TouchableOpacity>
@@ -1517,6 +1524,25 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     pointerEvents: (isClosed(dataKey) ? 'none' : 'auto') as 'none' | 'auto',
     style: isClosed(dataKey) ? styles.closedBody : undefined,
   });
+
+  // S124 Phase 5: closing the Landing section runs Rule 1052 FIRST — if no EFFORT occurrence
+  // has been entered, DFO mandates the verbatim warning (a warning, not a block) before the
+  // app's own Close confirm. With an effort present, go straight to the standard close confirm.
+  const closeLanding = () => {
+    if (readOnly || isClosed('dgCloseLanding')) return;
+    const hasEffort = !!(catchWeight.trim() || trapHauls.trim() || timeStartedHauling.trim() ||
+      timeStoppedHauling.trim()) || extraEfforts.length > 0;
+    const proceed = () => closeSection('dgCloseLanding', 'form234.landingSection');
+    if (hasEffort) { proceed(); return; }
+    Alert.alert(
+      t('form234.rule1052Title'),
+      t('form234.rule1052Warning'),
+      [
+        { text: t('form234.closeConfirmNotYet'), style: 'cancel' }, // go back to add the effort
+        { text: t('form234.rule1052Continue'), onPress: proceed },  // "otherwise, continue"
+      ],
+    );
+  };
 
   const renderField = (
     label: string, value: string, setter: (v: string) => void,
@@ -1672,6 +1698,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     const hlFma = fmaId === 28599 || fmaId === 1595;
     const used: Record<string, boolean> = {
       dgCloseEffort: true, // always used in Phase 3/4 (Phase 6 makes EFFORT optional)
+      dgCloseLanding: true, // LANDING is always used (port landed is mandatory); Rule 1052's
+      // no-effort warning is moot on the save path here — the save-gate requires effort fields.
       dgCloseBaitUsed: baitEntries.length > 0,
       dgClosePconsBycatch: bycatchYes === true && bycatchEntries.length > 0,
       dgClosePconsPersonal: personalUse.trim().length > 0,
@@ -1952,8 +1980,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.captureBtn, haulActive && styles.captureBtnActive]}
+              style={[styles.captureBtn, haulActive && styles.captureBtnActive, isClosed('dgCloseEffort') && styles.captureBtnDisabled]}
               onPress={handleHaulPress}
+              disabled={isClosed('dgCloseEffort')}
             >
               {haulActive
                 ? <Square size={18} color="#FFFFFF" />
@@ -2014,44 +2043,52 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             </View>
           )}
           <View style={styles.fieldRow}>
-                                <Text style={styles.label}>{t('form234.departurePortLabel')}</Text>
-                                <DfoPortSelector
-                                  value={departurePort}
-                                  codeId={departurePortCodeId}
-                                  subformId={subformId}
-                                  placeholder={t('form234.selectDeparturePort')}
-                                  disabled={readOnly}
-                                  onChange={(sel) => { setDeparturePort(sel.name); setDeparturePortCodeId(sel.codeId); }}
-                                />
-                              </View>
-                              {isVisible('portId') && (
-                              <View style={styles.fieldRow}>
-                                <Text style={styles.label}>{t('form234.portLandedLabel')}{isRequired('portId') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
-                                <DfoPortSelector
-                                  value={portLanded}
-                                  codeId={portLandedCodeId}
-                                  subformId={subformId}
-                                  placeholder={t('form234.selectPortLanded')}
-                                  disabled={readOnly}
-                                  onChange={(sel) => { setPortLanded(sel.name); setPortLandedCodeId(sel.codeId); }}
-                                />
-                              </View>
-                              )}
+            <Text style={styles.label}>{t('form234.departurePortLabel')}</Text>
+            <DfoPortSelector
+              value={departurePort}
+              codeId={departurePortCodeId}
+              subformId={subformId}
+              placeholder={t('form234.selectDeparturePort')}
+              disabled={readOnly}
+              onChange={(sel) => { setDeparturePort(sel.name); setDeparturePortCodeId(sel.codeId); }}
+            />
+          </View>
+          {/* S124 Phase 5: TIME SAILED moved here (under departure port) from the dissolved
+              Timestamps card. TRIP data — Trip Information is NOT a closeable group (no button). */}
+          {isVisible('sailTime') && renderTimestampField(t('form234.timeSailedLabel'), formatDateTimeDisplay(sailDate, timeSailed), 'sailed', false, isRequired('sailTime'))}
         </View>
 
+        {/* S124 Phase 5: LANDING card (port landed + time of landing) sits between Trip Info and
+            Catch & Effort (founder ruling). Own Close & Save Section; closing runs Rule 1052
+            (no-effort warning) FIRST via closeLanding, then the app's confirm, then lock. */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View style={[styles.sectionIcon, { backgroundColor: '#FEE2E2' }]}><Clock size={16} color="#B91C1C" /></View>
-            <Text style={styles.sectionTitle}>{t('form234.timestampsSection')}</Text>
+            <Text style={styles.sectionTitle}>{t('form234.landingSection')}</Text>
             {renderNoteButton('landing')}
           </View>
           {renderNoteInput('landing', remarks.landing ?? '', (v) => setNote('landing', v))}
-          {isVisible('sailTime') && renderTimestampField(t('form234.timeSailedLabel'), formatDateTimeDisplay(sailDate, timeSailed), 'sailed', false, isRequired('sailTime'))}
-          {isVisible('haulStartTime') && renderTimestampField(t('form234.timeStartedHaulingLabel'), formatDateTimeDisplay(haulStartDate, timeStartedHauling), 'startHaul', false, isRequired('haulStartTime'))}
-          {isVisible('haulEndTime') && renderTimestampField(t('form234.timeStoppedHaulingLabel'), formatDateTimeDisplay(haulEndDate, timeStoppedHauling), 'stopHaul', false, isRequired('haulEndTime'))}
+          <View {...closedBodyProps('dgCloseLanding')}>
+          {isVisible('portId') && (
+          <View style={styles.fieldRow}>
+            <Text style={styles.label}>{t('form234.portLandedLabel')}{isRequired('portId') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
+            <DfoPortSelector
+              value={portLanded}
+              codeId={portLandedCodeId}
+              subformId={subformId}
+              placeholder={t('form234.selectPortLanded')}
+              disabled={readOnly}
+              onChange={(sel) => { setPortLanded(sel.name); setPortLandedCodeId(sel.codeId); }}
+            />
+          </View>
+          )}
           {isVisible('landingTime') && renderTimestampField(t('form234.timeOfLandingLabel'), formatDateTimeDisplay(landingDate, timeOfLanding), 'landing', false, isRequired('landingTime'))}
-          {isVisible('soakDuration') && renderField(t('form234.soakDurationLabel'), soakDuration, setSoakDuration, t('form234.soakDurationPlaceholder'), false, false, 'decimal-pad', isRequired('soakDuration'))}
+          </View>
+          {renderCloseControl('dgCloseLanding', 'form234.landingSection', true, closeLanding)}
         </View>
+
+        {/* S124 Phase 5: the Timestamps card is DISSOLVED — time sailed → Trip Info (above);
+            haul start/stop + soak → Catch & Effort (below); landing → the Landing card (above). */}
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -2270,6 +2307,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                     )}
           {renderField(t('form234.catchWeightLabel'), catchWeight, setCatchWeight, '0', false, false, 'numeric', isRequired('catchWeight'))}
           {renderField(t('form234.trapHaulsLabel'), trapHauls, setTrapHauls, '0', false, false, 'numeric', isRequired('trapHauls'))}
+          {/* S124: soak (block-1 EFFORT_DETAIL) stays here with block 1's fields. The two haul
+              times are EFFORT-level (one pair per node) and render AFTER the extra blocks, below. */}
+          {isVisible('soakDuration') && renderField(t('form234.soakDurationLabel'), soakDuration, setSoakDuration, t('form234.soakDurationPlaceholder'), false, false, 'decimal-pad', isRequired('soakDuration'))}
           {/* NB_SPCMN_KEPT: NL(91) only — mandatory on the lobster catch (Rule 976), blocked
               for QC/GLF/MAR (Subforms row 93). isVisible-gated so 88/89/90 screens are
               pixel-identical to pre-S110 (S110 Phase 2). */}
@@ -2362,6 +2402,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               <Text style={styles.addBtnText}>{t('form234.addCatchEffort')}</Text>
             </TouchableOpacity>
           )}
+          {/* S124: the two haul times are EFFORT-level (START_DT / END_DT — one pair for the whole
+              node), so they render AFTER every EFFORT_DETAIL block, not inside block 1's fields. */}
+          <View style={{ height: 14 }} />
+          {isVisible('haulStartTime') && renderTimestampField(t('form234.timeStartedHaulingLabel'), formatDateTimeDisplay(haulStartDate, timeStartedHauling), 'startHaul', false, isRequired('haulStartTime'))}
+          {isVisible('haulEndTime') && renderTimestampField(t('form234.timeStoppedHaulingLabel'), formatDateTimeDisplay(haulEndDate, timeStoppedHauling), 'stopHaul', false, isRequired('haulEndTime'))}
           </View>
           {/* EFFORT close — one closure regardless of grid-block count (EFFORT_DETAIL is a
               child of EFFORT). Always "used" in Phase 3; Phase 6 makes EFFORT optional. */}
@@ -2413,7 +2458,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             <View style={[styles.sectionIcon, { backgroundColor: '#E0E7FF' }]}><MapPin size={16} color="#4338CA" /></View>
             <Text style={styles.sectionTitle}>{t('form234.gpsCoordinatesSection')}</Text>
           </View>
-          {!readOnly && (
+          {/* S124: GPS coords are block-1 EFFORT_DETAIL LAT/LONG — part of EFFORT. This is a
+              separate card, so freeze its body + drop the capture button when EFFORT is closed
+              (lock-bypass audit fix). No own close control — it closes with Catch & Effort. */}
+          <View {...closedBodyProps('dgCloseEffort')}>
+          {!readOnly && !isClosed('dgCloseEffort') && (
             <TouchableOpacity
               style={styles.captureGpsBtn}
               onPress={async () => {
@@ -2433,6 +2482,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           )}
           {renderField(t('form234.latitudeLabel'), gpsLat, (v: string) => { setGpsLat(v); setGpsSrc('manual'); }, '0.0000', false, false, 'numeric')}
           {renderField(t('form234.longitudeLabel'), gpsLng, (v: string) => { setGpsLng(v); setGpsSrc('manual'); }, '0.0000', false, false, 'numeric')}
+          </View>
         </View>
         )}
 
@@ -2894,6 +2944,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#E2E8F0',
   },
   captureBtnActive: { backgroundColor: '#B91C1C', borderColor: '#B91C1C' },
+  captureBtnDisabled: { opacity: 0.4 },
   captureBtnText: { fontSize: 13, fontWeight: '700', color: '#1E3A8A' },
   captureBtnTextActive: { color: '#FFFFFF' },
   captureBtnTextDone: { color: '#15803D' },
