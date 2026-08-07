@@ -373,7 +373,9 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   // DG_CLOSE_DT, REM?. Emitted ONLY when SAR_IND='Y' (the indicator gates the detail node);
   // absent when N/null. LAT/LONG carry the required MODE attr (§11.3): G=GPS, M=manual
   // (d.sarGpsSrc, mirrors EFFORT_DETAIL). WT optional → omitted. DG_CLOSE_DT auto-stamps.
-  if (sarInc === 'Y') {
+  // S124 Phase 6: SAR_IND lives in EFFORT, so SAR interactions only exist with a haul. When
+  // no effort is declared, suppress the SAR detail nodes too — no orphan SAR without its SAR_IND.
+  if (d.effortYes !== 'false' && sarInc === 'Y') {
     // S121 multi-SAR: block 1 = the legacy d.sar* fields; blocks 2+ = the additive
     // d.extraSars JSON array (XSD allows SAR 0..unbounded under TRIP). A single-SAR log
     // emits byte-identically to pre-S121.
@@ -430,7 +432,11 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
     }
   }
   body += pconsXml;
-  body += effort;
+  // S124 Phase 6: EFFORT is optional (XSD minOccurs=0, Rule 1051). When the harvester declares
+  // no haul (effortYes==='false' — a setting day), the whole EFFORT node is omitted, taking its
+  // FMA_ID / SAR_IND / MM_INTER_IND / catch / haul times / GPS with it. Any other value (incl.
+  // absent, for pre-S124 logs) keeps EFFORT, so an ordinary hauling log emits byte-identically.
+  if (d.effortYes !== 'false') body += effort;
   // LANDING — XSD landing_type: START_DT, PORT_ID, VRN?, DG_CLOSE_DT, REM?
   if (landDt) {
     body += `    <LANDING>\n`;
@@ -822,8 +828,9 @@ export function validateElogXml(xml: string, subformId: number): { valid: boolea
     let lastEffortEnd = '';
 
     const efforts = get(trip, 'EFFORT');
-    // XSD allows 0..n, but a fishing-day log without an EFFORT is meaningless — block it
-    if (efforts.length === 0) errors.push(`${p}: at least one EFFORT is required`);
+    // S124 Phase 6: EFFORT is optional (XSD minOccurs=0, Rule 1051). A no-haul day (setting
+    // day) legitimately has zero EFFORT — accept its absence. When present, it is fully
+    // validated below; the save gate ensures the fields are filled once a haul is declared.
     efforts.forEach((ef, ei) => {
       const ep = `${p}.EFFORT[${ei + 1}]`;
       const efStart = get(ef, 'START_DT')[0]?.text ?? '';

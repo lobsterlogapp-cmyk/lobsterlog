@@ -215,6 +215,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const [gridPickerTarget, setGridPickerTarget] = useState<number>(-1);
   const [catchWeight, setCatchWeight] = useState('');
   const [trapHauls, setTrapHauls] = useState('');
+  // S124 Phase 6: did the harvester haul gear? Yes (default) = EFFORT used — ordinary trip,
+  // unchanged. No = a setting day: the Catch & Effort + GPS cards collapse, EFFORT is omitted.
+  const [effortYes, setEffortYes] = useState(true);
   const [portLanded, setPortLanded] = useState('');
   const [tripId, setTripId] = useState('');
   const [lgbkUid, setLgbkUid] = useState('');
@@ -437,6 +440,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           setGridDisplay(d.gridDisplay || '');
           setCatchWeight(d.catchWeight || '');
           setTrapHauls(d.trapHauls || '');
+          // S124 Phase 6: default Yes for old logs (they always had a haul); only an explicit 'false' means no-haul.
+          setEffortYes(d.effortYes === 'false' ? false : true);
           setPortLanded(d.portLanded || '');
           setPortLandedCodeId(d.portLandedCodeId ? Number(d.portLandedCodeId) : null);
           try {
@@ -671,6 +676,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         gridId: String(gridId ?? ''),
         gridDisplay,
         catchWeight, trapHauls,
+    effortYes: String(effortYes), // S124 Phase 6: 'false' = no-haul → generator omits EFFORT
+
     portLanded, portLandedCodeId: String(portLandedCodeId ?? ''),
     crewRegistry: JSON.stringify(crewMembers),
     departurePort, departurePortCodeId: String(departurePortCodeId ?? ''),
@@ -869,6 +876,52 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         setGpsSrc('gps'); // §11.3: GPS-read coordinates → MODE="G"
       }
     };
+
+  // S124 Phase 6: is there Catch & Effort measurement data the user would lose by declaring
+  // no-haul? Excludes the pre-filled fishing area (FMA/grid/section) — those ride in from the
+  // last log, so an otherwise-untouched card still counts as "empty" (just collapses, no confirm).
+  const hasEffortData = (): boolean =>
+    !!(catchWeight.trim() || trapHauls.trim() || timeStartedHauling.trim() || timeStoppedHauling.trim() ||
+       soakDuration.trim() || gpsLat.trim() || gpsLng.trim() || trapSize || gearSubtypeId ||
+       nbSpcmnKept.trim() || nbSpcmnBrd.trim() || vNotchCount.trim() || nbVntchYou.trim() ||
+       extraEfforts.length > 0);
+
+  // Clear every Catch & Effort / GPS field (all EFFORT / EFFORT_DETAIL) so a later Yes re-opens
+  // the card empty.
+  const wipeEffort = () => {
+    setFmaId(null);
+    setLgridCodeId(null); setLgridDisplay('');
+    setStatSectId(null); setStatSectDisplay('');
+    setGridId(null); setGridDisplay('');
+    setCatchWeight(''); setTrapHauls('');
+    setTimeStartedHauling(''); setTimeStoppedHauling('');
+    setHaulStartDate(''); setHaulEndDate('');
+    setSoakDuration('');
+    setGpsLat(''); setGpsLng(''); setGpsSrc('manual');
+    setTrapSize(''); setGearSubtypeId('');
+    setNbSpcmnKept(''); setNbSpcmnBrd('');
+    setVNotchCount(''); setNbVntchYou('');
+    setExtraEfforts([]);
+  };
+
+  // The "did you haul?" toggle. Yes re-opens the (already-wiped) card. No wipes the effort data,
+  // confirming first only when there is data to lose (an empty card just collapses).
+  const handleEffortToggle = (val: boolean) => {
+    if (readOnly) return;
+    if (val) { setEffortYes(true); return; }
+    if (hasEffortData()) {
+      Alert.alert(
+        t('form234.effortNoConfirmTitle'),
+        t('form234.effortNoConfirmBody'),
+        [
+          { text: t('form234.closeConfirmNotYet'), style: 'cancel' },
+          { text: t('form234.effortNoConfirmYes'), style: 'destructive', onPress: () => { wipeEffort(); setEffortYes(false); } },
+        ],
+      );
+    } else {
+      setEffortYes(false);
+    }
+  };
 
   const handleMmYes = async (val: boolean) => {
     setMmYes(val);
@@ -1536,8 +1589,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // app's own Close confirm. With an effort present, go straight to the standard close confirm.
   const closeLanding = () => {
     if (readOnly || isClosed('dgCloseLanding')) return;
-    const hasEffort = !!(catchWeight.trim() || trapHauls.trim() || timeStartedHauling.trim() ||
-      timeStoppedHauling.trim()) || extraEfforts.length > 0;
+    // S124 Phase 6: Rule 1052 keys off the haul declaration — no EFFORT occurrence (effortYes
+    // false) → show DFO's mandated warning first. With a haul declared, go straight to the confirm.
+    const hasEffort = effortYes;
     const proceed = () => closeSection('dgCloseLanding', 'form234.landingSection');
     if (hasEffort) { proceed(); return; }
     Alert.alert(
@@ -1575,7 +1629,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const renderYesNoToggle = (
     label: string,
     value: boolean | null,
-    onToggle: (v: boolean) => void
+    onToggle: (v: boolean) => void,
+    // S124: softYes uses the muted "Accepted ✓" chip greens for selected-Yes. The EFFORT toggle
+    // is green by default on every log (on screen constantly), so the vibrant fill is too loud;
+    // the three Interactions toggles keep the vibrant green (they only turn green on a tap).
+    softYes: boolean = false
   ) => (
     <View style={styles.yesNoRow}>
       <Text style={styles.yesNoLabel}>{label}</Text>
@@ -1587,10 +1645,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           <Text style={[styles.yesNoBtnText, value === false && styles.yesNoBtnNoText]}>{tc('common.no')}</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.yesNoBtn, value === true && styles.yesNoBtnYesActive]}
+          style={[styles.yesNoBtn, value === true && (softYes ? styles.yesNoBtnYesActiveSoft : styles.yesNoBtnYesActive)]}
           onPress={() => { if (!readOnly) onToggle(true); }}
         >
-          <Text style={[styles.yesNoBtnText, value === true && styles.yesNoBtnYesText]}>{tc('common.yes')}</Text>
+          <Text style={[styles.yesNoBtnText, value === true && (softYes ? styles.yesNoBtnYesTextSoft : styles.yesNoBtnYesText)]}>{tc('common.yes')}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -1775,20 +1833,22 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     // effort_type, minOccurs=1) — no subform condition. validateElogXml is the send-time
     // backstop; this catches it early with a clear message instead of a cryptic one.
     // (LOST_GEAR_IND dropped from this gate — Blocked in 234.12, no longer answered.)
-    if (mmYes === null || sarYes === null) {
+    // S124 Phase 6: SAR_IND / MM_INTER_IND live in EFFORT — a no-haul log omits them, so this
+    // gate (and the SAR-detail gates below) only apply when a haul is declared.
+    if (effortYes && (mmYes === null || sarYes === null)) {
       Alert.alert(t('form234.missingFieldsTitle'), t('form234.missingIndicatorsAnswer'), [{ text: tc('nav.ok') }]);
       return;
     }
     // SAR detail (S66b): when SAR_IND='Y' the sar_type children SAR_DT/LAT/LONG/SPECIE_ID/
     // NB_SPCMN/SPCMN_COND_ID are all mandatory (XSD sar_type, minOccurs=1). Block early with a
     // clear message; validateElogXml is the send-time backstop once the node is emitted.
-    if (sarYes === true && (!sarSpecies || !sarNbSpcmn.trim() || !sarCondId ||
+    if (effortYes && sarYes === true && (!sarSpecies || !sarNbSpcmn.trim() || !sarCondId ||
         !sarLat.trim() || !sarLng.trim() || !sarDate || !sarTime)) {
       Alert.alert(t('form234.missingFieldsTitle'), t('form234.missingSarFields'), [{ text: tc('nav.ok') }]);
       return;
     }
     // S121 multi-SAR: every additional encounter must satisfy the same mandatory set
-    if (sarYes === true && extraSars.some(s => !s.species || !s.nbSpcmn?.trim() || !s.condId ||
+    if (effortYes && sarYes === true && extraSars.some(s => !s.species || !s.nbSpcmn?.trim() || !s.condId ||
         !s.lat?.trim() || !s.lng?.trim() || !s.date || !s.time)) {
       Alert.alert(t('form234.missingFieldsTitle'), t('form234.missingSarFields'), [{ text: tc('nav.ok') }]);
       return;
@@ -1841,9 +1901,15 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       haulEndTime:   'Time Stopped Hauling',
       landingTime:   'Time of Landing',
     };
+    // S124 Phase 6: on a no-haul day the EFFORT-group fields don't apply (the EFFORT node is
+    // omitted). TRIP / LANDING / GENERAL fields (date, crew, port landed, times, operator) stay.
+    const EFFORT_GROUP_REQUIRED = new Set(['fmaId', 'lgridCodeId', 'statSectId', 'gridId',
+      'catchWeight', 'trapHauls', 'trapSize', 'gearSubtypeId', 'nbSpcmnKept', 'gpsCoords',
+      'haulStartTime', 'haulEndTime']);
     const required = getRequiredFields(subformId);
     const missing: string[] = [];
     for (const field of required) {
+      if (!effortYes && EFFORT_GROUP_REQUIRED.has(field)) continue;
       const val = fieldCheckMap[field] ?? '';
       if (!val || val.trim() === '') missing.push(fieldLabels[field] ?? field);
     }
@@ -2102,6 +2168,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             <Text style={styles.sectionTitle}>{t('form234.catchEffortSection')}</Text>
             {renderNoteButton('catch')}
           </View>
+          {/* S124 Phase 6: "did you haul?" — Yes (default) shows the card; No collapses it (a
+              setting day) and omits EFFORT. Styled like the Interactions & Other toggles. */}
+          {renderYesNoToggle(t('form234.effortQuestion'), effortYes, handleEffortToggle, true)}
+          {effortYes && (<>
           <View {...closedBodyProps('dgCloseEffort')}>
           {renderNoteInput('catch', remarks.catch ?? '', (v) => { setNote('catch', v); setNote('haul', v); })}
           {/* LFA Selector */}
@@ -2415,8 +2485,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           {isVisible('haulEndTime') && renderTimestampField(t('form234.timeStoppedHaulingLabel'), formatDateTimeDisplay(haulEndDate, timeStoppedHauling), 'stopHaul', false, isRequired('haulEndTime'))}
           </View>
           {/* EFFORT close — one closure regardless of grid-block count (EFFORT_DETAIL is a
-              child of EFFORT). Always "used" in Phase 3; Phase 6 makes EFFORT optional. */}
+              child of EFFORT). Shown only when a haul is declared (Phase 6). */}
           {renderCloseControl('dgCloseEffort', 'form234.catchEffortSection', true)}
+          </>)}
         </View>
 
         {isVisible('baitEntries') && (
@@ -2458,7 +2529,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             legend says Blocked = "the application must prevent the entry"). Stored
             gpsLat/gpsLng on existing NL drafts is untouched — state still hydrates and
             buildLogData still writes it; the generator never emits it for 91 (Phase 1). */}
-        {isVisible('gpsCoords') && (
+        {/* S124 Phase 6: GPS coords are block-1 EFFORT_DETAIL — the card collapses with EFFORT
+            when no haul is declared. */}
+        {effortYes && isVisible('gpsCoords') && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View style={[styles.sectionIcon, { backgroundColor: '#E0E7FF' }]}><MapPin size={16} color="#4338CA" /></View>
@@ -2544,6 +2617,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             {renderCloseControl('dgClosePconsBycatch', 'form234.bycatchSubsection', bycatchYes === true && bycatchEntries.length > 0)}
           </View>
 
+          {/* S124 Phase 6: MM_INTER_IND / SAR_IND live in EFFORT — hide these two sub-cards on a
+              no-haul day. Bycatch + Personal Use are TRIP-level PCONS and stay. */}
+          {effortYes && (<>
           <View style={styles.incidentSection}>
             <View style={styles.sectionHeader}>
               <View style={[styles.sectionIcon, { backgroundColor: '#EDE9FE' }]}>
@@ -2629,6 +2705,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             </View>
             {renderCloseControl('dgCloseSar', 'form234.sarSubsection', sarYes === true)}
           </View>
+          </>)}
 
           {/* Lost / Found Gear question REMOVED (S93) — LOST_GEAR_IND is Blocked in the 234.12
               XSD (maxOccurs=0, Rule 608). FGRS handles lost/found gear reporting externally;
@@ -3039,6 +3116,9 @@ const styles = StyleSheet.create({
   },
   yesNoBtnNoActive: { backgroundColor: '#F1F5F9', borderColor: '#94A3B8' },
   yesNoBtnYesActive: { backgroundColor: '#15803D', borderColor: '#15803D' },
+  // S124: muted selected-Yes, matching the sent-log "Accepted ✓" chip (SentLogCard successBadge).
+  yesNoBtnYesActiveSoft: { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' },
+  yesNoBtnYesTextSoft: { color: '#15803D' },
   yesNoBtnText: { fontSize: 13, fontWeight: '700', color: '#94A3B8' },
   yesNoBtnNoText: { color: '#475569' },
   yesNoBtnYesText: { color: '#FFFFFF' },
