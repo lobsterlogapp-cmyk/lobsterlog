@@ -1666,6 +1666,23 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
 
   // renderLostGearFields removed (S93) — LOST_GEAR_IND Blocked in 234.12; question deleted below.
 
+  // S124 Phase 4: the USED data groups that are still OPEN (not yet closed). Same "used" gates
+  // as the per-card Close controls (Phase 3) — keep in sync. Excludes already-closed groups.
+  const openUsedGroups = (): string[] => {
+    const hlFma = fmaId === 28599 || fmaId === 1595;
+    const used: Record<string, boolean> = {
+      dgCloseEffort: true, // always used in Phase 3/4 (Phase 6 makes EFFORT optional)
+      dgCloseBaitUsed: baitEntries.length > 0,
+      dgClosePconsBycatch: bycatchYes === true && bycatchEntries.length > 0,
+      dgClosePconsPersonal: personalUse.trim().length > 0,
+      dgCloseSar: sarYes === true,
+      dgCloseTransfer: subformId === 88 && transferYes === true,
+      dgCloseHlin: hlFma && !!(hlinCompany || hlinConfirmNo),
+      dgCloseHlout: hlFma && !!(hloutCompany || hloutConfirmNo),
+    };
+    return Object.keys(used).filter(k => used[k] && !isClosed(k));
+  };
+
   const handleSave = async () => {
     // S124 Phase 1: bait is now OPTIONAL (Rule 1051 — the app must not force a data group; a
     // gear-retrieval day baits nothing). This gate stays but goes quiet on its own now that
@@ -1825,41 +1842,81 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       return;
     }
 
-    // Rule 980: WARNING (non-blocking) when the landing date/time is more than
-    // 24 hours in the future — alert the user to a likely input error, then proceed.
-    // Use the landing field's own date (S90 multi-day), falling back to dateFished.
+    // Rule 980: WARNING (non-blocking) when the landing date/time is more than 24 hours in the
+    // future — a likely input error. Compute here and surface it chained BEFORE the close-all
+    // confirm so the two alerts don't stack. Uses the landing field's own date (S90 multi-day).
+    let landingWarn = false;
     const landDateStr = landingDate || dateFished;
     if (landDateStr && timeOfLanding) {
       const [ly, lm, ld] = landDateStr.split('-').map(Number);
       const [lh, lmin] = timeOfLanding.split(':').map(Number);
       const landMs = new Date(ly, (lm ?? 1) - 1, ld ?? 1, lh ?? 0, lmin ?? 0).getTime();
-      if (!isNaN(landMs) && landMs > Date.now() + 24 * 3600 * 1000) {
-        Alert.alert(t('form234.landing24hWarningTitle'), t('form234.landing24hWarningBody'), [{ text: tc('nav.ok') }]);
-      }
+      if (!isNaN(landMs) && landMs > Date.now() + 24 * 3600 * 1000) landingWarn = true;
     }
 
-    const log: DfoLog = {
-      id: tripId,
-      lgbkUid,
-      firstEntryDt,
-      mode: 'full',
-      status: 'complete',
-      dateFished,
-      createdAt: Date.now(),
-      data: buildLogData(),
-      remarks: buildRemarks(),
-      subformId,
-      regId,
-      tripNum,
+    // S124 Phase 4: "Close & Save All" — this complete-save path closes every USED group still
+    // open, with ONE shared timestamp. The draft paths (Back / saveDraft / autosave) are
+    // untouched and still close nothing — only closeSection and this path ever stamp a close.
+    const openUsed = openUsedGroups();
+
+    // Persist as a complete log, merging the close-all stamps into the data map.
+    const persist = (extraCloses: Record<string, string>) => {
+      if (Object.keys(extraCloses).length) setCloses(prev => ({ ...prev, ...extraCloses }));
+      const log: DfoLog = {
+        id: tripId,
+        lgbkUid,
+        firstEntryDt,
+        mode: 'full',
+        status: 'complete',
+        dateFished,
+        createdAt: Date.now(),
+        data: { ...buildLogData(), ...extraCloses },
+        remarks: buildRemarks(),
+        subformId,
+        regId,
+        tripNum,
+      };
+      void (async () => {
+        const ok = await saveLog(log);
+        if (ok) {
+          void clearActiveDraft(); // S95: committed to dfo_logs — drop the crash-safety scratch
+          triggerBackup(); // best-effort cloud backup; fire-and-forget, never blocks save
+          onSaved();
+        } else {
+          Alert.alert(tc('settings.errorTitle'), t('form234.saveError'));
+        }
+      })();
     };
 
-    const ok = await saveLog(log);
-    if (ok) {
-      void clearActiveDraft(); // S95: log is committed to dfo_logs — drop the crash-safety scratch
-      triggerBackup(); // best-effort cloud backup; fire-and-forget, never blocks save
-      onSaved();
+    // count > 0 → confirm naming how many will close (i18next plural); count 0 → plain save.
+    const confirmThenSave = () => {
+      if (openUsed.length > 0) {
+        const stamp = new Date().toISOString();
+        const extra = Object.fromEntries(openUsed.map(k => [k, stamp]));
+        Alert.alert(
+          t('form234.closeAllConfirmTitle'),
+          t('form234.closeAllConfirmBody', { count: openUsed.length }),
+          [
+            { text: t('form234.closeConfirmNotYet'), style: 'cancel' },
+            { text: t('form234.closeAllConfirmYes'), style: 'destructive', onPress: () => persist(extra) },
+          ],
+        );
+      } else {
+        Alert.alert(
+          t('form234.plainSaveConfirmTitle'),
+          undefined,
+          [
+            { text: t('form234.closeConfirmNotYet'), style: 'cancel' },
+            { text: t('form234.plainSaveConfirmYes'), onPress: () => persist({}) },
+          ],
+        );
+      }
+    };
+
+    if (landingWarn) {
+      Alert.alert(t('form234.landing24hWarningTitle'), t('form234.landing24hWarningBody'), [{ text: tc('nav.ok'), onPress: confirmThenSave }]);
     } else {
-      Alert.alert(tc('settings.errorTitle'), t('form234.saveError'));
+      confirmThenSave();
     }
   };
 
@@ -2627,7 +2684,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         {!readOnly && (
           <TouchableOpacity style={styles.submitButton} onPress={handleSave}>
             <Save size={18} color="#FFFFFF" />
-            <Text style={styles.submitText}>{t('form234.saveButton')}</Text>
+            <Text style={styles.submitText}>
+              {openUsedGroups().length > 0 ? t('form234.closeAllButton') : t('form234.saveButton')}
+            </Text>
           </TouchableOpacity>
         )}
 
