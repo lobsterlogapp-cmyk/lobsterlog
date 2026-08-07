@@ -36,6 +36,7 @@ import {
   AlertTriangle,
   LocateFixed,
   StickyNote,
+  Lock,
 } from 'lucide-react-native';
 import {
   saveLog,
@@ -93,6 +94,15 @@ interface FullDfoFormProps {
 
 type BaitEntry = { type: string; lbs: string; condition?: number; };
 type BycatchEntry = { species: string; lbs: string; usage?: string; };
+
+// S124 Phase 3: the dgClose* data-map keys the generator reads for DG_CLOSE_DT, one per
+// closeable Form-234 data group (§5.2.1). PCONS has two occurrences (bycatch + personal use);
+// SAR closes as one block (whole-sub-card, S124 ruling); Landing (dgCloseLanding) is added in
+// Phase 5. These are the keys hydrated into / written from the `closes` state.
+const CLOSE_DATA_KEYS = [
+  'dgCloseEffort', 'dgCloseBaitUsed', 'dgClosePconsBycatch', 'dgClosePconsPersonal',
+  'dgCloseSar', 'dgCloseTransfer', 'dgCloseHlin', 'dgCloseHlout',
+] as const;
 
 const MARINE_MAMMAL_OPTIONS = ['North Atlantic Right Whale', 'Humpback Whale', 'Fin Whale', 'Minke Whale', 'Harbour Porpoise', 'Grey Seal', 'Harbour Seal', 'Atlantic White-sided Dolphin', 'Other'];
 
@@ -240,6 +250,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const [nbVntchYou, setNbVntchYou] = useState('');
   const [tripNum, setTripNum] = useState<number | undefined>(undefined);
   const [personalUse, setPersonalUse] = useState('');
+  // S124 Phase 3: per-data-group closure. Keyed by the generator's dgClose* data-map field
+  // (dfoXmlGenerator reads these); the value is the ISO close timestamp. A group with a value
+  // here is locked (greyed, non-editable, timestamped). Closure is irreversible — no un-close.
+  const [closes, setCloses] = useState<Record<string, string>>({});
   const [transfers, setTransfers] = useState('');
   const [transferYes, setTransferYes] = useState<boolean | null>(null);
   // QC(88) only — TRANSFER node fields (Rules 248-252) replace the legacy free-text
@@ -442,6 +456,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           setVNotchCount(d.vNotchCount || '');
           setNbVntchYou(d.nbVntchYou || '');
           setPersonalUse(d.personalUse || '');
+          // S124: hydrate any closed sections from their dgClose* data keys (present only on
+          // logs saved after a section was closed; absent on older logs → nothing loads).
+          {
+            const loaded: Record<string, string> = {};
+            for (const k of CLOSE_DATA_KEYS) { if (d[k]) loaded[k] = d[k]; }
+            setCloses(loaded);
+          }
           setTransfers(d.transfers || '');
           setTransferTime(d.transferTime || '');
           setTransferWt(d.transferWt || '');
@@ -656,6 +677,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     gpsLat, gpsLng, gpsSrc, vNotchCount, nbVntchYou,
     transferYes: String(transferYes),
     transfers, personalUse,
+    // S124: persist any closed-section timestamps (dgClose* keys) — the generator reads them.
+    ...closes,
     transferTime, transferWt, transferToVrn, transferToPndNum,
     useCrInd, carrierVrn, prtnshpId: String(prtnshpId),
     trapSize,
@@ -1097,7 +1120,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         <View style={styles.effortBlockHeader}>
           <Text style={styles.effortBlockTitle}>{t('form234.catchEffortBlock', { n: i + 2 })}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            {!readOnly && (
+            {!readOnly && !isClosed('dgCloseEffort') && (
               <TouchableOpacity style={styles.deleteBtn} onPress={() => removeExtraEffort(i)}>
                 <Trash2 size={16} color="#EF4444" />
               </TouchableOpacity>
@@ -1327,7 +1350,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     <View key={i} style={[styles.incidentBlock, { marginTop: 10 }]}>
       <View style={styles.effortBlockHeader}>
         <Text style={styles.effortBlockTitle}>{t('form234.sarBlockTitle', { n: i + 2 })}</Text>
-        {!readOnly && (
+        {!readOnly && !isClosed('dgCloseSar') && (
           <TouchableOpacity style={styles.deleteBtn} onPress={() => removeExtraSar(i)}>
             <Trash2 size={16} color="#EF4444" />
           </TouchableOpacity>
@@ -1435,6 +1458,65 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       </View>
     </View>
   );
+
+  // ── S124 Phase 3: data-group closure (Close & Save Section) ──────────────────────────────
+  const isClosed = (k: string) => !!closes[k];
+  // Local "YYYY-MM-DD HH:MM" — §2: the app's existing timestamp display format.
+  const formatClose = (iso?: string): string => {
+    if (!iso) return '';
+    const dt = new Date(iso);
+    if (isNaN(dt.getTime())) return '';
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}`;
+  };
+  // Confirm (never suppressible), then stamp the close and persist immediately — closure is
+  // irreversible (DFO 234.7). The save merges the new stamp so the lock survives without a later Save.
+  const closeSection = (dataKey: string, sectionTitleKey: string) => {
+    if (readOnly || isClosed(dataKey)) return;
+    Alert.alert(
+      t('form234.closeConfirmTitle', { section: t(sectionTitleKey) }),
+      t('form234.closeConfirmBody'),
+      [
+        { text: t('form234.closeConfirmNotYet'), style: 'cancel' },
+        {
+          text: t('form234.closeConfirmYes'),
+          style: 'destructive',
+          onPress: () => {
+            const nowIso = new Date().toISOString();
+            setCloses(prev => ({ ...prev, [dataKey]: nowIso }));
+            if (isLoaded && !editingCompleted) {
+              void saveLog({ ...buildDraftLog(), data: { ...buildLogData(), [dataKey]: nowIso } });
+            }
+          },
+        },
+      ],
+    );
+  };
+  // Foot control: nothing when the group is unused; a lock + timestamp banner when closed; the
+  // Close & Save Section button otherwise (hidden in read-only view).
+  const renderCloseControl = (dataKey: string, sectionTitleKey: string, used: boolean) => {
+    if (!used) return null;
+    if (isClosed(dataKey)) {
+      return (
+        <View style={styles.closedBanner}>
+          <Lock size={14} color="#64748B" />
+          <Text style={styles.closedBannerText}>{t('form234.closedAtLabel', { time: formatClose(closes[dataKey]) })}</Text>
+        </View>
+      );
+    }
+    if (readOnly) return null;
+    return (
+      <TouchableOpacity style={styles.closeSectionBtn} onPress={() => closeSection(dataKey, sectionTitleKey)} activeOpacity={0.8}>
+        <Lock size={16} color="#B45309" />
+        <Text style={styles.closeSectionBtnText}>{t('form234.closeSectionButton')}</Text>
+      </TouchableOpacity>
+    );
+  };
+  // Props that grey + freeze a closed card/block's editable body (blocks all input).
+  const closedBodyProps = (dataKey: string) => ({
+    pointerEvents: (isClosed(dataKey) ? 'none' : 'auto') as 'none' | 'auto',
+    style: isClosed(dataKey) ? styles.closedBody : undefined,
+  });
 
   const renderField = (
     label: string, value: string, setter: (v: string) => void,
@@ -1920,6 +2002,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             <Text style={styles.sectionTitle}>{t('form234.catchEffortSection')}</Text>
             {renderNoteButton('catch')}
           </View>
+          <View {...closedBodyProps('dgCloseEffort')}>
           {renderNoteInput('catch', remarks.catch ?? '', (v) => { setNote('catch', v); setNote('haul', v); })}
           {/* LFA Selector */}
                     <View style={styles.fieldRow}>
@@ -2216,12 +2299,16 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           {/* S121 multi-grid: additional catch-effort blocks (EFFORT_DETAIL 2..n), each with
               its own grid, weight, hauls, and region fields. Block 1 = the fields above. */}
           {extraEfforts.map((e, i) => renderExtraEffortBlock(e, i))}
-          {!readOnly && (
+          {!readOnly && !isClosed('dgCloseEffort') && (
             <TouchableOpacity style={[styles.addBtn, { marginTop: 4 }]} onPress={addExtraEffort}>
               <Plus size={16} color="#1E3A8A" />
               <Text style={styles.addBtnText}>{t('form234.addCatchEffort')}</Text>
             </TouchableOpacity>
           )}
+          </View>
+          {/* EFFORT close — one closure regardless of grid-block count (EFFORT_DETAIL is a
+              child of EFFORT). Always "used" in Phase 3; Phase 6 makes EFFORT optional. */}
+          {renderCloseControl('dgCloseEffort', 'form234.catchEffortSection', true)}
         </View>
 
         {isVisible('baitEntries') && (
@@ -2231,6 +2318,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             <Text style={styles.sectionTitle}>{t('form234.baitReportingSection')}{isRequired('baitEntries') && <Text style={{ color: REQUIRED_ASTERISK_COLOR, fontSize: 13 }}> *</Text>}</Text>
             {renderNoteButton('bait')}
           </View>
+          <View {...closedBodyProps('dgCloseBaitUsed')}>
           {renderNoteInput('bait', remarks.bait ?? '', (v) => setNote('bait', v))}
           {baitEntries.length === 0 && <Text style={styles.emptyHint}>{t('form234.noBaitYet')}</Text>}
           {baitEntries.map((entry, i) => (
@@ -2239,19 +2327,21 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 <Text style={styles.entryType}>{baitTypeDisplay(entry.type)}</Text>
                 <Text style={styles.entryLbs}>{t('form234.lbsSuffix', { lbs: entry.lbs })}</Text>
               </View>
-              {!readOnly && (
+              {!readOnly && !isClosed('dgCloseBaitUsed') && (
                 <TouchableOpacity style={styles.deleteBtn} onPress={() => deleteBait(i)}>
                   <Trash2 size={16} color="#EF4444" />
                 </TouchableOpacity>
               )}
             </View>
           ))}
-          {!readOnly && (
+          {!readOnly && !isClosed('dgCloseBaitUsed') && (
             <TouchableOpacity style={styles.addBtn} onPress={() => openSheet('bait')}>
               <Plus size={16} color="#1E3A8A" />
               <Text style={styles.addBtnText}>{t('form234.addBait')}</Text>
             </TouchableOpacity>
           )}
+          </View>
+          {renderCloseControl('dgCloseBaitUsed', 'form234.baitReportingSection', baitEntries.length > 0)}
         </View>
         )}
 
@@ -2305,6 +2395,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               </View>
               <Text style={[styles.sectionTitle, { fontSize: 13 }]}>{t('form234.bycatchSubsection')}</Text>
             </View>
+            <View {...closedBodyProps('dgClosePconsBycatch')}>
             {renderYesNoToggle(t('form234.bycatchQuestion'), bycatchYes, (val) => {
               setBycatchYes(val);
               if (!val) setBycatchEntries([]);
@@ -2321,14 +2412,14 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                       )}
                       <Text style={styles.entryLbs}>{t('form234.lbsSuffix', { lbs: entry.lbs })}</Text>
                     </View>
-                    {!readOnly && (
+                    {!readOnly && !isClosed('dgClosePconsBycatch') && (
                       <TouchableOpacity style={styles.deleteBtn} onPress={() => deleteBycatch(i)}>
                         <Trash2 size={16} color="#EF4444" />
                       </TouchableOpacity>
                     )}
                   </View>
                 ))}
-                {!readOnly && (
+                {!readOnly && !isClosed('dgClosePconsBycatch') && (
                   <TouchableOpacity style={[styles.addBtn, { marginTop: 4 }]} onPress={() => openSheet('bycatch')}>
                     <Plus size={16} color="#1E3A8A" />
                     <Text style={styles.addBtnText}>{t('form234.addBycatch')}</Text>
@@ -2336,6 +2427,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 )}
               </View>
             )}
+            </View>
+            {renderCloseControl('dgClosePconsBycatch', 'form234.bycatchSubsection', bycatchYes === true && bycatchEntries.length > 0)}
           </View>
 
           <View style={styles.incidentSection}>
@@ -2366,6 +2459,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               <Text style={[styles.sectionTitle, { fontSize: 13 }]}>{t('form234.sarSubsection')}</Text>
               {renderNoteButton('sar')}
             </View>
+            <View {...closedBodyProps('dgCloseSar')}>
             {renderNoteInput('sar', remarks.sar ?? '', (v) => setNote('sar', v))}
             {renderYesNoToggle(t('form234.sarIndLabel'), sarYes, handleSarYes)}
             {sarYes === true && renderIncidentFields(
@@ -2411,7 +2505,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 {/* S121 multi-SAR: additional encounters (SAR node 2..n), each its own
                     species/date/coords/count/condition. Block 1 = the fields above. */}
                 {extraSars.map((s, i) => renderExtraSarBlock(s, i))}
-                {!readOnly && (
+                {!readOnly && !isClosed('dgCloseSar') && (
                   <TouchableOpacity style={[styles.addBtn, { marginTop: 10 }]} onPress={() => { void addExtraSar(); }}>
                     <Plus size={16} color="#1E3A8A" />
                     <Text style={styles.addBtnText}>{t('form234.addSarEncounter')}</Text>
@@ -2419,6 +2513,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 )}
               </>
             )}
+            </View>
+            {renderCloseControl('dgCloseSar', 'form234.sarSubsection', sarYes === true)}
           </View>
 
           {/* Lost / Found Gear question REMOVED (S93) — LOST_GEAR_IND is Blocked in the 234.12
@@ -2434,6 +2530,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               <Text style={[styles.sectionTitle, { fontSize: 13 }]}>{t('form234.transfersSubsection')}</Text>
               {renderNoteButton('transfer')}
             </View>
+            <View {...closedBodyProps('dgCloseTransfer')}>
             {renderNoteInput('transfer', remarks.transfer ?? '', (v) => setNote('transfer', v))}
             {/* USE_CR_IND (Rule 639: defaults to No) + carrier VRN (Rule 642) */}
             {renderYesNoToggle(t('form234.useCarrierQuestion'), useCrInd === 'Y', (val) => {
@@ -2473,9 +2570,24 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 <Text style={styles.emptyHint}>{t('form234.transferToHint')}</Text>
               </View>
             )}
+            </View>
+            {renderCloseControl('dgCloseTransfer', 'form234.transfersSubsection', transferYes === true)}
           </View>}
 
-          {renderField(t('form234.personalUseLabel'), personalUse, setPersonalUse, '0', false, false, 'numeric')}
+          {/* PCONS occurrence #2 — Personal Use, its own sub-card so it closes independently
+              of the Bycatch occurrence (S124 ruling). */}
+          <View style={styles.incidentSection}>
+            <View style={styles.sectionHeader}>
+              <View style={[styles.sectionIcon, { backgroundColor: '#EDE9FE' }]}>
+                <AlertTriangle size={16} color="#7C3AED" />
+              </View>
+              <Text style={[styles.sectionTitle, { fontSize: 13 }]}>{t('form234.personalUseSection')}</Text>
+            </View>
+            <View {...closedBodyProps('dgClosePconsPersonal')}>
+            {renderField(t('form234.personalUseLabel'), personalUse, setPersonalUse, '0', false, false, 'numeric')}
+            </View>
+            {renderCloseControl('dgClosePconsPersonal', 'form234.personalUseSection', personalUse.trim().length > 0)}
+          </View>
         </View>
 
         {(fmaId === 28599 || fmaId === 1595) && (
@@ -2485,11 +2597,14 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             <Text style={styles.sectionTitle}>{t('form234.hlinSection')}</Text>
             {renderNoteButton('hlin')}
           </View>
+          <View {...closedBodyProps('dgCloseHlin')}>
           {renderNoteInput('hlin', remarks.hlin ?? '', (v) => setNote('hlin', v))}
           {renderField(t('form234.companyLabel'), hlinCompany, setHlinCompany, t('form234.companyPlaceholder'), false, false, 'default', isRequired('hlinCompany'))}
           {renderField(t('form234.confirmNoLabel'), hlinConfirmNo, setHlinConfirmNo, t('form234.confirmNoPlaceholder'), false, false, 'default', isRequired('hlinConfirmNo'))}
           {renderField(t('form234.etaLabel'), hlinEta, setHlinEta, t('form234.etaPlaceholder'))}
           {renderField(t('form234.totalWeightLabel'), hlinTotalWeight, setHlinTotalWeight, '0', false, false, 'numeric')}
+          </View>
+          {renderCloseControl('dgCloseHlin', 'form234.hlinSection', !!(hlinCompany || hlinConfirmNo))}
         </View>
         )}
 
@@ -2500,9 +2615,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             <Text style={styles.sectionTitle}>{t('form234.hloutSection')}</Text>
             {renderNoteButton('hlout')}
           </View>
+          <View {...closedBodyProps('dgCloseHlout')}>
           {renderNoteInput('hlout', remarks.hlout ?? '', (v) => setNote('hlout', v))}
           {renderField(t('form234.companyLabel'), hloutCompany, setHloutCompany, t('form234.companyPlaceholder'), false, false, 'default', isRequired('hloutCompany'))}
           {renderField(t('form234.confirmNoLabel'), hloutConfirmNo, setHloutConfirmNo, t('form234.confirmNoPlaceholder'), false, false, 'default', isRequired('hloutConfirmNo'))}
+          </View>
+          {renderCloseControl('dgCloseHlout', 'form234.hloutSection', !!(hloutCompany || hloutConfirmNo))}
         </View>
         )}
 
@@ -2767,6 +2885,20 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: '#1E3A8A', borderStyle: 'dashed',
   },
   addBtnText: { fontSize: 13, fontWeight: '700', color: '#1E3A8A' },
+  // S124 Phase 3: data-group closure chrome
+  closeSectionBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 11, borderRadius: 8, marginTop: 10,
+    backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#B45309',
+  },
+  closeSectionBtnText: { fontSize: 13, fontWeight: '700', color: '#B45309' },
+  closedBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10,
+    paddingVertical: 9, paddingHorizontal: 10, borderRadius: 8,
+    backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#CBD5E1',
+  },
+  closedBannerText: { fontSize: 12, fontWeight: '600', color: '#64748B' },
+  closedBody: { opacity: 0.55 },
   // S121 multi-grid: additional catch-effort block chrome
   effortBlock: {
     backgroundColor: '#F8FAFC', borderRadius: 10, padding: 12,
