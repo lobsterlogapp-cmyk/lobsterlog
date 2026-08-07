@@ -47,6 +47,7 @@ export interface ExtraSarDetail {
   date?: string; time?: string;   // YYYY-MM-DD / HH:MM → SAR_DT
   nbSpcmn?: string;
   condId?: string;        // MV_SPECIMENS_CONDITION codeId → SPCMN_COND_ID
+  closeDt?: string;       // S124: per-block DG_CLOSE_DT (ISO) — SAR closes one block at a time
 }
 
 export interface ExtraEffortDetail {

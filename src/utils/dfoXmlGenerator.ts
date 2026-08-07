@@ -153,7 +153,13 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   try {
     const pconsList = getDfoPconsSpeciesList(subformId);
     const bycatch: { species: string; lbs: string; usage?: string }[] = JSON.parse(d.bycatchEntries || '[]');
-    const closeDt = toCloseTimestamp(d.dgClosePcons);
+    // S124 Phase 2: PCONS closes per occurrence — one for the bycatch block, one for personal
+    // use (Rule 1505, §5.2.1). Split the former single close into two data-map fields, each
+    // falling back to the legacy shared `dgClosePcons` (one now-stamp when nothing is set) so an
+    // unclosed log emits byte-identically to pre-S124.
+    const pconsShared = toCloseTimestamp(d.dgClosePcons);
+    const bycatchClose = d.dgClosePconsBycatch ? toCloseTimestamp(d.dgClosePconsBycatch) : pconsShared;
+    const personalClose = d.dgClosePconsPersonal ? toCloseTimestamp(d.dgClosePconsPersonal) : pconsShared;
     const parts: string[] = [];
 
     for (const e of bycatch) {
@@ -175,7 +181,7 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
         szLine +
         `      <WT>${wt}</WT>\n` +
         usgLine +
-        `      <DG_CLOSE_DT>${closeDt}</DG_CLOSE_DT>\n` +
+        `      <DG_CLOSE_DT>${bycatchClose}</DG_CLOSE_DT>\n` +
         tag('REM', rem.pcons ?? '', '      ') +
         `    </PCONS>\n`
       );
@@ -192,7 +198,7 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
         szLine +
         `      <WT>${personalUseWt}</WT>\n` +
         `      <USG_ID>37822</USG_ID>\n` +
-        `      <DG_CLOSE_DT>${closeDt}</DG_CLOSE_DT>\n` +
+        `      <DG_CLOSE_DT>${personalClose}</DG_CLOSE_DT>\n` +
         tag('REM', rem.pcons ?? '', '      ') +
         `    </PCONS>\n`
       );
@@ -390,7 +396,10 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
       body += tag('SPECIE_ID',     s.species ?? '', '      ');
       body += tag('NB_SPCMN',      s.nbSpcmn ?? '', '      ');
       body += tag('SPCMN_COND_ID', s.condId ?? '', '      ');
-      body += tag('DG_CLOSE_DT',   toCloseTimestamp(d.dgCloseSar), '      ');
+      // S124 Phase 2: one closure per SAR block (Rule 1503, §5.2.1). Block 1's close rides the
+      // legacy d.dgCloseSar; blocks 2..n carry their own s.closeDt. Absent → falls back to
+      // d.dgCloseSar exactly as before, so existing logs emit byte-identically.
+      body += tag('DG_CLOSE_DT',   toCloseTimestamp(s.closeDt || d.dgCloseSar), '      ');
       body += tag('REM',           rem.sar ?? '', '      ');
       body += `    </SAR>\n`;
     });
