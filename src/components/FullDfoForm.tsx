@@ -1585,9 +1585,36 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // renderLostGearFields removed (S93) — LOST_GEAR_IND Blocked in 234.12; question deleted below.
 
   const handleSave = async () => {
+    // S124 Phase 1: bait is now OPTIONAL (Rule 1051 — the app must not force a data group; a
+    // gear-retrieval day baits nothing). This gate stays but goes quiet on its own now that
+    // 'baitEntries' is out of every subform's `required` array (isRequired → false); it still
+    // guards correctly if a future subform re-requires bait.
     if (isRequired('baitEntries') && baitEntries.length === 0) {
       Alert.alert(t('form234.missingFieldsTitle'), t('form234.missingBait'), [{ text: tc('nav.ok') }]);
       return;
+    }
+    // Mandatory-once-used: bait is optional, but once an entry EXISTS the BAIT_USED node's own
+    // mandatory elements must be present — BT_TYP_ID + BT_WT always, BT_COND_ID where Rule 3060
+    // (MAR) / 984 (QC-GLF) escalates condition to mandatory. The add-sheet enforces this at
+    // creation (handleSheetConfirm :937/:941/:955); this backstops hydrated/legacy drafts, with
+    // validateElogXml as the send-time backstop. Reuses the add-sheet prompt strings.
+    {
+      const baitList = getDfoBaitTypeList(subformId);
+      for (const e of baitEntries) {
+        if (!e.type?.trim()) {
+          Alert.alert(t('form234.missingFieldsTitle'), t('form234.pleaseSelectBait'), [{ text: tc('nav.ok') }]);
+          return;
+        }
+        if (!e.lbs?.trim()) {
+          Alert.alert(t('form234.missingFieldsTitle'), t('form234.pleaseEnterWeight'), [{ text: tc('nav.ok') }]);
+          return;
+        }
+        const codeId = baitList.find(b => b.label === e.type)?.codeId ?? 0;
+        if (baitConditionState(subformId, codeId) === 'mandatory' && e.condition == null) {
+          Alert.alert(t('form234.missingFieldsTitle'), t('form234.pleaseSelectBaitCondition'), [{ text: tc('nav.ok') }]);
+          return;
+        }
+      }
     }
     if (bycatchYes === null) {
       Alert.alert(t('form234.missingFieldsTitle'), t('form234.missingBycatchAnswer'), [{ text: tc('nav.ok') }]);
