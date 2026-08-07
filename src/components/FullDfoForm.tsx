@@ -348,10 +348,16 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
 
   // Quick capture — driven by global TimerContext, no local state needed
   const {
-    sailActive, sailStartTime, sailElapsed,
-    haulActive, haulStartTime, haulEndTime, haulElapsed,
+    sailActive, sailStartTime, sailElapsed, sailLogId,
+    haulActive, haulStartTime, haulEndTime, haulElapsed, haulLogId,
     startSail, stopSail, startHaul, stopHaul,
   } = useTimer();
+  // S124: a running timer belongs to exactly one log. It only surfaces / resumes on THAT log —
+  // on any other (or a newly-created) log it reads as not-running, so a deleted or backed-out
+  // log's orphaned timer can't bleed in. (Unscoped timers — logId null, e.g. the legacy proposal
+  // form — never match a DFO tripId, so they never surface here.)
+  const sailActiveHere = sailActive && sailLogId === tripId;
+  const haulActiveHere = haulActive && haulLogId === tripId;
 
   // Marine Mammal
   const [mmYes, setMmYes] = useState<boolean | null>(null);
@@ -633,12 +639,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // (or is still running from a previous session), the fields always
   // reflect the correct start time.
   useEffect(() => {
-    if (sailStartTime) setTimeSailed(sailStartTime);
-  }, [sailStartTime]);
+    if (sailStartTime && sailLogId === tripId) setTimeSailed(sailStartTime);
+  }, [sailStartTime, sailLogId, tripId]);
 
   useEffect(() => {
-    if (haulStartTime) setTimeStartedHauling(haulStartTime);
-  }, [haulStartTime]);
+    if (haulStartTime && haulLogId === tripId) setTimeStartedHauling(haulStartTime);
+  }, [haulStartTime, haulLogId, tripId]);
 
   // Adopt a haul-end time only when it arrives AFTER this form mounts (normal Quick
   // Capture: open the form, then Start/Stop Haul). A value already present in the global
@@ -826,9 +832,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   };
 
   const handleSailPress = async () => {
-    if (!sailActive) {
+    if (!sailActiveHere) {
       const now = new Date();
-      await startSail();
+      await startSail(tripId);
       // timeSailed synced via useEffect on sailStartTime; stamp its companion date now.
       // Sail-start drives the trip's nominal date, same as the picker path.
       setSailDate(formatDate(now));
@@ -849,9 +855,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       // S124: EFFORT is closeable. Once Catch & Effort is closed, Quick Capture must not write
       // haul times / GPS into the frozen group — this closes the bypass (button also disabled).
       if (isClosed('dgCloseEffort')) return;
-      if (!haulActive) {
+      if (!haulActiveHere) {
         const now = new Date();
-        await startHaul();
+        await startHaul(tripId);
         // timeStartedHauling synced via useEffect on haulStartTime; stamp companion date now.
         setHaulStartDate(formatDate(now));
       } else {
@@ -1963,36 +1969,36 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           <Text style={styles.captureSubtitle}>{t('form234.quickCaptureSubtitle')}</Text>
           <View style={styles.captureRow}>
             <TouchableOpacity
-              style={[styles.captureBtn, sailActive && styles.captureBtnActive]}
+              style={[styles.captureBtn, sailActiveHere && styles.captureBtnActive]}
               onPress={handleSailPress}
             >
-              {sailActive
+              {sailActiveHere
                 ? <Square size={18} color="#FFFFFF" />
                 : <Play size={18} color={timeSailed ? '#15803D' : '#1E3A8A'} />}
               <Text style={[
                 styles.captureBtnText,
-                sailActive && styles.captureBtnTextActive,
-                !sailActive && !!timeSailed && styles.captureBtnTextDone,
+                sailActiveHere && styles.captureBtnTextActive,
+                !sailActiveHere && !!timeSailed && styles.captureBtnTextDone,
               ]}>
-                {sailActive
+                {sailActiveHere
                   ? `${t('form234.stopSail')}  ${sailElapsed}`
                   : timeSailed ? t('form234.sailed', { time: timeSailed }) : t('form234.startSail')}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.captureBtn, haulActive && styles.captureBtnActive, isClosed('dgCloseEffort') && styles.captureBtnDisabled]}
+              style={[styles.captureBtn, haulActiveHere && styles.captureBtnActive, isClosed('dgCloseEffort') && styles.captureBtnDisabled]}
               onPress={handleHaulPress}
               disabled={isClosed('dgCloseEffort')}
             >
-              {haulActive
+              {haulActiveHere
                 ? <Square size={18} color="#FFFFFF" />
                 : <Play size={18} color={timeStartedHauling ? '#15803D' : '#1E3A8A'} />}
               <Text style={[
                 styles.captureBtnText,
-                haulActive && styles.captureBtnTextActive,
-                !haulActive && !!timeStartedHauling && styles.captureBtnTextDone,
+                haulActiveHere && styles.captureBtnTextActive,
+                !haulActiveHere && !!timeStartedHauling && styles.captureBtnTextDone,
               ]}>
-                {haulActive
+                {haulActiveHere
                   ? `${t('form234.stopHaul')}  ${haulElapsed}`
                   : timeStartedHauling
                     ? t('form234.hauledRange', { start: timeStartedHauling, end: timeStoppedHauling || '?' })

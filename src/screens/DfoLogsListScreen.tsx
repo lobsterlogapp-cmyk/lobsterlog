@@ -17,6 +17,7 @@ import {
 import { Plus, FileText, Send, Edit3, Eye, Trash2, CheckCircle, User, Shield, RotateCcw, Archive, HelpCircle } from 'lucide-react-native';
 import HelpSupportScreen from './HelpSupportScreen';
 import { loadAllLogs, deleteLog, markSentToDfo, DfoLog, saveTransmissionRecord, TransmissionRecord, saveXmlArchiveEntry, loadTransmissionRegister, transmissionKind } from '../utils/dfoLogStorage';
+import { useTimer } from '../context/TimerContext';
 import { triggerBackup } from '../utils/dfoBackup';
 import { SentLogCard, SentLogDetailModal, indexSuccessRecords, indexFailureRecords } from '../components/SentLogCard';
 import { FormSentCard } from '../components/FormSentCard';
@@ -134,6 +135,7 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
 }) => {
   const { t } = useTranslation('dfo');
   const { t: tc } = useTranslation('common');
+  const { clearTimersForLog } = useTimer(); // S124: wipe a deleted log's running timers
 
   const [drafts, setDrafts] = useState<DfoLog[]>([]);
   const [completed, setCompleted] = useState<DfoLog[]>([]);
@@ -368,6 +370,7 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
           style: 'destructive',
           onPress: async () => {
             await deleteLog(logId);
+            await clearTimersForLog(logId); // S124: don't let this log's timers bleed onto the next
             refresh();
           },
         },
@@ -548,6 +551,7 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
             style: 'destructive',
             onPress: async () => {
               await deleteLog(target.id);
+              await clearTimersForLog(target.id); // S124: wipe this log's running timers
               refresh();
             },
           },
