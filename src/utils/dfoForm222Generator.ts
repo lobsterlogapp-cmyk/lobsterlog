@@ -85,6 +85,10 @@ export interface Form222Entry {
   // XSD MM_INTER.LGBK_NUM_REF (string_15, mandatory): logbook number the marine
   // mammal interaction report refers to — prefilled with the related log's LGBK_UID
   lgbkNumRef?: string;
+  // S125 7a: lifecycle status, mirroring DfoLog.status. Optional + additive — records saved
+  // before this field back-fill to 'complete' at load (they are all sent). NOT emitted: the
+  // generator never reads it, so byte-identity of the XML is unaffected.
+  status?: 'draft' | 'complete';
   sentToDfo: boolean;
   sentAt?: number;
 }
@@ -107,10 +111,34 @@ export async function loadForm222Entries(): Promise<Form222Entry[]> {
   try {
     const raw = await AsyncStorage.getItem(dfoKey(DFO_STORE_BASES.form222_entries));
     if (!raw) return [];
-    return JSON.parse(raw) as Form222Entry[];
+    const entries = JSON.parse(raw) as Form222Entry[];
+    // S125 7a: back-fill status/sentToDfo for records saved before drafts existed (every such
+    // record is a completed send → 'complete'), mirroring dfoLogStorage.loadAllLogs. Sort
+    // newest-first so 7c's list and the 7a "re-open restores the most recent draft" path are
+    // ordered. No migration — the on-disk shape is only rewritten on the next save/delete.
+    return entries
+      .map(e => ({ ...e, status: e.status ?? ('complete' as const), sentToDfo: e.sentToDfo ?? false }))
+      .sort((a, b) => b.savedAt - a.savedAt);
   } catch {
     return [];
   }
+}
+
+// S125 7a: load one entry by uid (mirrors dfoLogStorage.loadLogById). Used by 7c's
+// resume-from-list; added now so the store's read surface is complete.
+export async function loadForm222EntryByUid(uid: string): Promise<Form222Entry | null> {
+  const all = await loadForm222Entries();
+  return all.find(e => e.uid === uid) ?? null;
+}
+
+// S125 7a: delete one entry by uid (mirrors dfoLogStorage.deleteLog). Used by 7c/Phase 8
+// (draft discard / delete). Rewrites the array without the uid.
+export async function deleteForm222Entry(uid: string): Promise<void> {
+  const existing = await loadForm222Entries();
+  await AsyncStorage.setItem(
+    dfoKey(DFO_STORE_BASES.form222_entries),
+    JSON.stringify(existing.filter(e => e.uid !== uid)),
+  );
 }
 
 function xmlEscape(s: string): string {

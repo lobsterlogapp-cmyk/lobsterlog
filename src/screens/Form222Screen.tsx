@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -26,6 +26,7 @@ import {
   generateForm222Xml,
   generateSoap222Envelope,
   saveForm222Entry,
+  loadForm222Entries,
   validateForm222Xml,
   MARINE_MAMMAL_SPECIES,
   MARINE_MAMMAL_SPECIES_LABELS,
@@ -63,6 +64,9 @@ const LENGTH_CAT_FR = toFrByEn(MV_MM_LENGTH_CATEGORY);
 
 interface Props {
   onClose: () => void;
+  // S125 7a: lets the parent Modal's onRequestClose (Android hardware back) invoke this
+  // screen's park-then-close handler, so EVERY exit goes through one path that parks the draft.
+  registerClose?: (fn: () => void) => void;
 }
 
 interface FormState {
@@ -154,7 +158,7 @@ const parsePickerDateTime = (dateStr: string, timeStr: string): Date => {
   return d;
 };
 
-export default function Form222Screen({ onClose }: Props) {
+export default function Form222Screen({ onClose, registerClose }: Props) {
   const { t, i18n } = useTranslation('dfo');
   const { t: tc } = useTranslation('common');
   const isFr = i18n.language.startsWith('fr');
@@ -170,12 +174,59 @@ export default function Form222Screen({ onClose }: Props) {
   const [sending, setSending] = useState(false);
   const [gpsCapturing, setGpsCapturing] = useState(false);
 
+  // S125 7a draft lifecycle refs (see Form233Screen for the full rationale):
+  //  prefillRef  — the lgbkNumRef value auto-prefilled on mount; the empty-check counts the
+  //                reference field as content only when it DIFFERS from this (a user fix).
+  //  draftUidRef — uid this screen instance owns (hydrated draft's uid, else minted on first park).
+  //  justSentRef — true only after a successful send, so the shared close path never re-parks.
+  const prefillRef = useRef<string>('');
+  const draftUidRef = useRef<string | null>(null);
+  const justSentRef = useRef(false);
+
   useEffect(() => {
     loadCaptainProfile().then(setProfile);
-    // LGBK_NUM_REF prefill: the most recent logbook this interaction likely refers to
-    loadLastLog().then(last => {
-      if (last?.lgbkUid) setForm(prev => prev.lgbkNumRef ? prev : { ...prev, lgbkNumRef: last.lgbkUid });
-    });
+    (async () => {
+      const [last, entries] = await Promise.all([loadLastLog(), loadForm222Entries()]);
+      const prefill = last?.lgbkUid ?? '';
+      prefillRef.current = prefill;
+      // Re-hydrate the most recent DRAFT (loadForm222Entries is newest-first). Sent records are
+      // never restored. Labels round-trip straight back into the pickers (the store holds labels).
+      const draft = entries.find(e => e.status === 'draft');
+      if (draft) {
+        draftUidRef.current = draft.uid;
+        setForm({
+          interactInd: draft.interactInd,
+          reportDate: draft.reportDate,
+          interactionDate: draft.interactionDate,
+          interactionTime: draft.interactionTime,
+          lat: draft.lat,
+          lon: draft.lon,
+          speciesLabel: draft.speciesLabel,
+          nbAnimals: draft.nbAnimals,
+          interactionTypeLabel: draft.interactionTypeLabel,
+          injuryInd: draft.injuryInd,
+          deathInd: draft.deathInd,
+          entangleInd: draft.entangleInd,
+          releaseInd: draft.releaseInd,
+          gearDamageInd: draft.gearDamageInd,
+          observerNm: draft.observerNm,
+          contactInfo: draft.contactInfo,
+          remarks: draft.remarks,
+          siteDsc: draft.siteDsc ?? '',
+          gearDmgRem: draft.gearDmgRem ?? '',
+          docRem: draft.docRem ?? '',
+          eventDsc: draft.eventDsc ?? '',
+          incdntRem: draft.incdntRem ?? '',
+          confidenceLabel: draft.confidenceLabel ?? '',
+          specimenCondLabel: draft.specimenCondLabel ?? '',
+          lengthCatLabel: draft.lengthCatLabel ?? '',
+          lgbkNumRef: draft.lgbkNumRef ?? '',
+        });
+      } else if (prefill) {
+        // LGBK_NUM_REF prefill (never overwrites typed text) when there is no draft to restore.
+        setForm(prev => prev.lgbkNumRef ? prev : { ...prev, lgbkNumRef: prefill });
+      }
+    })();
   }, []);
 
   const set = <K extends keyof FormState>(key: K) => (value: FormState[K]) =>
@@ -184,6 +235,75 @@ export default function Form222Screen({ onClose }: Props) {
   const toggleYN = (key: keyof FormState) => () => {
     setForm(prev => ({ ...prev, [key]: prev[key] === 'Y' ? 'N' : 'Y' }));
   };
+
+  // S125 7a: build a Form222Entry from current state at the given lifecycle stage. Shared by the
+  // park path (status:'draft', sentToDfo:false) and the send path (status:'complete') so a parked
+  // draft and a sent record differ only in status/sent flags. uid reuses the owned draft uid, so
+  // the generated XML stays byte-identical.
+  const buildEntry = (status: 'draft' | 'complete', sentToDfo: boolean): Form222Entry => ({
+    uid: draftUidRef.current ?? generateForm222Uid(),
+    savedAt: Date.now(),
+    interactInd: form.interactInd,
+    reportDate: form.reportDate,
+    interactionDate: form.interactionDate,
+    interactionTime: form.interactionTime,
+    lat: form.lat,
+    lon: form.lon,
+    speciesLabel: form.speciesLabel,
+    nbAnimals: form.nbAnimals,
+    interactionTypeLabel: form.interactionTypeLabel,
+    injuryInd: form.injuryInd,
+    deathInd: form.deathInd,
+    entangleInd: form.entangleInd,
+    releaseInd: form.releaseInd,
+    gearDamageInd: form.gearDamageInd,
+    observerNm: form.observerNm,
+    contactInfo: form.contactInfo,
+    remarks: form.remarks,
+    siteDsc: form.siteDsc,
+    gearDmgRem: form.gearDmgRem,
+    docRem: form.docRem,
+    eventDsc: form.eventDsc,
+    incdntRem: form.incdntRem,
+    confidenceLabel: form.confidenceLabel,
+    specimenCondLabel: form.specimenCondLabel,
+    lengthCatLabel: form.lengthCatLabel,
+    lgbkNumRef: form.lgbkNumRef,
+    status,
+    sentToDfo,
+  });
+
+  // S125 7a: "empty" = nothing the USER caused. EXCLUDED: reportDate (auto-defaulted to today).
+  // The master toggle counts only as 'Y'; the reference field counts only when CHANGED from the
+  // mount prefill (ruling 2).
+  const isEmpty = (): boolean => {
+    const flags =
+      form.interactInd === 'Y' ||
+      form.injuryInd === 'Y' || form.deathInd === 'Y' || form.entangleInd === 'Y' ||
+      form.releaseInd === 'Y' || form.gearDamageInd === 'Y';
+    const typed = [
+      form.interactionDate, form.interactionTime, form.lat, form.lon, form.speciesLabel,
+      form.nbAnimals, form.interactionTypeLabel, form.observerNm, form.contactInfo, form.remarks,
+      form.siteDsc, form.gearDmgRem, form.docRem, form.eventDsc, form.incdntRem,
+      form.confidenceLabel, form.specimenCondLabel, form.lengthCatLabel,
+    ].some(v => v.trim() !== '');
+    const refChanged = form.lgbkNumRef !== prefillRef.current;
+    return !(flags || typed || refChanged);
+  };
+
+  // S125 7a: the ONE exit path. Parks a non-empty, not-just-sent draft, then closes.
+  const handleClose = async () => {
+    if (!justSentRef.current && !isEmpty()) {
+      if (!draftUidRef.current) draftUidRef.current = generateForm222Uid();
+      await saveForm222Entry(buildEntry('draft', false));
+    }
+    onClose();
+  };
+  // Register the latest handleClose with the parent (via a ref so we register once), so the
+  // Modal's onRequestClose — Android hardware back — runs the same park-then-close path.
+  const handleCloseRef = useRef(handleClose);
+  handleCloseRef.current = handleClose;
+  useEffect(() => { registerClose?.(() => { void handleCloseRef.current(); }); }, []);
 
   const insets = useSafeAreaInsets(); // S95: edge-to-edge safe-area top for the modal header
 
@@ -329,37 +449,11 @@ export default function Form222Screen({ onClose }: Props) {
           onPress: async () => {
             try {
               setSending(true);
-              const entry: Form222Entry = {
-                uid: generateForm222Uid(),
-                savedAt: Date.now(),
-                interactInd: form.interactInd,
-                reportDate: form.reportDate,
-                interactionDate: form.interactionDate,
-                interactionTime: form.interactionTime,
-                lat: form.lat,
-                lon: form.lon,
-                speciesLabel: form.speciesLabel,
-                nbAnimals: form.nbAnimals,
-                interactionTypeLabel: form.interactionTypeLabel,
-                injuryInd: form.injuryInd,
-                deathInd: form.deathInd,
-                entangleInd: form.entangleInd,
-                releaseInd: form.releaseInd,
-                gearDamageInd: form.gearDamageInd,
-                observerNm: form.observerNm,
-                contactInfo: form.contactInfo,
-                remarks: form.remarks,
-                siteDsc: form.siteDsc,
-                gearDmgRem: form.gearDmgRem,
-                docRem: form.docRem,
-                eventDsc: form.eventDsc,
-                incdntRem: form.incdntRem,
-                confidenceLabel: form.confidenceLabel,
-                specimenCondLabel: form.specimenCondLabel,
-                lengthCatLabel: form.lengthCatLabel,
-                lgbkNumRef: form.lgbkNumRef,
-                sentToDfo: false,
-              };
+              // S125 7a: reuse the owned draft uid so a successful send converts the SAME row
+              // draft→complete (no stale draft left behind). Entry shape is otherwise unchanged,
+              // so the generated XML is byte-identical.
+              if (!draftUidRef.current) draftUidRef.current = generateForm222Uid();
+              const entry = buildEntry('complete', false);
 
               const xml = generateForm222Xml(entry, profile);
               const validation = validateForm222Xml(xml);
@@ -396,9 +490,10 @@ export default function Form222Screen({ onClose }: Props) {
               entry.sentToDfo = true;
               entry.sentAt = Date.now();
               await saveForm222Entry(entry);
+              justSentRef.current = true; // S125 7a: suppress park on the success→close path
               triggerBackup(); // best-effort cloud backup; fire-and-forget, never blocks the send
 
-              Alert.alert(t('form222.submittedTitle'), t('form222.submitSuccess'), [{ text: tc('nav.ok'), onPress: onClose }]);
+              Alert.alert(t('form222.submittedTitle'), t('form222.submitSuccess'), [{ text: tc('nav.ok'), onPress: () => { void handleClose(); } }]);
             } catch (e: any) {
               Alert.alert(t('form222.submissionFailedTitle'), e.message ?? t('form222.unknownError'));
             } finally {
@@ -499,7 +594,7 @@ export default function Form222Screen({ onClose }: Props) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
-        <TouchableOpacity onPress={onClose} style={styles.backButton} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <TouchableOpacity onPress={() => { void handleClose(); }} style={styles.backButton} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <ChevronLeft size={24} color="#1E3A8A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('form222.headerTitle')}</Text>

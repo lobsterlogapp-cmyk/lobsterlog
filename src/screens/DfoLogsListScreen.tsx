@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import i18next from 'i18next';
 import { useTranslation } from 'react-i18next';
 import {
@@ -151,6 +151,11 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
   const [helpVisible, setHelpVisible] = useState(false); // S121 Phase 3 — Help & Support
   const [form222Visible, setForm222Visible] = useState(false);
   const [form233Visible, setForm233Visible] = useState(false);
+  // S125 7a: each form screen registers its park-then-close handler here so the Modal's
+  // onRequestClose (Android hardware back) routes through the SAME single exit path as "← Back".
+  // Fallback (before the screen registers, or if it doesn't) just hides + refreshes.
+  const form222CloseRef = useRef<() => void>(() => { setForm222Visible(false); refresh(); });
+  const form233CloseRef = useRef<() => void>(() => { setForm233Visible(false); refresh(); });
   const [failedSends, setFailedSends] = useState<Record<string, string>>({});
   const [sendingLogs, setSendingLogs] = useState<Set<string>>(new Set());
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
@@ -785,18 +790,24 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
       <Modal
         visible={form222Visible}
         animationType="slide"
-        onRequestClose={() => setForm222Visible(false)}
+        onRequestClose={() => form222CloseRef.current()}
       >
-        <Form222Screen onClose={() => { setForm222Visible(false); refresh(); }} />
+        <Form222Screen
+          onClose={() => { setForm222Visible(false); refresh(); }}
+          registerClose={(fn) => { form222CloseRef.current = fn; }}
+        />
       </Modal>
 
       {/* ── Form 233 · Inactivity Modal ── */}
       <Modal
         visible={form233Visible}
         animationType="slide"
-        onRequestClose={() => setForm233Visible(false)}
+        onRequestClose={() => form233CloseRef.current()}
       >
-        <Form233Screen onClose={() => { setForm233Visible(false); refresh(); }} />
+        <Form233Screen
+          onClose={() => { setForm233Visible(false); refresh(); }}
+          registerClose={(fn) => { form233CloseRef.current = fn; }}
+        />
       </Modal>
 
       {/* ── Privacy Notice — one-time before DFO access ── */}
