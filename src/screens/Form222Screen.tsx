@@ -26,7 +26,7 @@ import {
   generateForm222Xml,
   generateSoap222Envelope,
   saveForm222Entry,
-  loadForm222Entries,
+  loadForm222EntryByUid,
   validateForm222Xml,
   MARINE_MAMMAL_SPECIES,
   MARINE_MAMMAL_SPECIES_LABELS,
@@ -67,6 +67,9 @@ interface Props {
   // S125 7a: lets the parent Modal's onRequestClose (Android hardware back) invoke this
   // screen's park-then-close handler, so EVERY exit goes through one path that parks the draft.
   registerClose?: (fn: () => void) => void;
+  // S125 7c: which parked draft to open. Provided → hydrate that entry; absent → fresh EMPTY form.
+  // Replaces 7a's auto-restore-newest-draft (the trap: no way to start a new form / delete one).
+  entryUid?: string;
 }
 
 interface FormState {
@@ -158,7 +161,7 @@ const parsePickerDateTime = (dateStr: string, timeStr: string): Date => {
   return d;
 };
 
-export default function Form222Screen({ onClose, registerClose }: Props) {
+export default function Form222Screen({ onClose, registerClose, entryUid }: Props) {
   const { t, i18n } = useTranslation('dfo');
   const { t: tc } = useTranslation('common');
   const isFr = i18n.language.startsWith('fr');
@@ -186,12 +189,15 @@ export default function Form222Screen({ onClose, registerClose }: Props) {
   useEffect(() => {
     loadCaptainProfile().then(setProfile);
     (async () => {
-      const [last, entries] = await Promise.all([loadLastLog(), loadForm222Entries()]);
+      // S125 7c: hydrate the SPECIFIC entry the list asked for (entryUid), else start fresh.
+      // No more auto-restore-newest — that was the trap (couldn't start a new form or delete one).
+      // Labels round-trip straight back into the pickers (the store holds labels).
+      const [last, draft] = await Promise.all([
+        loadLastLog(),
+        entryUid ? loadForm222EntryByUid(entryUid) : Promise.resolve(null),
+      ]);
       const prefill = last?.lgbkUid ?? '';
       prefillRef.current = prefill;
-      // Re-hydrate the most recent DRAFT (loadForm222Entries is newest-first). Sent records are
-      // never restored. Labels round-trip straight back into the pickers (the store holds labels).
-      const draft = entries.find(e => e.status === 'draft');
       if (draft) {
         draftUidRef.current = draft.uid;
         setForm({

@@ -336,7 +336,8 @@
     "detailFileName": "Nom du fichier",
     "detailHttp": "Statut HTTP",
     "detailErr": "Erreur",
-    "detailNoRecord": "Aucun enregistrement de transmission trouvé pour ce journal."
+    "detailNoRecord": "Aucun enregistrement de transmission trouvé pour ce journal.",
+    "formSavedAt": "Enregistré {{when}}"
   },
   "form233": {
     "headerTitle": "Formulaire 233 · Inactivité",

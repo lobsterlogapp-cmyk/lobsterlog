@@ -335,7 +335,8 @@
     "detailFileName": "File name",
     "detailHttp": "HTTP status",
     "detailErr": "Error",
-    "detailNoRecord": "No transmission record found for this log."
+    "detailNoRecord": "No transmission record found for this log.",
+    "formSavedAt": "Saved {{when}}"
   },
   "form233": {
     "headerTitle": "Form 233 · Inactivity",

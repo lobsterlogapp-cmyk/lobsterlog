@@ -23,7 +23,7 @@ import {
   generateForm233Xml,
   generateSoap233Envelope,
   saveForm233Entry,
-  loadForm233Entries,
+  loadForm233EntryByUid,
   validateForm233Xml,
   INACTIVITY_REASONS,
 } from '../utils/dfoForm233Generator';
@@ -39,6 +39,9 @@ interface Props {
   // S125 7a: lets the parent Modal's onRequestClose (Android hardware back) invoke this
   // screen's park-then-close handler, so EVERY exit goes through one path that parks the draft.
   registerClose?: (fn: () => void) => void;
+  // S125 7c: which parked draft to open. Provided → hydrate that entry; absent → fresh EMPTY form.
+  // Replaces 7a's auto-restore-newest-draft (the trap: no way to start a new form / delete one).
+  entryUid?: string;
 }
 
 interface FormState {
@@ -77,7 +80,7 @@ const parsePickerDate = (dateStr: string): Date => {
   return d;
 };
 
-export default function Form233Screen({ onClose, registerClose }: Props) {
+export default function Form233Screen({ onClose, registerClose, entryUid }: Props) {
   const { t } = useTranslation('dfo');
   const { t: tc } = useTranslation('common');
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -101,12 +104,14 @@ export default function Form233Screen({ onClose, registerClose }: Props) {
   useEffect(() => {
     loadCaptainProfile().then(setProfile);
     (async () => {
-      const [last, entries] = await Promise.all([loadLastLog(), loadForm233Entries()]);
+      // S125 7c: hydrate the SPECIFIC entry the list asked for (entryUid), else start fresh.
+      // No more auto-restore-newest — that was the trap (couldn't start a new form or delete one).
+      const [last, draft] = await Promise.all([
+        loadLastLog(),
+        entryUid ? loadForm233EntryByUid(entryUid) : Promise.resolve(null),
+      ]);
       const prefill = last?.lgbkUid ?? '';
       prefillRef.current = prefill;
-      // Re-hydrate the most recent DRAFT (loadForm233Entries is newest-first). Sent records are
-      // never restored — the pickers/fields come back to what was typed.
-      const draft = entries.find(e => e.status === 'draft');
       if (draft) {
         draftUidRef.current = draft.uid;
         setForm({
@@ -119,7 +124,7 @@ export default function Form233Screen({ onClose, registerClose }: Props) {
         });
       } else if (prefill) {
         // LOGBOOK_UID_REFERED prefill (mirrors the Form 222 LGBK_NUM_REF prefill — never
-        // overwrites typed text) when there is no draft to restore.
+        // overwrites typed text) on a fresh form.
         setForm(prev => prev.logbookUidRefered ? prev : { ...prev, logbookUidRefered: prefill });
       }
     })();

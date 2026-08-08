@@ -28,6 +28,9 @@ import CaptainProfileScreen from './CaptainProfileScreen';
 import InspectionModeScreen from './InspectionModeScreen';
 import Form222Screen from './Form222Screen';
 import Form233Screen from './Form233Screen';
+// S125 7c: the list reads + deletes parked form DRAFTS (first structured reader of these stores).
+import { Form222Entry, loadForm222Entries, deleteForm222Entry } from '../utils/dfoForm222Generator';
+import { Form233Entry, loadForm233Entries, deleteForm233Entry } from '../utils/dfoForm233Generator';
 import PrivacyNoticeModal from './PrivacyNoticeModal';
 import AttestationModal from './AttestationModal';
 
@@ -133,8 +136,9 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
   refreshKey = 0,
   isAdmin = false,
 }) => {
-  const { t } = useTranslation('dfo');
+  const { t, i18n } = useTranslation('dfo');
   const { t: tc } = useTranslation('common');
+  const isFr = i18n.language.startsWith('fr');
   const { clearTimersForLog } = useTimer(); // S124: wipe a deleted log's running timers
 
   const [drafts, setDrafts] = useState<DfoLog[]>([]);
@@ -151,6 +155,13 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
   const [helpVisible, setHelpVisible] = useState(false); // S121 Phase 3 — Help & Support
   const [form222Visible, setForm222Visible] = useState(false);
   const [form233Visible, setForm233Visible] = useState(false);
+  // S125 7c: parked form DRAFTS, kept in their OWN state — NEVER merged into drafts/completed
+  // (that would make handleNewLogPress's 234-only guards see them; rulings 1 & 2). Display-only.
+  const [form222Drafts, setForm222Drafts] = useState<Form222Entry[]>([]);
+  const [form233Drafts, setForm233Drafts] = useState<Form233Entry[]>([]);
+  // Which parked draft to open (undefined = a fresh, EMPTY form — the trap fix).
+  const [form222EntryUid, setForm222EntryUid] = useState<string | undefined>(undefined);
+  const [form233EntryUid, setForm233EntryUid] = useState<string | undefined>(undefined);
   // S125 7a: each form screen registers its park-then-close handler here so the Modal's
   // onRequestClose (Android hardware back) routes through the SAME single exit path as "← Back".
   // Fallback (before the screen registers, or if it doesn't) just hides + refreshes.
@@ -171,6 +182,12 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
     setRegister(register);
     setSuccessRecords(indexSuccessRecords(register));
     setFailureRecords(indexFailureRecords(register));
+    // S125 7c: read parked form DRAFTS only (status==='draft'). Sent 222/233 keep rendering from
+    // the transmission register via FormSentCard — the arrays are NOT read for sent rows. Loaders
+    // return newest-first + back-fill status, so legacy sent records are correctly excluded here.
+    const [f222, f233] = await Promise.all([loadForm222Entries(), loadForm233Entries()]);
+    setForm222Drafts(f222.filter(e => e.status === 'draft'));
+    setForm233Drafts(f233.filter(e => e.status === 'draft'));
     setLoading(false);
   }, []);
 
@@ -439,6 +456,64 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
     );
   };
 
+  // S125 7c: delete a parked form draft — same confirm as the 234 draft (reused generic strings,
+  // destructive non-default button). deleteForm22xEntry landed in 7a; refresh re-reads the list.
+  const handleDeleteFormDraft = (kind: 'form222' | 'form233', uid: string) => {
+    Alert.alert(
+      t('logs.deleteDraftTitle'),
+      t('logs.deleteDraftBody'),
+      [
+        { text: tc('nav.cancel'), style: 'cancel' },
+        {
+          text: tc('nav.delete'),
+          style: 'destructive',
+          onPress: async () => {
+            if (kind === 'form222') await deleteForm222Entry(uid);
+            else await deleteForm233Entry(uid);
+            refresh();
+          },
+        },
+      ],
+    );
+  };
+
+  // S125 7c: amber draft card for a parked 222/233 — form name + date + SAVED TIME (required:
+  // two same-day 222 drafts default reportDate to today, so the time is what tells them apart) +
+  // Edit/Delete. No percent/progress bar (forms have no completion map), no opaque uid.
+  const renderFormDraftCard = (kind: 'form222' | 'form233', entry: Form222Entry | Form233Entry) => {
+    const title = t(kind === 'form222' ? 'logs.regForm222Title' : 'logs.regForm233Title');
+    const dateLine = kind === 'form222'
+      ? (entry as Form222Entry).reportDate
+      : [(entry as Form233Entry).periodStartDate, (entry as Form233Entry).periodEndDate].filter(Boolean).join(' – ');
+    const savedWhen = new Date(entry.savedAt).toLocaleString(isFr ? 'fr-CA' : 'en-CA',
+      { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const open = () => {
+      if (kind === 'form222') { setForm222EntryUid(entry.uid); setForm222Visible(true); }
+      else { setForm233EntryUid(entry.uid); setForm233Visible(true); }
+    };
+    return (
+      <View key={`${kind}-${entry.uid}`} style={styles.draftCard}>
+        <View style={styles.draftCardTop}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.draftId}>{title}</Text>
+            {!!dateLine && <Text style={styles.draftDate}>{dateLine}</Text>}
+            <Text style={styles.draftUidLine}>{t('logs.formSavedAt', { when: savedWhen })}</Text>
+          </View>
+        </View>
+        <View style={styles.logActions}>
+          <TouchableOpacity style={styles.editButton} onPress={open}>
+            <Edit3 size={15} color="#1E3A8A" />
+            <Text style={styles.editButtonText}>{tc('nav.edit')}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteFormDraft(kind, entry.uid)}>
+            <Trash2 size={15} color="#B45309" />
+            <Text style={styles.deleteButtonText}>{tc('nav.delete')}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
   const renderCompletedCard = (log: DfoLog) => {
     const sent = log.sentToDfo === true;
     const isSending = sendingLogs.has(log.id);
@@ -512,7 +587,21 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
     );
   };
 
-  const isEmpty = !loading && drafts.length === 0 && completed.length === 0;
+  const isEmpty = !loading && drafts.length === 0 && completed.length === 0
+    && form222Drafts.length === 0 && form233Drafts.length === 0;
+
+  // S125 7c: DISPLAY-ONLY merge of 234 drafts + parked form drafts for the IN PROGRESS section,
+  // newest-first. The underlying drafts/completed and form-draft arrays stay separate — this array
+  // is never read by handleNewLogPress (whose guards must see 234 logs only; rulings 1 & 2).
+  type DraftRow =
+    | { kind: 'log'; ts: number; log: DfoLog }
+    | { kind: 'form222'; ts: number; entry: Form222Entry }
+    | { kind: 'form233'; ts: number; entry: Form233Entry };
+  const mergedDrafts: DraftRow[] = [
+    ...drafts.map((l): DraftRow => ({ kind: 'log', ts: l.createdAt, log: l })),
+    ...form222Drafts.map((e): DraftRow => ({ kind: 'form222', ts: e.savedAt, entry: e })),
+    ...form233Drafts.map((e): DraftRow => ({ kind: 'form233', ts: e.savedAt, entry: e })),
+  ].sort((a, b) => b.ts - a.ts);
 
   // Unsent completed logs (awaiting send / overdue) are shown in FULL, no cap.
   // Sent logs are capped to the 30 most recent here; Log History holds the full archive.
@@ -664,13 +753,13 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
         <View style={styles.secondaryButtons}>
           <TouchableOpacity
             style={styles.secondaryButton}
-            onPress={() => setForm222Visible(true)}
+            onPress={() => { setForm222EntryUid(undefined); setForm222Visible(true); }}
           >
             <Text style={styles.secondaryButtonText}>{t('logs.form222Button')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.secondaryButton}
-            onPress={() => setForm233Visible(true)}
+            onPress={() => { setForm233EntryUid(undefined); setForm233Visible(true); }}
           >
             <Text style={styles.secondaryButtonText}>{t('logs.form233Button')}</Text>
           </TouchableOpacity>
@@ -686,16 +775,19 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
           </View>
         )}
 
-        {drafts.length > 0 && (
+        {mergedDrafts.length > 0 && (
           <>
             <Text style={styles.sectionHeader}>{t('logs.inProgress')}</Text>
-            {drafts.map(renderDraftCard)}
+            {mergedDrafts.map(row =>
+              row.kind === 'log' ? renderDraftCard(row.log)
+              : row.kind === 'form222' ? renderFormDraftCard('form222', row.entry)
+              : renderFormDraftCard('form233', row.entry))}
           </>
         )}
 
         {completedUnsent.length > 0 && (
           <>
-            <Text style={[styles.sectionHeader, drafts.length > 0 && { marginTop: 16 }]}>
+            <Text style={[styles.sectionHeader, mergedDrafts.length > 0 && { marginTop: 16 }]}>
               {t('logs.completedLogs')}
             </Text>
             {completedUnsent.map(renderCompletedCard)}
@@ -704,7 +796,7 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
 
         {sentRows.length > 0 && (
           <>
-            <Text style={[styles.sectionHeader, (drafts.length > 0 || completedUnsent.length > 0) && { marginTop: 16 }]}>
+            <Text style={[styles.sectionHeader, (mergedDrafts.length > 0 || completedUnsent.length > 0) && { marginTop: 16 }]}>
               {t('logs.sentLogs')}
             </Text>
             {sentRows.map(row => row.kind === 'logbook' ? (
@@ -792,10 +884,15 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
         animationType="slide"
         onRequestClose={() => form222CloseRef.current()}
       >
-        <Form222Screen
-          onClose={() => { setForm222Visible(false); refresh(); }}
-          registerClose={(fn) => { form222CloseRef.current = fn; }}
-        />
+        {/* S125 7c: mount only when visible so the screen's mount effect re-runs with the current
+            entryUid on every open (fresh EMPTY for a new form, the parked entry for a card tap). */}
+        {form222Visible && (
+          <Form222Screen
+            entryUid={form222EntryUid}
+            onClose={() => { setForm222Visible(false); refresh(); }}
+            registerClose={(fn) => { form222CloseRef.current = fn; }}
+          />
+        )}
       </Modal>
 
       {/* ── Form 233 · Inactivity Modal ── */}
@@ -804,10 +901,14 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
         animationType="slide"
         onRequestClose={() => form233CloseRef.current()}
       >
-        <Form233Screen
-          onClose={() => { setForm233Visible(false); refresh(); }}
-          registerClose={(fn) => { form233CloseRef.current = fn; }}
-        />
+        {/* S125 7c: mount only when visible (see the 222 modal note). */}
+        {form233Visible && (
+          <Form233Screen
+            entryUid={form233EntryUid}
+            onClose={() => { setForm233Visible(false); refresh(); }}
+            registerClose={(fn) => { form233CloseRef.current = fn; }}
+          />
+        )}
       </Modal>
 
       {/* ── Privacy Notice — one-time before DFO access ── */}
