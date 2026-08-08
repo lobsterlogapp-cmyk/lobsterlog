@@ -375,7 +375,9 @@
     "validationFailedTitle": "Échec de la validation",
     "submittedTitle": "Transmis",
     "submissionFailedTitle": "Échec de la transmission",
-    "unknownError": "Erreur inconnue"
+    "unknownError": "Erreur inconnue",
+    "closeButton": "Fermer et enregistrer",
+    "closeConfirmTitle": "Fermer le formulaire Inactivité ?"
   },
   "form222": {
     "headerTitle": "Formulaire 222 · Mammifères marins",
@@ -452,7 +454,9 @@
     "validationFailedTitle": "Échec de la validation",
     "submittedTitle": "Transmis",
     "submissionFailedTitle": "Échec de la transmission",
-    "unknownError": "Erreur inconnue"
+    "unknownError": "Erreur inconnue",
+    "closeButton": "Fermer et enregistrer",
+    "closeConfirmTitle": "Fermer le formulaire Mammifère marin ?"
   },
   "portSelector": {
     "searchPlaceholder": "Rechercher un port…",

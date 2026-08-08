@@ -15,21 +15,17 @@ import {
 } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronLeft, ChevronDown, Calendar, StickyNote } from 'lucide-react-native';
+import { ChevronLeft, ChevronDown, Calendar, StickyNote, Lock } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import {
   Form233Entry,
   generateForm233Uid,
-  generateForm233Xml,
-  generateSoap233Envelope,
   saveForm233Entry,
   loadForm233EntryByUid,
-  validateForm233Xml,
   INACTIVITY_REASONS,
 } from '../utils/dfoForm233Generator';
-import { submitDfoXml, isValidFormVrn } from '../utils/submitDfoXml';
-import { triggerBackup } from '../utils/dfoBackup';
-import { generateDfoXmlFileName } from '../utils/dfoXmlGenerator';
+// S125 7b: send moved off the form onto the list card — the screen no longer imports the
+// generate/validate/envelope/submit/backup surface (now in sendFormEntry.ts, called from the list).
 import { loadCaptainProfile, CaptainProfile, EMPTY_PROFILE } from '../utils/captainStorage';
 import { loadLastLog } from '../utils/dfoLogStorage';
 import { REQUIRED_ASTERISK_COLOR } from '../styles/GlobalStyles';
@@ -86,20 +82,18 @@ export default function Form233Screen({ onClose, registerClose, entryUid }: Prop
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [profile, setProfile] = useState<CaptainProfile>(EMPTY_PROFILE);
   const [reasonOpen, setReasonOpen] = useState(false);
-  const [sending, setSending] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
+  // S125 7b: ISO close timestamp once Close & Save is confirmed. Non-null ⇒ the form is locked
+  // (view-only) and already persisted as a closed-unsent record; the park guard then skips it.
+  const [closedAt, setClosedAt] = useState<string | null>(null);
 
   // S125 7a draft lifecycle refs:
   //  prefillRef  — the logbookUidRefered value auto-prefilled on mount; the empty-check counts
   //                the reference field as content only when it DIFFERS from this (a user fix).
   //  draftUidRef — uid this screen instance owns: the hydrated draft's uid, else minted on first
-  //                park. Reusing it makes save/park an upsert (one draft per session; a send
-  //                converts the SAME row draft→complete instead of leaving a stale draft behind).
-  //  justSentRef — true only after a successful send, so the shared close path never re-parks a
-  //                just-sent form. A FAILED send leaves it false → backing out parks the draft.
+  //                park. Reusing it makes save/park an upsert (one draft per session).
   const prefillRef = useRef<string>('');
   const draftUidRef = useRef<string | null>(null);
-  const justSentRef = useRef(false);
 
   useEffect(() => {
     loadCaptainProfile().then(setProfile);
@@ -136,7 +130,7 @@ export default function Form233Screen({ onClose, registerClose, entryUid }: Prop
   // S125 7a: build a Form233Entry from current state at the given lifecycle stage. Shared by the
   // park path (status:'draft', sentToDfo:false) and the send path (status:'complete') so a parked
   // draft and a sent record differ only in status/sent flags. uid reuses the owned draft uid.
-  const buildEntry = (status: 'draft' | 'complete', sentToDfo: boolean): Form233Entry => ({
+  const buildEntry = (status: 'draft' | 'complete', sentToDfo: boolean, closeDt?: string): Form233Entry => ({
     uid: draftUidRef.current ?? generateForm233Uid(),
     savedAt: Date.now(),
     periodStartDate: form.periodStartDate,
@@ -147,6 +141,7 @@ export default function Form233Screen({ onClose, registerClose, entryUid }: Prop
     remarks: form.remarks,
     reportDtlRemarks: form.reportDtlRemarks,
     logbookUidRefered: form.logbookUidRefered.trim(),
+    ...(closeDt ? { closeDt } : {}),
     status,
     sentToDfo,
   });
@@ -160,9 +155,10 @@ export default function Form233Screen({ onClose, registerClose, entryUid }: Prop
     return !(typed || refChanged);
   };
 
-  // S125 7a: the ONE exit path. Parks a non-empty, not-just-sent draft, then closes.
+  // S125 7a/7b: the ONE exit path. Parks a non-empty draft — UNLESS the form was just closed
+  // (already persisted as 'complete'; parking would overwrite it back to a draft).
   const handleClose = async () => {
-    if (!justSentRef.current && !isEmpty()) {
+    if (!closedAt && !isEmpty()) {
       if (!draftUidRef.current) draftUidRef.current = generateForm233Uid();
       await saveForm233Entry(buildEntry('draft', false));
     }
@@ -230,87 +226,36 @@ export default function Form233Screen({ onClose, registerClose, entryUid }: Prop
     else if (pickerField === 'end') set('periodEndDate')(value);
   };
 
-  const handleSubmit = async () => {
-    if (sending) return; // re-tap guard while a send is in flight (mirror logbook)
-    // Rule 528 — a format restriction that applies only when the VRN element is used
-    // (FS-NAT-233-2-EN.pdf §5.2.3 note; VRN is CSV-optional on the 233). Conformant gate:
-    // present → must be 4-6 digits; BLANK → allowed, the generator omits <VRN> entirely
-    // (tag() drops empty). Hard block on malformed only: no send, no mark-sent, no archive.
-    // (Form 222 keeps its unconditional gate — VRN is MANDATORY there, CSV REQUIRED?=Y.)
-    const vrn = profile.vesselNumber.trim();
-    if (vrn && !isValidFormVrn(vrn)) {
-      Alert.alert(t('sendGate.vrnRule528Title'), t('sendGate.vrnRule528'));
-      return;
-    }
-    if (!form.periodStartDate || !form.periodEndDate || !form.reason) {
-      Alert.alert(t('form233.missingFieldsTitle'), t('form233.missingFieldsBody'));
-      return;
-    }
+  // S125 7b: local "YYYY-MM-DD HH:MM" for the Closed banner (mirrors FullDfoForm.formatClose).
+  const formatClose = (iso: string): string => {
+    const dt = new Date(iso);
+    if (isNaN(dt.getTime())) return '';
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}`;
+  };
 
+  // S125 7b: Close & Save — stamp the real user-caused close time, persist as a closed-unsent
+  // record, and lock the form. NO send here (send is from the list card). The confirm is
+  // never-suppressible (DFO 234.7 finality). Required-field / Rule-528 VRN gates run at SEND time
+  // on the card, not at close (Appendix B row 23's required-field-at-close gate is a later phase).
+  const handleCloseAndSave = () => {
+    if (closedAt) return;
     Alert.alert(
-      t('form233.confirmTitle'),
-      t('form233.confirmBody'),
+      t('form233.closeConfirmTitle'),
+      t('form234.closeConfirmBody'),
       [
-        { text: tc('nav.cancel'), style: 'cancel' },
+        { text: t('form234.closeConfirmNotYet'), style: 'cancel' },
         {
-          text: t('form233.submitButton'),
-          style: 'default',
+          text: t('form234.closeConfirmYes'),
+          style: 'destructive',
           onPress: async () => {
-            try {
-              setSending(true);
-              // S125 7a: reuse the owned draft uid so a successful send converts the SAME row
-              // draft→complete (no stale draft left behind). Entry shape is otherwise unchanged,
-              // so the generated XML is byte-identical.
-              if (!draftUidRef.current) draftUidRef.current = generateForm233Uid();
-              const entry = buildEntry('complete', false);
-
-              const xml = generateForm233Xml(entry, profile);
-              const validation = validateForm233Xml(xml);
-              if (!validation.valid) {
-                Alert.alert(
-                  t('form233.validationFailedTitle'),
-                  `${t('form233.validationFailed')}\n\n${validation.errors.join('\n')}`,
-                  [{ text: tc('nav.ok') }]
-                );
-                return;
-              }
-
-              const fileName = generateDfoXmlFileName(profile.regId ?? 1004, profile.fishingNumber);
-              const result = await submitDfoXml({
-                soap: generateSoap233Envelope(xml, profile.elogKey, fileName),
-                xml,
-                fileName,
-                recordId: `FORM233-${entry.uid}`,
-                logId: `FORM233-${entry.uid}`,
-                kind: 'form233',
-                snapshot: { vrn: profile.vesselNumber, xsdValid: validation.valid },
-              });
-
-              if (!result.ok) {
-                const detail = [
-                  result.errCode && `Error ${result.errCode}`,
-                  result.httpStatus && `HTTP ${result.httpStatus}`,
-                  result.errorMessage,
-                ].filter(Boolean).join('\n');
-                Alert.alert(t('form233.submissionFailedTitle'), detail || t('form233.unknownError'));
-                return;
-              }
-
-              entry.sentToDfo = true;
-              entry.sentAt = Date.now();
-              await saveForm233Entry(entry);
-              justSentRef.current = true; // S125 7a: suppress park on the success→close path
-              triggerBackup(); // best-effort cloud backup; fire-and-forget, never blocks the send
-
-              Alert.alert(t('form233.submittedTitle'), t('form233.submitSuccess'), [{ text: tc('nav.ok'), onPress: () => { void handleClose(); } }]);
-            } catch (e: any) {
-              Alert.alert(t('form233.submissionFailedTitle'), e.message ?? t('form233.unknownError'));
-            } finally {
-              setSending(false);
-            }
+            const nowIso = new Date().toISOString();
+            if (!draftUidRef.current) draftUidRef.current = generateForm233Uid();
+            setClosedAt(nowIso);
+            await saveForm233Entry(buildEntry('complete', false, nowIso));
           },
         },
-      ]
+      ],
     );
   };
 
@@ -329,6 +274,8 @@ export default function Form233Screen({ onClose, registerClose, entryUid }: Prop
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
+        {/* S125 7b: freeze the whole body once closed (view-only; the ScrollView still scrolls). */}
+        <View pointerEvents={closedAt ? 'none' : 'auto'} style={closedAt ? styles.closedBody : undefined}>
         {/* Pre-populated from Captain Profile — read-only */}
         <View style={styles.card}>
           <Text style={styles.cardHeader}>{t('form233.licenceDetailsCard')}</Text>
@@ -479,14 +426,17 @@ export default function Form233Screen({ onClose, registerClose, entryUid }: Prop
           </View>
         </View>
 
-        {sending ? (
-          <View style={styles.submitButtonSending}>
-            <ActivityIndicator size="small" color="#FFFFFF" />
-            <Text style={styles.submitButtonText}>{t('logs.sending')}</Text>
+        </View>
+        {/* S125 7b: Close & Save (view-only banner once closed). Send is on the list card. */}
+        {closedAt ? (
+          <View style={styles.closedBanner}>
+            <Lock size={14} color="#64748B" />
+            <Text style={styles.closedBannerText}>{t('form234.closedAtLabel', { time: formatClose(closedAt) })}</Text>
           </View>
         ) : (
-          <TouchableOpacity style={styles.submitButton} onPress={handleSubmit} activeOpacity={0.8}>
-            <Text style={styles.submitButtonText}>{t('form233.submitButton')}</Text>
+          <TouchableOpacity style={styles.closeSectionBtn} onPress={handleCloseAndSave} activeOpacity={0.8}>
+            <Lock size={16} color="#B45309" />
+            <Text style={styles.closeSectionBtnText}>{t('form233.closeButton')}</Text>
           </TouchableOpacity>
         )}
       </ScrollView>
@@ -708,6 +658,20 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
   },
+  // S125 7b: Close & Save control + Closed banner — copied verbatim from FullDfoForm's closure styles.
+  closedBody: { opacity: 0.55 },
+  closeSectionBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 11, borderRadius: 8, marginTop: 10,
+    backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#B45309',
+  },
+  closeSectionBtnText: { fontSize: 13, fontWeight: '700', color: '#B45309' },
+  closedBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10,
+    paddingVertical: 9, paddingHorizontal: 10, borderRadius: 8,
+    backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#CBD5E1',
+  },
+  closedBannerText: { fontSize: 12, fontWeight: '600', color: '#64748B' },
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
   modalContent: {
     backgroundColor: '#FFFFFF', borderTopLeftRadius: 16,

@@ -22,7 +22,9 @@ import { triggerBackup } from '../utils/dfoBackup';
 import { SentLogCard, SentLogDetailModal, indexSuccessRecords, indexFailureRecords } from '../components/SentLogCard';
 import { FormSentCard } from '../components/FormSentCard';
 import { generateElogXml, generateSoapEnvelope, generateReportUid, validateElogXml, generateDfoXmlFileName, findEffortOverlap, DFO_SOAP_ACTION_SAVE, DFO_UAT_ENDPOINT } from '../utils/dfoXmlGenerator';
-import { parseDfoSoapResponse } from '../utils/submitDfoXml';
+import { parseDfoSoapResponse, isValidFormVrn } from '../utils/submitDfoXml';
+// S125 7b: send a CLOSED-unsent form from its list card (send moved off the form).
+import { sendForm222Entry, sendForm233Entry } from '../utils/sendFormEntry';
 import { loadCaptainProfile, loadPrivacyAccepted, savePrivacyAccepted, isProfileComplete } from '../utils/captainStorage';
 import CaptainProfileScreen from './CaptainProfileScreen';
 import InspectionModeScreen from './InspectionModeScreen';
@@ -155,10 +157,13 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
   const [helpVisible, setHelpVisible] = useState(false); // S121 Phase 3 — Help & Support
   const [form222Visible, setForm222Visible] = useState(false);
   const [form233Visible, setForm233Visible] = useState(false);
-  // S125 7c: parked form DRAFTS, kept in their OWN state — NEVER merged into drafts/completed
-  // (that would make handleNewLogPress's 234-only guards see them; rulings 1 & 2). Display-only.
+  // S125 7c/7b: parked form DRAFTS and CLOSED-unsent entries, kept in their OWN state — NEVER
+  // merged into drafts/completed (that would make handleNewLogPress's 234-only guards see them;
+  // rulings 1 & 2). Display-only.
   const [form222Drafts, setForm222Drafts] = useState<Form222Entry[]>([]);
   const [form233Drafts, setForm233Drafts] = useState<Form233Entry[]>([]);
+  const [form222Closed, setForm222Closed] = useState<Form222Entry[]>([]);
+  const [form233Closed, setForm233Closed] = useState<Form233Entry[]>([]);
   // Which parked draft to open (undefined = a fresh, EMPTY form — the trap fix).
   const [form222EntryUid, setForm222EntryUid] = useState<string | undefined>(undefined);
   const [form233EntryUid, setForm233EntryUid] = useState<string | undefined>(undefined);
@@ -182,12 +187,19 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
     setRegister(register);
     setSuccessRecords(indexSuccessRecords(register));
     setFailureRecords(indexFailureRecords(register));
-    // S125 7c: read parked form DRAFTS only (status==='draft'). Sent 222/233 keep rendering from
-    // the transmission register via FormSentCard — the arrays are NOT read for sent rows. Loaders
-    // return newest-first + back-fill status, so legacy sent records are correctly excluded here.
+    // S125 7c/7b: split the form stores into DRAFT and CLOSED-unsent buckets. Sent 222/233 keep
+    // rendering from the transmission register via FormSentCard — the arrays are NOT read for sent
+    // rows. Nothing is invisible (ruling 2): a not-sent record is a DRAFT unless it is complete AND
+    // carries a closeDt (a real Close & Save) — the anomaly 'complete' && no-closeDt stays a DRAFT.
+    const isClosedUnsent = (e: { status?: string; sentToDfo?: boolean; closeDt?: string }) =>
+      e.sentToDfo !== true && e.status === 'complete' && !!e.closeDt;
+    const isFormDraft = (e: { status?: string; sentToDfo?: boolean; closeDt?: string }) =>
+      e.sentToDfo !== true && !isClosedUnsent(e);
     const [f222, f233] = await Promise.all([loadForm222Entries(), loadForm233Entries()]);
-    setForm222Drafts(f222.filter(e => e.status === 'draft'));
-    setForm233Drafts(f233.filter(e => e.status === 'draft'));
+    setForm222Drafts(f222.filter(isFormDraft));
+    setForm233Drafts(f233.filter(isFormDraft));
+    setForm222Closed(f222.filter(isClosedUnsent));
+    setForm233Closed(f233.filter(isClosedUnsent));
     setLoading(false);
   }, []);
 
@@ -514,6 +526,79 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
     );
   };
 
+  // S125 7b: send a CLOSED-unsent form from its card. Loads the profile, enforces Rule 528 (222
+  // VRN mandatory / 233 only when present), then delegates to the UI-free sendForm22xEntry (which
+  // owns generate/validate/envelope/submitDfoXml + the register on success AND failure). A failed
+  // send leaves the closed-unsent card in place (submitDfoXml wrote a failure row; entry unchanged).
+  const handleSendForm = async (kind: 'form222' | 'form233', entry: Form222Entry | Form233Entry) => {
+    if (sendingLogs.has(entry.uid)) return;
+    const isF222 = kind === 'form222';
+    const failTitle = t(isF222 ? 'form222.submissionFailedTitle' : 'form233.submissionFailedTitle');
+    const unknown = t(isF222 ? 'form222.unknownError' : 'form233.unknownError');
+    const profile = await loadCaptainProfile();
+    const vrn = (profile.vesselNumber ?? '').trim();
+    const vrnBad = isF222 ? !isValidFormVrn(vrn) : (!!vrn && !isValidFormVrn(vrn));
+    if (vrnBad) { Alert.alert(t('sendGate.vrnRule528Title'), t('sendGate.vrnRule528')); return; }
+    setSendingLogs(prev => new Set(prev).add(entry.uid));
+    try {
+      const result = isF222
+        ? await sendForm222Entry(entry as Form222Entry, profile)
+        : await sendForm233Entry(entry as Form233Entry, profile);
+      if (!result.ok) {
+        const detail = result.validationErrors?.length
+          ? result.validationErrors.join('\n')
+          : [result.errCode && `Error ${result.errCode}`, result.httpStatus && `HTTP ${result.httpStatus}`, result.errorMessage]
+              .filter(Boolean).join('\n');
+        Alert.alert(failTitle, detail || unknown);
+        return;
+      }
+      Alert.alert(t(isF222 ? 'form222.submittedTitle' : 'form233.submittedTitle'), t(isF222 ? 'form222.submitSuccess' : 'form233.submitSuccess'));
+    } catch (e: any) {
+      Alert.alert(failTitle, e?.message ?? unknown);
+    } finally {
+      setSendingLogs(prev => { const n = new Set(prev); n.delete(entry.uid); return n; });
+      refresh();
+    }
+  };
+
+  // S125 7b: CLOSED-unsent form card — form name + date + Closed banner + Send + Delete (ruling 5:
+  // no Edit once closed). Mirrors renderFormDraftCard; Send styling reused from the 234 card.
+  const renderFormClosedCard = (kind: 'form222' | 'form233', entry: Form222Entry | Form233Entry) => {
+    const title = t(kind === 'form222' ? 'logs.regForm222Title' : 'logs.regForm233Title');
+    const dateLine = kind === 'form222'
+      ? (entry as Form222Entry).reportDate
+      : [(entry as Form233Entry).periodStartDate, (entry as Form233Entry).periodEndDate].filter(Boolean).join(' – ');
+    const closedWhen = entry.closeDt
+      ? new Date(entry.closeDt).toLocaleString(isFr ? 'fr-CA' : 'en-CA',
+          { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+      : '';
+    const isSending = sendingLogs.has(entry.uid);
+    return (
+      <View key={`closed-${kind}-${entry.uid}`} style={styles.logCard}>
+        <Text style={styles.logId}>{title}</Text>
+        {!!dateLine && <Text style={styles.logDate}>{dateLine}</Text>}
+        {!!closedWhen && <Text style={styles.logUidLine}>{t('form234.closedAtLabel', { time: closedWhen })}</Text>}
+        <View style={styles.logActions}>
+          {isSending ? (
+            <View style={styles.sendingButton}>
+              <ActivityIndicator size="small" color="#FFFFFF" />
+              <Text style={styles.sendButtonText}>{t('logs.sending')}</Text>
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.sendButton} onPress={() => handleSendForm(kind, entry)} activeOpacity={0.8}>
+              <Send size={16} color="#FFFFFF" />
+              <Text style={styles.sendButtonText}>{t('logs.sendToDfo')}</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteFormDraft(kind, entry.uid)}>
+            <Trash2 size={15} color="#B45309" />
+            <Text style={styles.deleteButtonText}>{tc('nav.delete')}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
   const renderCompletedCard = (log: DfoLog) => {
     const sent = log.sentToDfo === true;
     const isSending = sendingLogs.has(log.id);
@@ -588,7 +673,8 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
   };
 
   const isEmpty = !loading && drafts.length === 0 && completed.length === 0
-    && form222Drafts.length === 0 && form233Drafts.length === 0;
+    && form222Drafts.length === 0 && form233Drafts.length === 0
+    && form222Closed.length === 0 && form233Closed.length === 0;
 
   // S125 7c: DISPLAY-ONLY merge of 234 drafts + parked form drafts for the IN PROGRESS section,
   // newest-first. The underlying drafts/completed and form-draft arrays stay separate — this array
@@ -608,6 +694,19 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
   // `completed` is already newest-first (loadAllLogs sorts by createdAt desc).
   const completedUnsent = completed.filter(l => l.sentToDfo !== true);
   const sentLogs = completed.filter(l => l.sentToDfo === true);
+
+  // S125 7b: DISPLAY-ONLY merge of 234 completed-unsent + CLOSED-unsent form entries for the
+  // COMPLETED LOGS section, newest-first. Separate state underneath (rulings 1 & 2); form rows
+  // sort by their close time. Sent form rows are NOT here — they render from the register below.
+  type CompletedRow =
+    | { kind: 'log'; ts: number; log: DfoLog }
+    | { kind: 'form222'; ts: number; entry: Form222Entry }
+    | { kind: 'form233'; ts: number; entry: Form233Entry };
+  const mergedCompleted: CompletedRow[] = [
+    ...completedUnsent.map((l): CompletedRow => ({ kind: 'log', ts: l.createdAt, log: l })),
+    ...form222Closed.map((e): CompletedRow => ({ kind: 'form222', ts: e.closeDt ? Date.parse(e.closeDt) : e.savedAt, entry: e })),
+    ...form233Closed.map((e): CompletedRow => ({ kind: 'form233', ts: e.closeDt ? Date.parse(e.closeDt) : e.savedAt, entry: e })),
+  ].sort((a, b) => b.ts - a.ts);
 
   // S121 Phase 4 — a completed-but-unsent log warns before starting a new ELOG (the
   // in-progress/draft case is already covered by the S95 restore dialog; this closes the
@@ -785,18 +884,21 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
           </>
         )}
 
-        {completedUnsent.length > 0 && (
+        {mergedCompleted.length > 0 && (
           <>
             <Text style={[styles.sectionHeader, mergedDrafts.length > 0 && { marginTop: 16 }]}>
               {t('logs.completedLogs')}
             </Text>
-            {completedUnsent.map(renderCompletedCard)}
+            {mergedCompleted.map(row =>
+              row.kind === 'log' ? renderCompletedCard(row.log)
+              : row.kind === 'form222' ? renderFormClosedCard('form222', row.entry)
+              : renderFormClosedCard('form233', row.entry))}
           </>
         )}
 
         {sentRows.length > 0 && (
           <>
-            <Text style={[styles.sectionHeader, (mergedDrafts.length > 0 || completedUnsent.length > 0) && { marginTop: 16 }]}>
+            <Text style={[styles.sectionHeader, (mergedDrafts.length > 0 || mergedCompleted.length > 0) && { marginTop: 16 }]}>
               {t('logs.sentLogs')}
             </Text>
             {sentRows.map(row => row.kind === 'logbook' ? (

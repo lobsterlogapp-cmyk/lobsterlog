@@ -374,7 +374,9 @@
     "validationFailedTitle": "Validation Failed",
     "submittedTitle": "Submitted",
     "submissionFailedTitle": "Submission Failed",
-    "unknownError": "Unknown error"
+    "unknownError": "Unknown error",
+    "closeButton": "Close & Save",
+    "closeConfirmTitle": "Close the Inactivity form?"
   },
   "form222": {
     "headerTitle": "Form 222 · Marine Mammal",
@@ -451,7 +453,9 @@
     "validationFailedTitle": "Validation Failed",
     "submittedTitle": "Submitted",
     "submissionFailedTitle": "Submission Failed",
-    "unknownError": "Unknown error"
+    "unknownError": "Unknown error",
+    "closeButton": "Close & Save",
+    "closeConfirmTitle": "Close the Marine Mammal form?"
   },
   "portSelector": {
     "searchPlaceholder": "Type to search ports…",

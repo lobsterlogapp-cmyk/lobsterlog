@@ -85,9 +85,12 @@ export interface Form222Entry {
   // XSD MM_INTER.LGBK_NUM_REF (string_15, mandatory): logbook number the marine
   // mammal interaction report refers to — prefilled with the related log's LGBK_UID
   lgbkNumRef?: string;
+  // S125 7b: the real user-caused close timestamp (ISO), stamped at Close & Save. The generator
+  // emits DG_CLOSE_DT from THIS (via toCloseTimestamp) instead of stamping now(). Optional +
+  // additive — absent → toCloseTimestamp falls back to now (old records/tests unaffected).
+  closeDt?: string;
   // S125 7a: lifecycle status, mirroring DfoLog.status. Optional + additive — records saved
-  // before this field back-fill to 'complete' at load (they are all sent). NOT emitted: the
-  // generator never reads it, so byte-identity of the XML is unaffected.
+  // before this field back-fill to 'complete' at load (they are all sent).
   status?: 'draft' | 'complete';
   sentToDfo: boolean;
   sentAt?: number;
@@ -228,7 +231,8 @@ export function generateForm222Xml(entry: Form222Entry, profile: CaptainProfile)
     mm += tag('EVENT_DSC', entry.eventDsc ?? '', '    ');
   }
 
-  mm += tag('DG_CLOSE_DT', toCloseTimestamp(), '    ');
+  // S125 7b: DG_CLOSE_DT from the stored close time (Close & Save), not a generation-time now().
+  mm += tag('DG_CLOSE_DT', toCloseTimestamp(entry.closeDt), '    ');
 
   if (entry.interactInd === 'Y') {
     const rem = entry.entangleInd === 'Y'

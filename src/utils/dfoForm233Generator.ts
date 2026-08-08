@@ -26,9 +26,12 @@ export interface Form233Entry {
   remarks?: string;          // → REPORT.REM (string_2000, optional) — Session 111; additive
   reportDtlRemarks?: string; // → REPORT_DTL.REM (string_2000, optional) — Session 112; additive
   logbookUidRefered?: string; // → REPORT.LOGBOOK_UID_REFERED (string_6, optional; "REFERED" is DFO's schema spelling) — S116; additive
+  // S125 7b: the real user-caused close timestamp (ISO), stamped at Close & Save. The generator
+  // emits DG_CLOSE_DT from THIS (via toCloseTimestamp) instead of stamping now(). Optional +
+  // additive — absent → toCloseTimestamp falls back to now (old records/tests unaffected).
+  closeDt?: string;
   // S125 7a: lifecycle status, mirroring DfoLog.status. Optional + additive — records saved
-  // before this field back-fill to 'complete' at load (they are all sent). NOT emitted: the
-  // generator never reads it, so byte-identity of the XML is unaffected.
+  // before this field back-fill to 'complete' at load (they are all sent).
   status?: 'draft' | 'complete';
   sentToDfo: boolean;
   sentAt?: number;
@@ -135,7 +138,8 @@ export function generateForm233Xml(entry: Form233Entry, profile: CaptainProfile)
   // DG_CLOSE_DT. Rule 953: refers to TRIP.LGBK_UID of another logbook, six uppercase A-Z.
   // Blank → tag() drops the element entirely (an empty tag is schema-invalid, minLength 1).
   report += tag('LOGBOOK_UID_REFERED', entry.logbookUidRefered ?? '', '    ');
-  report += tag('DG_CLOSE_DT', toCloseTimestamp(), '    ');
+  // S125 7b: DG_CLOSE_DT from the stored close time (Close & Save), not a generation-time now().
+  report += tag('DG_CLOSE_DT', toCloseTimestamp(entry.closeDt), '    ');
   // REM (string_2000, opt) — REPORT-level "Comments on the inactivity". XSD report_type
   // sequence: after DG_CLOSE_DT, before REPORT_DTL. (REPORT_DTL.REM left unused.)
   report += tag('REM', entry.remarks ?? '', '    ');
