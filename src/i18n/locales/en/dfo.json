@@ -337,7 +337,10 @@
     "detailErr": "Error",
     "detailNoRecord": "No transmission record found for this log.",
     "formSavedAt": "Saved {{when}}",
-    "reviewButton": "Review"
+    "reviewButton": "Review",
+    "deleteLogTitle": "Delete this log?",
+    "deleteLogBody": "Log {{logId}} ({{dateFished}}) will be deleted for good. It hasn't been sent to DFO. You can't undo this.",
+    "editReviewButton": "Edit / Review"
   },
   "form233": {
     "headerTitle": "Form 233 · Inactivity",

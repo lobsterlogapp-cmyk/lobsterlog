@@ -338,7 +338,10 @@
     "detailErr": "Erreur",
     "detailNoRecord": "Aucun enregistrement de transmission trouvé pour ce journal.",
     "formSavedAt": "Enregistré {{when}}",
-    "reviewButton": "Consulter"
+    "reviewButton": "Consulter",
+    "deleteLogTitle": "Supprimer ce journal ?",
+    "deleteLogBody": "Le journal {{logId}} ({{dateFished}}) sera supprimé définitivement. Il n’a pas été envoyé au MPO. Cette action est irréversible.",
+    "editReviewButton": "Voir / Modifier"
   },
   "form233": {
     "headerTitle": "Formulaire 233 · Inactivité",

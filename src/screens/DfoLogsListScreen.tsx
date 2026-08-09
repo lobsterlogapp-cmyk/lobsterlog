@@ -412,6 +412,29 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
     );
   };
 
+  // S125 Phase 8: delete a completed-UNSENT 234 log from its card. NAMES the log (ruling 1 —
+  // logId + dateFished interpolated, never a generic "this log") so the fisherman confirms the
+  // right one; calls clearTimersForLog exactly like the draft delete (S124 — no timer bleed onto
+  // the next log); confirm-only, no type-to-confirm (ruling 3).
+  const handleDeleteCompleted = (log: DfoLog) => {
+    Alert.alert(
+      t('logs.deleteLogTitle'),
+      t('logs.deleteLogBody', { logId: log.id, dateFished: log.dateFished }),
+      [
+        { text: tc('nav.cancel'), style: 'cancel' },
+        {
+          text: tc('nav.delete'),
+          style: 'destructive',
+          onPress: async () => {
+            await deleteLog(log.id);
+            await clearTimersForLog(log.id);
+            refresh();
+          },
+        },
+      ]
+    );
+  };
+
   const renderCountdown = (log: DfoLog) => {
     const countdown = getCountdownLabel(log, now);
     if (!countdown) return null;
@@ -637,53 +660,54 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
           </View>
         )}
 
-        <View style={styles.logActions}>
-          {sent ? (
-            <TouchableOpacity
-              style={styles.editButton}
-              onPress={() => onViewLog(log.id)}
-            >
+        {sent ? (
+          /* SENT — unchanged single row: View + Sent ✓ (Phase 8 touches only the unsent card). */
+          <View style={styles.logActions}>
+            <TouchableOpacity style={styles.editButton} onPress={() => onViewLog(log.id)}>
               <Eye size={16} color="#1E3A8A" />
               <Text style={styles.editButtonText}>{t('logs.viewButton')}</Text>
             </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={styles.editButton}
-              onPress={() => onEditLog(log.id)}
-            >
-              <Edit3 size={16} color="#1E3A8A" />
-              <Text style={styles.editButtonText}>{tc('nav.edit')}</Text>
-            </TouchableOpacity>
-          )}
-
-          {sent ? (
             <View style={styles.sentButton}>
               <CheckCircle size={16} color="#64748B" />
               <Text style={styles.sentButtonText}>{t('logs.sentConfirmed')}</Text>
             </View>
-          ) : isSending ? (
-            <View style={styles.sendingButton}>
-              <ActivityIndicator size="small" color="#FFFFFF" />
-              <Text style={styles.sendButtonText}>{t('logs.sending')}</Text>
+          </View>
+        ) : (
+          /* S125 Phase 8: completed-UNSENT — two rows (matches 7d's form closed card). Row 1 =
+             Send to DFO (or Retry / Sending) full-width primary. Row 2 = Edit / Review + Delete. */
+          <>
+            <View style={styles.logActions}>
+              {isSending ? (
+                <View style={styles.sendingButton}>
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <Text style={styles.sendButtonText}>{t('logs.sending')}</Text>
+                </View>
+              ) : failError ? (
+                <TouchableOpacity style={styles.retryButton} onPress={() => handleSendToDfo(log)}>
+                  <RotateCcw size={16} color="#FFFFFF" />
+                  <Text style={styles.sendButtonText}>{t('logs.retry')}</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity style={styles.sendButton} onPress={() => handleSendToDfo(log)}>
+                  <Send size={16} color="#FFFFFF" />
+                  <Text style={styles.sendButtonText}>{t('logs.sendToDfo')}</Text>
+                </TouchableOpacity>
+              )}
             </View>
-          ) : failError ? (
-            <TouchableOpacity
-              style={styles.retryButton}
-              onPress={() => handleSendToDfo(log)}
-            >
-              <RotateCcw size={16} color="#FFFFFF" />
-              <Text style={styles.sendButtonText}>{t('logs.retry')}</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={styles.sendButton}
-              onPress={() => handleSendToDfo(log)}
-            >
-              <Send size={16} color="#FFFFFF" />
-              <Text style={styles.sendButtonText}>{t('logs.sendToDfo')}</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+            <View style={[styles.logActions, { marginTop: 8 }]}>
+              {/* "Edit / Review" — honest label: closed groups are locked, Trip Information stays
+                  editable (Trip is not in CLOSE_DATA_KEYS). Opens the log via the existing edit path. */}
+              <TouchableOpacity style={styles.editButton} onPress={() => onEditLog(log.id)}>
+                <Edit3 size={16} color="#1E3A8A" />
+                <Text style={styles.editButtonText}>{t('logs.editReviewButton')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteCompleted(log)}>
+                <Trash2 size={15} color="#B45309" />
+                <Text style={styles.deleteButtonText}>{tc('nav.delete')}</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
       </View>
     );
   };
