@@ -4,6 +4,7 @@
 // Delete after the restructure sessions; not a real assertion suite.
 import * as fs from 'fs';
 import { generateElogXml, validateElogXml } from '../dfoXmlGenerator';
+import { closeAllGroups } from './support/closeAllGroups';
 
 const profile: any = {
   operatorName: 'Test Operator',
@@ -125,7 +126,7 @@ const FIXTURES: { name: string; file: string; log: any }[] = [
 
 test('writes all four subform samples and prints validator results', () => {
   for (const f of FIXTURES) {
-    const xml = generateElogXml(f.log, profile);
+    const xml = generateElogXml(closeAllGroups(f.log), profile);
     fs.writeFileSync(f.file, xml);
     const result = validateElogXml(xml, f.log.subformId);
     console.log(`${f.name} validator (${result.valid ? 'VALID' : `${result.errors.length} error(s)`}):`);

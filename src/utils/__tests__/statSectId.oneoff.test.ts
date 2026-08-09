@@ -9,6 +9,7 @@
 //   • NL-91 LFA 01 (2071) + no section           → passes (2071 ∉ the Rule-621 set; absent is correct)
 // Mirrors the fixture style of validateLgridId.oneoff.test.ts.
 import { generateElogXml, validateElogXml } from '../dfoXmlGenerator';
+import { closeAllGroups } from './support/closeAllGroups';
 
 const profile: any = {
   operatorName: 'Test Operator',
@@ -67,7 +68,7 @@ const MANDATORY_MSG = 'STAT_SECT_ID is mandatory for this FMA (Rule 621)';
 const INVALID_MSG = 'is not valid for this FMA (Rule 622)';
 
 test('NL-91 LFA 03 with a valid section emits STAT_SECT_ID and passes', () => {
-  const xml = generateElogXml(nlLog('1653', '38065'), profile);
+  const xml = generateElogXml(closeAllGroups(nlLog('1653', '38065')), profile);
   expect(xml).toContain('<STAT_SECT_ID>38065</STAT_SECT_ID>');
 
   const { valid, errors } = validateElogXml(xml, 91);
@@ -76,7 +77,7 @@ test('NL-91 LFA 03 with a valid section emits STAT_SECT_ID and passes', () => {
 });
 
 test('NL-91 LFA 03 with the section omitted trips Rule 621 (mandatory) — and only that', () => {
-  const xml = generateElogXml(nlLog('1653'), profile);
+  const xml = generateElogXml(closeAllGroups(nlLog('1653')), profile);
   expect(xml).not.toContain('<STAT_SECT_ID>');
 
   const { errors } = validateElogXml(xml, 91);
@@ -85,7 +86,7 @@ test('NL-91 LFA 03 with the section omitted trips Rule 621 (mandatory) — and o
 });
 
 test('NL-91 LFA 03 with an LFA 01 section trips Rule 622 (invalid) — and only that', () => {
-  const xml = generateElogXml(nlLog('1653', '38119'), profile);
+  const xml = generateElogXml(closeAllGroups(nlLog('1653', '38119')), profile);
   expect(xml).toContain('<STAT_SECT_ID>38119</STAT_SECT_ID>');
 
   const { errors } = validateElogXml(xml, 91);
@@ -94,7 +95,7 @@ test('NL-91 LFA 03 with an LFA 01 section trips Rule 622 (invalid) — and only 
 });
 
 test('NL-91 LFA 01 with no section passes (absent is correct for a non-621 FMA)', () => {
-  const xml = generateElogXml(nlLog('2071'), profile);
+  const xml = generateElogXml(closeAllGroups(nlLog('2071')), profile);
   expect(xml).not.toContain('STAT_SECT_ID');
 
   const { valid, errors } = validateElogXml(xml, 91);

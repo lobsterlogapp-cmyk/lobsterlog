@@ -9,6 +9,7 @@
 //   • NL(91) non-lobster CATCH with the element → Rule 977 blocked
 // Mirrors the fixture/injection style of validateTrpSzId.oneoff.test.ts.
 import { generateElogXml, validateElogXml } from '../dfoXmlGenerator';
+import { closeAllGroups } from './support/closeAllGroups';
 
 const profile: any = {
   operatorName: 'Test Operator',
@@ -124,7 +125,7 @@ const RULE977_MSG = 'NB_SPCMN_KEPT is blocked for non-lobster catches (Rule 977)
 test('NL-91 WITH a value emits NB_SPCMN_KEPT in the XSD slot and passes clean', () => {
   const log = makeLog(91);
   log.data.nbSpcmnKept = '120';
-  const xml = generateElogXml(log, profile);
+  const xml = generateElogXml(closeAllGroups(log), profile);
   // XSD catch_type sequence: SPECIE_ID, KEPT_WT, NB_SPCMN_KEPT, …, SPECIE_FRM_ID
   expect(xml).toMatch(/<KEPT_WT>[^<]*<\/KEPT_WT>\n\s*<NB_SPCMN_KEPT>120<\/NB_SPCMN_KEPT>\n\s*<SPECIE_FRM_ID>/);
 
@@ -135,7 +136,7 @@ test('NL-91 WITH a value emits NB_SPCMN_KEPT in the XSD slot and passes clean', 
 
 test('NL-91 WITHOUT a value trips the Rule 976 mandatory guard — and only that', () => {
   const log = makeLog(91); // no nbSpcmnKept
-  const xml = generateElogXml(log, profile);
+  const xml = generateElogXml(closeAllGroups(log), profile);
   expect(xml).not.toContain('<NB_SPCMN_KEPT>');
 
   const { errors } = validateElogXml(xml, 91);
@@ -146,7 +147,7 @@ test('NL-91 WITHOUT a value trips the Rule 976 mandatory guard — and only that
 test.each([88, 89])('subform %s: a STORED nbSpcmnKept is never emitted; injection trips row 93', (sf) => {
   const log = makeLog(sf);
   log.data.nbSpcmnKept = '120'; // stored (e.g. region switched after entry) — must not emit
-  const clean = generateElogXml(log, profile);
+  const clean = generateElogXml(closeAllGroups(log), profile);
   expect(clean).not.toContain('<NB_SPCMN_KEPT>');
 
   const injected = clean.replace(
@@ -161,7 +162,7 @@ test.each([88, 89])('subform %s: a STORED nbSpcmnKept is never emitted; injectio
 });
 
 test('MAR-90: injection still trips the pre-existing MAR(90) blocked guard (regression pin)', () => {
-  const clean = generateElogXml(makeLog(90), profile);
+  const clean = generateElogXml(closeAllGroups(makeLog(90)), profile);
   expect(clean).not.toContain('<NB_SPCMN_KEPT>');
 
   const injected = clean.replace(
@@ -175,7 +176,7 @@ test('MAR-90: injection still trips the pre-existing MAR(90) blocked guard (regr
 test('NL-91: NB_SPCMN_KEPT on a NON-lobster catch trips Rule 977', () => {
   const log = makeLog(91);
   log.data.nbSpcmnKept = '120';
-  const xml = generateElogXml(log, profile);
+  const xml = generateElogXml(closeAllGroups(log), profile);
   // Flip the (single, lobster) CATCH species to Rock Crab — kept-count now rides a non-lobster catch
   const nonLobster = xml.replace(
     '            <SPECIE_ID>1312</SPECIE_ID>',

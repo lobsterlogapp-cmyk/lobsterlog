@@ -220,6 +220,64 @@ export const saveDraft = async (log: Omit<DfoLog, 'status'>): Promise<boolean> =
   return saveLog({ ...log, status: 'draft' });
 };
 
+// --- S125 Phase 9: the SINGLE per-data-group "used" definition ---
+// One formula, two callers (ruling 2): FullDfoForm.openUsedGroups (the Close & Save controls, from
+// live state) and the send-path guard (from a stored log). Keeping it single-sourced is what stops
+// a group being silently dropped from a file. Keys are the generator's dgClose* data-map keys.
+export interface DataGroupInputs {
+  subformId: number;
+  fmaId: number;            // NaN when absent — the hlFma test below is false for NaN
+  baitCount: number;
+  bycatchYes: boolean;
+  bycatchCount: number;
+  personalUse: string;
+  sarYes: boolean;
+  transferYes: boolean;
+  hlinCompany: string; hlinConfirmNo: string;
+  hloutCompany: string; hloutConfirmNo: string;
+}
+
+export function usedDataGroupKeys(v: DataGroupInputs): string[] {
+  const hlFma = v.fmaId === 28599 || v.fmaId === 1595;
+  const used: Record<string, boolean> = {
+    dgCloseEffort: true,    // always used (Rule: EFFORT present; no-haul omits the NODE separately)
+    dgCloseLanding: true,   // LANDING always used (port landed is mandatory)
+    dgCloseBaitUsed: v.baitCount > 0,
+    dgClosePconsBycatch: v.bycatchYes && v.bycatchCount > 0,
+    dgClosePconsPersonal: v.personalUse.trim().length > 0,
+    dgCloseSar: v.sarYes,
+    dgCloseTransfer: v.subformId === 88 && v.transferYes,
+    dgCloseHlin: hlFma && !!(v.hlinCompany || v.hlinConfirmNo),
+    dgCloseHlout: hlFma && !!(v.hloutCompany || v.hloutConfirmNo),
+  };
+  return Object.keys(used).filter(k => used[k]);
+}
+
+// Data-side adapter: build the inputs from a stored log's data map (the same representation the
+// generator reads). Single-sourced so the "data map → used" mapping lives in exactly one place.
+export function dataGroupInputsFromLog(log: Pick<DfoLog, 'subformId' | 'data'>): DataGroupInputs {
+  const d = log.data;
+  const len = (s?: string) => { try { return (JSON.parse(s || '[]') as unknown[]).length; } catch { return 0; } };
+  return {
+    subformId: log.subformId ?? 90,
+    fmaId: Number(d.fmaId),
+    baitCount: len(d.baitEntries),
+    bycatchYes: d.bycatchYes === 'true',
+    bycatchCount: len(d.bycatchEntries),
+    personalUse: d.personalUse ?? '',
+    sarYes: d.sarYes === 'true',
+    transferYes: d.transferYes === 'true',
+    hlinCompany: d.hlinCompany ?? '', hlinConfirmNo: d.hlinConfirmNo ?? '',
+    hloutCompany: d.hloutCompany ?? '', hloutConfirmNo: d.hloutConfirmNo ?? '',
+  };
+}
+
+// The send-path guard's refusal list: used groups whose data map carries NO real close stamp.
+// Non-empty ⇒ the send must refuse and name these sections (loud, not lossy).
+export function unclosedUsedGroupKeys(log: Pick<DfoLog, 'subformId' | 'data'>): string[] {
+  return usedDataGroupKeys(dataGroupInputsFromLog(log)).filter(k => !log.data[k]);
+}
+
 // --- COMPLETION PERCENTAGE ---
 
 // Required fields for the Full DFO form — per subform

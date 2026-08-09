@@ -12,6 +12,7 @@
 // blocked FMA, so the blocked guard is exercised on an otherwise-clean doc (mirrors
 // validateLgridId.oneoff.test.ts). QC-88 fixture mirrors genSampleAllSubforms' valid QC-88.
 import { generateElogXml, validateElogXml } from '../dfoXmlGenerator';
+import { closeAllGroups } from './support/closeAllGroups';
 
 const profile: any = {
   operatorName: 'Test Operator',
@@ -78,7 +79,7 @@ const MANDATORY_MSG = 'GRID_ID is mandatory for this FMA (Rule 1012)';
 const INVALID_FRAG = 'is not valid for this FMA';
 
 test('QC-88 required FMA 1534 with a valid map-"4" grid emits GRID_ID and passes', () => {
-  const xml = generateElogXml(qcLog('1534', '38507'), profile);
+  const xml = generateElogXml(closeAllGroups(qcLog('1534', '38507')), profile);
   expect(xml).toContain('<GRID_ID>38507</GRID_ID>');
 
   const { valid, errors } = validateElogXml(xml, 88);
@@ -87,7 +88,7 @@ test('QC-88 required FMA 1534 with a valid map-"4" grid emits GRID_ID and passes
 });
 
 test('QC-88 blocked FMA 25640 with grid absent passes (absent is correct, Rule 1011)', () => {
-  const xml = generateElogXml(qcLog('25640'), profile);
+  const xml = generateElogXml(closeAllGroups(qcLog('25640')), profile);
   expect(xml).not.toContain('<GRID_ID>');
 
   const { valid, errors } = validateElogXml(xml, 88);
@@ -96,7 +97,7 @@ test('QC-88 blocked FMA 25640 with grid absent passes (absent is correct, Rule 1
 });
 
 test('QC-88 required FMA 1534 with a wrong-map "1" grid trips 613x — and only that', () => {
-  const xml = generateElogXml(qcLog('1534', '29649'), profile);
+  const xml = generateElogXml(closeAllGroups(qcLog('1534', '29649')), profile);
   expect(xml).toContain('<GRID_ID>29649</GRID_ID>');
 
   const { errors } = validateElogXml(xml, 88);
@@ -106,7 +107,7 @@ test('QC-88 required FMA 1534 with a wrong-map "1" grid trips 613x — and only 
 });
 
 test('QC-88 required FMA 1534 with grid omitted trips Rule 1012 — and only that', () => {
-  const xml = generateElogXml(qcLog('1534'), profile);
+  const xml = generateElogXml(closeAllGroups(qcLog('1534')), profile);
   expect(xml).not.toContain('<GRID_ID>');
 
   const { errors } = validateElogXml(xml, 88);
@@ -115,7 +116,7 @@ test('QC-88 required FMA 1534 with grid omitted trips Rule 1012 — and only tha
 });
 
 test('QC-88 blocked FMA 25640 with an injected GRID_ID trips Rule 1011 — and only that', () => {
-  const clean = generateElogXml(qcLog('25640'), profile);
+  const clean = generateElogXml(closeAllGroups(qcLog('25640')), profile);
   expect(clean).not.toContain('<GRID_ID>'); // generator never emits for a blocked FMA
   const injected = clean.replace(
     '          <GEAR_GRP_NUM>',

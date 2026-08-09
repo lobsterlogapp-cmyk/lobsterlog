@@ -340,7 +340,9 @@
     "reviewButton": "Review",
     "deleteLogTitle": "Delete this log?",
     "deleteLogBody": "Log {{logId}} ({{dateFished}}) will be deleted for good. It hasn't been sent to DFO. You can't undo this.",
-    "editReviewButton": "Edit / Review"
+    "editReviewButton": "Edit / Review",
+    "unclosedGroupsTitle": "Finish closing this log",
+    "unclosedGroupsBody": "These sections still need to be closed before you can send: {{sections}}. Open the log, close them, then send."
   },
   "form233": {
     "headerTitle": "Form 233 · Inactivity",

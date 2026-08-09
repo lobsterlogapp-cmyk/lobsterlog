@@ -7,6 +7,7 @@
 // Two-grid logs must emit one EFFORT_DETAIL per block with sequential GEAR_GRP_NUM
 // (Rule 609x) and one CATCH per block, and still pass the structural validator.
 import { generateElogXml, validateElogXml } from '../dfoXmlGenerator';
+import { closeAllGroups } from './support/closeAllGroups';
 
 const profile: any = {
   operatorName: 'Test Operator',
@@ -400,7 +401,7 @@ const PRE_S121_BASELINE_91 = `<?xml version="1.0" encoding="UTF-8"?>
 test.each([88, 89, 90, 91])(
   'subform %s single-grid log emits BYTE-IDENTICAL XML to the pre-S121 generator',
   (sf) => {
-    const xml = generateElogXml(makeLog(sf), profile);
+    const xml = generateElogXml(closeAllGroups(makeLog(sf)), profile);
     const baseline = { 88: PRE_S121_BASELINE_88, 89: PRE_S121_BASELINE_89, 90: PRE_S121_BASELINE_90, 91: PRE_S121_BASELINE_91 }[sf as 88 | 89 | 90 | 91];
     expect(xml).toBe(baseline);
     expect(count(xml, '<EFFORT_DETAIL>')).toBe(1);
@@ -417,7 +418,7 @@ test('MAR-90 (38b) two-grid log emits two EFFORT_DETAIL with sequential GEAR_GRP
     gpsLat: '44.2000', gpsLng: '-66.6000', gpsSrc: 'manual',
     nbSpcmnBrd: '2',
   }]);
-  const xml = generateElogXml(log, profile);
+  const xml = generateElogXml(closeAllGroups(log), profile);
   expect(count(xml, '<EFFORT_DETAIL>')).toBe(2);
   expect(count(xml, '</EFFORT_DETAIL>')).toBe(2);
   expect(xml).toContain('<GEAR_GRP_NUM>1</GEAR_GRP_NUM>');
@@ -444,7 +445,7 @@ test('QC-88 two-grid log: each EFFORT_DETAIL carries its own SOAKED_DUR and coor
     catchWeight: '200', trapHauls: '80', soakDuration: '1',
     gpsLat: '48.5000', gpsLng: '-68.6000', gpsSrc: 'gps',
   }]);
-  const xml = generateElogXml(log, profile);
+  const xml = generateElogXml(closeAllGroups(log), profile);
   expect(count(xml, '<EFFORT_DETAIL>')).toBe(2);
   expect(count(xml, '<SOAKED_DUR>')).toBe(2);
   expect(xml).toContain('<SOAKED_DUR>2880</SOAKED_DUR>'); // block 1: 2 days
@@ -459,5 +460,5 @@ test('QC-88 two-grid log: each EFFORT_DETAIL carries its own SOAKED_DUR and coor
 test('a stored extraEffortDetails key with an empty array emits exactly one EFFORT_DETAIL (defensive)', () => {
   const log = makeLog(90);
   log.data.extraEffortDetails = '[]';
-  expect(generateElogXml(log, profile)).toBe(PRE_S121_BASELINE_90);
+  expect(generateElogXml(closeAllGroups(log), profile)).toBe(PRE_S121_BASELINE_90);
 });

@@ -341,7 +341,9 @@
     "reviewButton": "Consulter",
     "deleteLogTitle": "Supprimer ce journal ?",
     "deleteLogBody": "Le journal {{logId}} ({{dateFished}}) sera supprimé définitivement. Il n’a pas été envoyé au MPO. Cette action est irréversible.",
-    "editReviewButton": "Voir / Modifier"
+    "editReviewButton": "Voir / Modifier",
+    "unclosedGroupsTitle": "Termine la fermeture de ce journal",
+    "unclosedGroupsBody": "Ces sections doivent être fermées avant la transmission : {{sections}}. Ouvre le journal, ferme-les, puis transmets."
   },
   "form233": {
     "headerTitle": "Formulaire 233 · Inactivité",

@@ -128,7 +128,9 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   try {
     const baitList = getDfoBaitTypeList(subformId);
     const entries: { type: string; lbs: string; condition?: number }[] = JSON.parse(d.baitEntries || '[]');
-    const baitCloseDt = toCloseTimestamp(d.dgCloseBaitUsed);
+    // S125 Phase 9: DG_CLOSE_DT ONLY from a real stored stamp — no now() fallback. Absent → tag()
+    // drops the element (used-but-unclosed is refused before the send by unclosedUsedGroupKeys).
+    const baitCloseDt = d.dgCloseBaitUsed ? toCloseTimestamp(d.dgCloseBaitUsed) : '';
     baitXml = entries.map(e => {
       const match = baitList.find(b => b.label === e.type);
       const typeCode = match ? String(match.codeId) : '0';
@@ -154,12 +156,11 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
     const pconsList = getDfoPconsSpeciesList(subformId);
     const bycatch: { species: string; lbs: string; usage?: string }[] = JSON.parse(d.bycatchEntries || '[]');
     // S124 Phase 2: PCONS closes per occurrence — one for the bycatch block, one for personal
-    // use (Rule 1505, §5.2.1). Split the former single close into two data-map fields, each
-    // falling back to the legacy shared `dgClosePcons` (one now-stamp when nothing is set) so an
-    // unclosed log emits byte-identically to pre-S124.
-    const pconsShared = toCloseTimestamp(d.dgClosePcons);
-    const bycatchClose = d.dgClosePconsBycatch ? toCloseTimestamp(d.dgClosePconsBycatch) : pconsShared;
-    const personalClose = d.dgClosePconsPersonal ? toCloseTimestamp(d.dgClosePconsPersonal) : pconsShared;
+    // use (Rule 1505, §5.2.1). S125 Phase 9: each DG_CLOSE_DT comes ONLY from its real stored
+    // stamp — no now() fallback (the legacy shared `dgClosePcons` fallback is gone). Absent → the
+    // conditional emit below omits the element (used-but-unclosed is refused before the send).
+    const bycatchClose = d.dgClosePconsBycatch ? toCloseTimestamp(d.dgClosePconsBycatch) : '';
+    const personalClose = d.dgClosePconsPersonal ? toCloseTimestamp(d.dgClosePconsPersonal) : '';
     const parts: string[] = [];
 
     for (const e of bycatch) {
@@ -181,7 +182,7 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
         szLine +
         `      <WT>${wt}</WT>\n` +
         usgLine +
-        `      <DG_CLOSE_DT>${bycatchClose}</DG_CLOSE_DT>\n` +
+        (bycatchClose ? `      <DG_CLOSE_DT>${bycatchClose}</DG_CLOSE_DT>\n` : '') +
         tag('REM', rem.pcons ?? '', '      ') +
         `    </PCONS>\n`
       );
@@ -198,7 +199,7 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
         szLine +
         `      <WT>${personalUseWt}</WT>\n` +
         `      <USG_ID>37822</USG_ID>\n` +
-        `      <DG_CLOSE_DT>${personalClose}</DG_CLOSE_DT>\n` +
+        (personalClose ? `      <DG_CLOSE_DT>${personalClose}</DG_CLOSE_DT>\n` : '') +
         tag('REM', rem.pcons ?? '', '      ') +
         `    </PCONS>\n`
       );
@@ -265,7 +266,7 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   // sequence and DFO returns WS1038 (surfacing on the next sibling MM_INTER_IND).
   effort += tag('SAR_IND',       sarInc, '      ');
   effort += tag('MM_INTER_IND',  mammalInc, '      ');
-  effort += tag('DG_CLOSE_DT',   toCloseTimestamp(d.dgCloseEffort), '      ');
+  effort += tag('DG_CLOSE_DT',   d.dgCloseEffort ? toCloseTimestamp(d.dgCloseEffort) : '', '      ');
   // REM: 'haul' note fans across EFFORT, EFFORT_BY_GEAR and EFFORT_DETAIL (same text)
   effort += tag('REM', rem.haul ?? '', '      ');
   // TGT_SPECIES: 1312 = lobster
@@ -401,7 +402,7 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
       // S124 Phase 2: one closure per SAR block (Rule 1503, §5.2.1). Block 1's close rides the
       // legacy d.dgCloseSar; blocks 2..n carry their own s.closeDt. Absent → falls back to
       // d.dgCloseSar exactly as before, so existing logs emit byte-identically.
-      body += tag('DG_CLOSE_DT',   toCloseTimestamp(s.closeDt || d.dgCloseSar), '      ');
+      body += tag('DG_CLOSE_DT',   (s.closeDt || d.dgCloseSar) ? toCloseTimestamp(s.closeDt || d.dgCloseSar) : '', '      ');
       body += tag('REM',           rem.sar ?? '', '      ');
       body += `    </SAR>\n`;
     });
@@ -417,7 +418,7 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
       body += tag('HLIN_NUM',     d.hlinConfirmNo ?? '', '      ');
       body += tag('ETA_DT',       toDate12(d.hlinEta ?? ''), '      ');
       body += tag('TOT_WT_ONBRD', kgStr(d.hlinTotalWeight ?? '', inLbs), '      ');
-      body += tag('DG_CLOSE_DT',  toCloseTimestamp(d.dgCloseHlin), '      ');
+      body += tag('DG_CLOSE_DT',  d.dgCloseHlin ? toCloseTimestamp(d.dgCloseHlin) : '', '      ');
       body += tag('REM',          rem.hlin ?? '', '      ');
       body += `    </HLIN>\n`;
     }
@@ -426,7 +427,7 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
       body += `    <HLOUT>\n`;
       body += tag('HLOUT_CIE_ID', hloutCie ? String(hloutCie.codeId) : '0', '      ');
       body += tag('HLOUT_NUM',    d.hloutConfirmNo ?? '', '      ');
-      body += tag('DG_CLOSE_DT',  toCloseTimestamp(d.dgCloseHlout), '      ');
+      body += tag('DG_CLOSE_DT',  d.dgCloseHlout ? toCloseTimestamp(d.dgCloseHlout) : '', '      ');
       body += tag('REM',          rem.hlout ?? '', '      ');
       body += `    </HLOUT>\n`;
     }
@@ -447,7 +448,7 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
     // LANDING.VRN: carrier vessel — mandatory when USE_CR_IND='Y' (Rule 642),
     // blocked otherwise (Rule 641)
     if (subformId === 88 && d.useCrInd === 'Y') body += tag('VRN', d.carrierVrn ?? '', '      ');
-    body += tag('DG_CLOSE_DT', toCloseTimestamp(d.dgCloseLanding), '      ');
+    body += tag('DG_CLOSE_DT', d.dgCloseLanding ? toCloseTimestamp(d.dgCloseLanding) : '', '      ');
     body += tag('REM', rem.landing ?? '', '      ');
     body += `    </LANDING>\n`;
   }
@@ -464,7 +465,7 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
       body += tag('FROM_VRN', captainProfile.vesselNumber, '      ');
       if (d.transferToPndNum) body += tag('TO_PND_NUM', d.transferToPndNum, '      ');
       else body += tag('TO_VRN', d.transferToVrn ?? '', '      ');
-      body += tag('DG_CLOSE_DT', toCloseTimestamp(d.dgCloseTransfer), '      ');
+      body += tag('DG_CLOSE_DT', d.dgCloseTransfer ? toCloseTimestamp(d.dgCloseTransfer) : '', '      ');
       // REM: 'transfer' note fans across TRANSFER and TRANSFER_DTL (same text). On TRANSFER
       // it is the last child before TRANSFER_DTL per transfer_type sequence.
       body += tag('REM', rem.transfer ?? '', '      ');

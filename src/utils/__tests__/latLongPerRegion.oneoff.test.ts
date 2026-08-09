@@ -5,6 +5,7 @@
 //   • MAR(90): Rule 3059 unchanged — 38b emits byte-identically to pre-S110; non-38b blocked
 // Mirrors the fixture/injection style of validateTrpSzId.oneoff.test.ts.
 import { generateElogXml, validateElogXml } from '../dfoXmlGenerator';
+import { closeAllGroups } from './support/closeAllGroups';
 
 const profile: any = {
   operatorName: 'Test Operator',
@@ -121,7 +122,7 @@ test.each([
   log.data.gpsLat = lat;
   log.data.gpsLng = lng;
   log.data.gpsSrc = src;
-  const xml = generateElogXml(log, profile);
+  const xml = generateElogXml(closeAllGroups(log), profile);
   expect(xml).toContain(`<LAT MODE="${mode}">${lat}</LAT>`);
   expect(xml).toContain(`<LONG MODE="${mode}">${lng}</LONG>`);
 
@@ -132,7 +133,7 @@ test.each([
 
 test.each([88, 89])('subform %s WITHOUT coords emits nothing and trips the rows-82/83 mandatory guard', (sf) => {
   const log = makeLog(sf); // no gpsLat/gpsLng
-  const xml = generateElogXml(log, profile);
+  const xml = generateElogXml(closeAllGroups(log), profile);
   expect(xml).not.toContain('<LAT');
   expect(xml).not.toContain('<LONG');
 
@@ -146,7 +147,7 @@ test('NL-91 with coords ON THE STORED LOG emits nothing (rows 82/83 Blocked — 
   log.data.gpsLat = '47.5670'; // e.g. a pre-S110 NL draft that used the GPS section
   log.data.gpsLng = '-59.1360';
   log.data.gpsSrc = 'gps';
-  const xml = generateElogXml(log, profile);
+  const xml = generateElogXml(closeAllGroups(log), profile);
   expect(xml).not.toContain('<LAT');
   expect(xml).not.toContain('<LONG');
 
@@ -156,7 +157,7 @@ test('NL-91 with coords ON THE STORED LOG emits nothing (rows 82/83 Blocked — 
 });
 
 test('NL-91 with injected LAT/LONG trips the blocked guard', () => {
-  const clean = generateElogXml(makeLog(91), profile);
+  const clean = generateElogXml(closeAllGroups(makeLog(91)), profile);
   const injected = clean.replace(
     '          <TRP_SZ_ID>',
     '          <LAT MODE="G">47.5670</LAT>\n          <LONG MODE="G">-59.1360</LONG>\n          <TRP_SZ_ID>',
@@ -168,7 +169,7 @@ test('NL-91 with injected LAT/LONG trips the blocked guard', () => {
 });
 
 test('MAR-90 FMA 38b emits LAT/LONG byte-identically to pre-S110 (regression pin)', () => {
-  const xml = generateElogXml(makeLog(90), profile);
+  const xml = generateElogXml(closeAllGroups(makeLog(90)), profile);
   expect(xml).toContain('          <LAT MODE="G">44.1234</LAT>\n          <LONG MODE="G">-66.5432</LONG>\n');
 
   const { errors } = validateElogXml(xml, 90);
@@ -179,7 +180,7 @@ test('MAR-90 non-38b: stored coords are NOT emitted; injection still trips Rule 
   const log = makeLog(90);
   log.data.fmaId = '1581'; // an LGRID FMA, not 38b
   log.data.nbSpcmnBrd = ''; // BRD is 38b-only
-  const xml = generateElogXml(log, profile);
+  const xml = generateElogXml(closeAllGroups(log), profile);
   expect(xml).not.toContain('<LAT');
 
   // XSD sequence puts LAT/LONG after GEAR_GRP_NUM — inject in-slot.

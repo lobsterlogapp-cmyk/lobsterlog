@@ -52,6 +52,7 @@ import {
   LogRemarks,
   ExtraEffortDetail,
   ExtraSarDetail,
+  usedDataGroupKeys,
 } from '../utils/dfoLogStorage';
 import { triggerBackup } from '../utils/dfoBackup';
 import { REQUIRED_ASTERISK_COLOR } from '../styles/GlobalStyles';
@@ -1758,22 +1759,17 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
 
   // S124 Phase 4: the USED data groups that are still OPEN (not yet closed). Same "used" gates
   // as the per-card Close controls (Phase 3) — keep in sync. Excludes already-closed groups.
-  const openUsedGroups = (): string[] => {
-    const hlFma = fmaId === 28599 || fmaId === 1595;
-    const used: Record<string, boolean> = {
-      dgCloseEffort: true, // always used in Phase 3/4 (Phase 6 makes EFFORT optional)
-      dgCloseLanding: true, // LANDING is always used (port landed is mandatory); Rule 1052's
-      // no-effort warning is moot on the save path here — the save-gate requires effort fields.
-      dgCloseBaitUsed: baitEntries.length > 0,
-      dgClosePconsBycatch: bycatchYes === true && bycatchEntries.length > 0,
-      dgClosePconsPersonal: personalUse.trim().length > 0,
-      dgCloseSar: sarYes === true,
-      dgCloseTransfer: subformId === 88 && transferYes === true,
-      dgCloseHlin: hlFma && !!(hlinCompany || hlinConfirmNo),
-      dgCloseHlout: hlFma && !!(hloutCompany || hloutConfirmNo),
-    };
-    return Object.keys(used).filter(k => used[k] && !isClosed(k));
-  };
+  // S125 Phase 9: uses the SINGLE shared "used" formula (usedDataGroupKeys, dfoLogStorage) — the
+  // same one the send-path guard uses — so the two can never drift. Only the !isClosed filter (the
+  // session close state) is UI-specific.
+  const openUsedGroups = (): string[] =>
+    usedDataGroupKeys({
+      subformId, fmaId: fmaId ?? NaN,
+      baitCount: baitEntries.length,
+      bycatchYes: bycatchYes === true, bycatchCount: bycatchEntries.length,
+      personalUse, sarYes: sarYes === true, transferYes: transferYes === true,
+      hlinCompany, hlinConfirmNo, hloutCompany, hloutConfirmNo,
+    }).filter(k => !isClosed(k));
 
   const handleSave = async () => {
     // S124 Phase 1: bait is now OPTIONAL (Rule 1051 — the app must not force a data group; a

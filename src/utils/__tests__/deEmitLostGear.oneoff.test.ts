@@ -9,6 +9,7 @@
 //
 // Mirrors the fixture style of validateMar90Blocks / genSampleAllSubforms.oneoff.test.ts.
 import { generateElogXml, validateElogXml } from '../dfoXmlGenerator';
+import { closeAllGroups } from './support/closeAllGroups';
 
 const profile: any = {
   operatorName: 'Test Operator',
@@ -126,7 +127,7 @@ for (const sf of SUBFORMS) {
     test(`(a) ${sf.name}: <LOST_GEAR_IND> never emitted (lostGearYes='${val}')`, () => {
       const log = sf.make();
       log.data.lostGearYes = val;
-      const xml = generateElogXml(log, profile);
+      const xml = generateElogXml(closeAllGroups(log), profile);
       expect(xml).not.toContain('LOST_GEAR_IND');
       // sanity: the two surviving mandatory EFFORT indicators are still emitted
       expect(xml).toContain('<SAR_IND>');
@@ -137,7 +138,7 @@ for (const sf of SUBFORMS) {
 
 // (b) BLOCKED-DIRECTION — a doc that DOES carry <LOST_GEAR_IND> must fail validation.
 test('(b) validateElogXml rejects an injected <LOST_GEAR_IND> (blocked, maxOccurs=0)', () => {
-  const clean = generateElogXml(makeMar90Log(), profile);
+  const clean = generateElogXml(closeAllGroups(makeMar90Log()), profile);
   // negative control: clean doc has no LOST_GEAR_IND and validates
   expect(clean).not.toContain('LOST_GEAR_IND');
   expect(validateElogXml(clean, 90).valid).toBe(true);

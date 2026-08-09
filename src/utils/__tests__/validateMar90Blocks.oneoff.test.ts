@@ -4,6 +4,7 @@
 // injects them into an otherwise-valid MAR-90 document and asserts each guard trips.
 // Mirrors the fixture style of genSampleAllSubforms.oneoff.test.ts.
 import { generateElogXml, validateElogXml } from '../dfoXmlGenerator';
+import { closeAllGroups } from './support/closeAllGroups';
 
 const profile: any = {
   operatorName: 'Test Operator',
@@ -72,7 +73,7 @@ const KEPT_MSG = 'NB_SPCMN_KEPT is blocked for MAR(90)';
 const DISC_MSG = 'NB_SPCMN_DISC is blocked for MAR(90)';
 
 test('clean MAR-90 sample does NOT trip the three blocked-field guards (negative control)', () => {
-  const xml = generateElogXml(makeMar90Log(), profile);
+  const xml = generateElogXml(closeAllGroups(makeMar90Log()), profile);
   // sanity: the injection targets must exist in the clean document
   expect(xml).toContain('<PCONS>');
   expect(xml).toContain('<CATCH>');
@@ -85,7 +86,7 @@ test('clean MAR-90 sample does NOT trip the three blocked-field guards (negative
 });
 
 test('injected blocked elements trip all three MAR-90 guards (positive)', () => {
-  const clean = generateElogXml(makeMar90Log(), profile);
+  const clean = generateElogXml(closeAllGroups(makeMar90Log()), profile);
 
   // SPECIE_SZ_ID into the PCONS node — sequence slot is after SPECIE_FRM_ID, before WT.
   // `<WT>` is unique to PCONS here (CATCH uses KEPT_WT), so target the first occurrence.

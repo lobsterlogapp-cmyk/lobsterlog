@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { Plus, FileText, Send, Edit3, Eye, Trash2, CheckCircle, User, Shield, RotateCcw, Archive, HelpCircle } from 'lucide-react-native';
 import HelpSupportScreen from './HelpSupportScreen';
-import { loadAllLogs, deleteLog, markSentToDfo, DfoLog, saveTransmissionRecord, TransmissionRecord, saveXmlArchiveEntry, loadTransmissionRegister, transmissionKind } from '../utils/dfoLogStorage';
+import { loadAllLogs, deleteLog, markSentToDfo, DfoLog, saveTransmissionRecord, TransmissionRecord, saveXmlArchiveEntry, loadTransmissionRegister, transmissionKind, unclosedUsedGroupKeys } from '../utils/dfoLogStorage';
 import { useTimer } from '../context/TimerContext';
 import { triggerBackup } from '../utils/dfoBackup';
 import { SentLogCard, SentLogDetailModal, indexSuccessRecords, indexFailureRecords } from '../components/SentLogCard';
@@ -37,6 +37,21 @@ import PrivacyNoticeModal from './PrivacyNoticeModal';
 import AttestationModal from './AttestationModal';
 
 let attestationShownThisSession = false;
+
+// S125 Phase 9: dgClose* data-group key → the i18n key of its ON-SCREEN card name (the exact words
+// the harvester sees on the Close & Save controls). Used to name the sections in the send guard's
+// refusal (ruling 1 — never internal keys). Same title keys the renderCloseControl calls pass.
+const CLOSE_SECTION_NAME_KEY: Record<string, string> = {
+  dgCloseEffort: 'form234.catchEffortSection',
+  dgCloseLanding: 'form234.landingSection',
+  dgCloseBaitUsed: 'form234.baitReportingSection',
+  dgClosePconsBycatch: 'form234.bycatchSubsection',
+  dgClosePconsPersonal: 'form234.personalUseSection',
+  dgCloseSar: 'form234.sarSubsection',
+  dgCloseTransfer: 'form234.transfersSubsection',
+  dgCloseHlin: 'form234.hlinSection',
+  dgCloseHlout: 'form234.hloutSection',
+};
 
 // --- Completion % ---
 const FULL_REQUIRED = [
@@ -267,6 +282,18 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
           t('logs.effortOverlapBody', { logId: overlapId }),
           [{ text: tc('nav.ok') }]
         );
+        return;
+      }
+
+      // S125 Phase 9: refuse the send if a USED data group carries no real close stamp — loud, not
+      // lossy (the removed now() fallback would have fabricated a close the harvester never made).
+      // Names the sections still needing closing, in the app's own card words. Same "used" formula
+      // as the Close & Save controls (unclosedUsedGroupKeys → usedDataGroupKeys). The validator below
+      // is a second net; this is the clear message.
+      const unclosed = unclosedUsedGroupKeys(log);
+      if (unclosed.length > 0) {
+        const sections = unclosed.map(k => t(CLOSE_SECTION_NAME_KEY[k])).filter(Boolean).join(', ');
+        Alert.alert(t('logs.unclosedGroupsTitle'), t('logs.unclosedGroupsBody', { sections }), [{ text: tc('nav.ok') }]);
         return;
       }
 

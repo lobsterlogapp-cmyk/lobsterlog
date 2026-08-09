@@ -5,6 +5,7 @@
 // SAR loop refactor against this exact fixture. Two-SAR logs must emit two complete <SAR>
 // nodes (XSD sar_type is 0..unbounded under TRIP) and still pass the structural validator.
 import { generateElogXml, validateElogXml } from '../dfoXmlGenerator';
+import { closeAllGroups } from './support/closeAllGroups';
 
 const profile: any = {
   operatorName: 'Test Operator',
@@ -114,7 +115,7 @@ const PRE_S121_SAR_BASELINE = `<?xml version="1.0" encoding="UTF-8"?>
 </ELOG>`;
 
 test('single-SAR log emits BYTE-IDENTICAL XML to the pre-multi-SAR generator', () => {
-  const xml = generateElogXml(makeSarLog(), profile);
+  const xml = generateElogXml(closeAllGroups(makeSarLog()), profile);
   expect(xml).toBe(PRE_S121_SAR_BASELINE);
   expect(count(xml, '<SAR>')).toBe(1);
 });
@@ -125,7 +126,7 @@ test('two-SAR log emits two complete SAR nodes in order and validates', () => {
     species: '35110', lat: '44.3000', lng: '-66.8000', gpsSrc: 'manual',
     date: '2026-06-10', time: '11:40', nbSpcmn: '2', condId: '38997',
   }]);
-  const xml = generateElogXml(log, profile);
+  const xml = generateElogXml(closeAllGroups(log), profile);
   expect(count(xml, '<SAR>')).toBe(2);
   expect(count(xml, '</SAR>')).toBe(2);
   expect(count(xml, '<SAR_DT>')).toBe(2);
@@ -146,7 +147,7 @@ test('SAR_IND=N emits no SAR node even if a stray extraSars key exists (gate pre
   const log = makeSarLog();
   log.data.sarYes = 'false';
   log.data.extraSars = JSON.stringify([{ species: '35110', lat: '44.3', lng: '-66.8', date: '2026-06-10', time: '11:40', nbSpcmn: '2', condId: '38997' }]);
-  const xml = generateElogXml(log, profile);
+  const xml = generateElogXml(closeAllGroups(log), profile);
   expect(count(xml, '<SAR>')).toBe(0);
   expect(xml).toContain('<SAR_IND>N</SAR_IND>');
 });
@@ -154,5 +155,5 @@ test('SAR_IND=N emits no SAR node even if a stray extraSars key exists (gate pre
 test('a stored extraSars key with an empty array emits exactly one SAR node (defensive)', () => {
   const log = makeSarLog();
   log.data.extraSars = '[]';
-  expect(generateElogXml(log, profile)).toBe(PRE_S121_SAR_BASELINE);
+  expect(generateElogXml(closeAllGroups(log), profile)).toBe(PRE_S121_SAR_BASELINE);
 });

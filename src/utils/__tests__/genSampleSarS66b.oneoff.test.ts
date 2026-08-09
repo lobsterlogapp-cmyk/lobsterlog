@@ -4,6 +4,7 @@
 // genSampleAllSubforms (no oneoff embeds xmllint; jest stays decoupled from the external XSD).
 import * as fs from 'fs';
 import { generateElogXml, validateElogXml } from '../dfoXmlGenerator';
+import { closeAllGroups } from './support/closeAllGroups';
 
 const profile: any = {
   operatorName: 'Test Operator',
@@ -61,7 +62,7 @@ test('SAR=Y: <SAR> emits the full sar_type child set in order; validateElogXml p
   log.data.sarCondId = '11881'; // MV_SPECIMENS_CONDITION — Alive
   log.remarks = { sar: 'Released alive near the gear' };
 
-  const xml = generateElogXml(log, profile);
+  const xml = generateElogXml(closeAllGroups(log), profile);
   fs.writeFileSync('/tmp/sample_sar.xml', xml);
 
   // node present exactly once
@@ -104,7 +105,7 @@ test('SAR not Y: <SAR> node is ABSENT for N and null', () => {
     log.data.sarLng = '-66.5432';
     log.data.sarNbSpcmn = '1';
     log.data.sarCondId = '11881';
-    const xml = generateElogXml(log, profile);
+    const xml = generateElogXml(closeAllGroups(log), profile);
     expect(xml).not.toContain('<SAR>');
   }
 });
