@@ -578,6 +578,8 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
         <Text style={styles.logId}>{title}</Text>
         {!!dateLine && <Text style={styles.logDate}>{dateLine}</Text>}
         {!!closedWhen && <Text style={styles.logUidLine}>{t('form234.closedAtLabel', { time: closedWhen })}</Text>}
+        {/* S125 7d two-row layout (ruling 3): row 1 = Send to DFO full-width solid primary (common
+            action, biggest tap target — matters for wet hands); row 2 = Review + Delete. */}
         <View style={styles.logActions}>
           {isSending ? (
             <View style={styles.sendingButton}>
@@ -590,6 +592,20 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
               <Text style={styles.sendButtonText}>{t('logs.sendToDfo')}</Text>
             </TouchableOpacity>
           )}
+        </View>
+        <View style={[styles.logActions, { marginTop: 8 }]}>
+          {/* Review opens the closed entry read-only by uid (the lock is derived from its stored
+              closeDt on the screen's mount — no new read-only mode). No Edit (ruling 5). */}
+          <TouchableOpacity
+            style={styles.editButton}
+            onPress={() => {
+              if (kind === 'form222') { setForm222EntryUid(entry.uid); setForm222Visible(true); }
+              else { setForm233EntryUid(entry.uid); setForm233Visible(true); }
+            }}
+          >
+            <Eye size={15} color="#1E3A8A" />
+            <Text style={styles.editButtonText}>{t('logs.reviewButton')}</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteFormDraft(kind, entry.uid)}>
             <Trash2 size={15} color="#B45309" />
             <Text style={styles.deleteButtonText}>{tc('nav.delete')}</Text>

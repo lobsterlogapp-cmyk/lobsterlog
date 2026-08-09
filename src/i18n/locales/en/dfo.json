@@ -336,7 +336,8 @@
     "detailHttp": "HTTP status",
     "detailErr": "Error",
     "detailNoRecord": "No transmission record found for this log.",
-    "formSavedAt": "Saved {{when}}"
+    "formSavedAt": "Saved {{when}}",
+    "reviewButton": "Review"
   },
   "form233": {
     "headerTitle": "Form 233 · Inactivity",

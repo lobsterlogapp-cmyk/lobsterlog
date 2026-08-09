@@ -337,7 +337,8 @@
     "detailHttp": "Statut HTTP",
     "detailErr": "Erreur",
     "detailNoRecord": "Aucun enregistrement de transmission trouvé pour ce journal.",
-    "formSavedAt": "Enregistré {{when}}"
+    "formSavedAt": "Enregistré {{when}}",
+    "reviewButton": "Consulter"
   },
   "form233": {
     "headerTitle": "Formulaire 233 · Inactivité",

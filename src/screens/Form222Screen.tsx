@@ -17,7 +17,7 @@ import {
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { openAndroidDateTime, openAndroidDate } from '../utils/androidDateTimePicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronLeft, ChevronDown, Calendar, Clock, LocateFixed, Lock } from 'lucide-react-native';
+import { ChevronLeft, ChevronDown, Calendar, Clock, LocateFixed, Lock, Save } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import * as Location from 'expo-location';
 import {
@@ -173,7 +173,10 @@ export default function Form222Screen({ onClose, registerClose, entryUid }: Prop
   const [gpsCapturing, setGpsCapturing] = useState(false);
   // S125 7b: ISO close timestamp once Close & Save is confirmed. Non-null ⇒ the form is locked
   // (view-only) and already persisted as a closed-unsent record; the park guard then skips it.
-  const [closedAt, setClosedAt] = useState<string | null>(null);
+  // S125 7b/7d: lock derived STRICTLY from the loaded entry's stored closeDt (ruling 2 — storage
+  // is the single source of truth; NEVER a flag set by the close action). Set ONLY from
+  // draft.closeDt in the mount effect, so a force-quit + reopen re-derives it. Non-null ⇒ read-only.
+  const [lockedCloseDt, setLockedCloseDt] = useState<string | null>(null);
 
   // S125 7a draft lifecycle refs (see Form233Screen for the full rationale):
   //  prefillRef  — the lgbkNumRef value auto-prefilled on mount; the empty-check counts the
@@ -196,6 +199,9 @@ export default function Form222Screen({ onClose, registerClose, entryUid }: Prop
       prefillRef.current = prefill;
       if (draft) {
         draftUidRef.current = draft.uid;
+        // 7d ruling 2: derive the lock from stored closeDt. A closed entry opened via Review
+        // renders read-only; survives force-quit because it is re-read from storage every mount.
+        if (draft.closeDt) setLockedCloseDt(draft.closeDt);
         setForm({
           interactInd: draft.interactInd,
           reportDate: draft.reportDate,
@@ -297,7 +303,7 @@ export default function Form222Screen({ onClose, registerClose, entryUid }: Prop
   // S125 7a/7b: the ONE exit path. Parks a non-empty draft — UNLESS the form was just closed
   // (already persisted as 'complete'; parking would overwrite it back to a draft).
   const handleClose = async () => {
-    if (!closedAt && !isEmpty()) {
+    if (!lockedCloseDt && !isEmpty()) {
       if (!draftUidRef.current) draftUidRef.current = generateForm222Uid();
       await saveForm222Entry(buildEntry('draft', false));
     }
@@ -423,12 +429,13 @@ export default function Form222Screen({ onClose, registerClose, entryUid }: Prop
     return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}`;
   };
 
-  // S125 7b: Close & Save — stamp the real user-caused close time, persist as a closed-unsent
-  // record, and lock the form. NO send here (send is from the list card). The confirm is
-  // never-suppressible (DFO 234.7 finality). Required-field / Rule-528 VRN gates run at SEND time
-  // on the card, not at close (Appendix B row 23's required-field-at-close gate is a later phase).
+  // S125 7b/7d: Close & Save — never-suppressible confirm (DFO 234.7 finality) → stamp the real
+  // close time, persist as a closed-unsent record, then LEAVE the form and return to the DFO ELOGs
+  // list (7d parity with the 234's Close & Save All). The save is AWAITED before onClose so the
+  // list's refresh reads the closed record; if the save FAILS we stay on the form and say so
+  // (ruling 1 — never navigate off unsaved data). No send here (send is from the list card).
   const handleCloseAndSave = () => {
-    if (closedAt) return;
+    if (lockedCloseDt) return;
     Alert.alert(
       t('form222.closeConfirmTitle'),
       t('form234.closeConfirmBody'),
@@ -440,8 +447,13 @@ export default function Form222Screen({ onClose, registerClose, entryUid }: Prop
           onPress: async () => {
             const nowIso = new Date().toISOString();
             if (!draftUidRef.current) draftUidRef.current = generateForm222Uid();
-            setClosedAt(nowIso);
-            await saveForm222Entry(buildEntry('complete', false, nowIso));
+            try {
+              await saveForm222Entry(buildEntry('complete', false, nowIso));
+            } catch {
+              Alert.alert(tc('settings.errorTitle'), t('form234.saveError'));
+              return;
+            }
+            onClose();
           },
         },
       ],
@@ -551,7 +563,7 @@ export default function Form222Screen({ onClose, registerClose, entryUid }: Prop
         keyboardShouldPersistTaps="handled"
       >
         {/* S125 7b: freeze the whole body once closed (view-only; the ScrollView still scrolls). */}
-        <View pointerEvents={closedAt ? 'none' : 'auto'} style={closedAt ? styles.closedBody : undefined}>
+        <View pointerEvents={lockedCloseDt ? 'none' : 'auto'} style={lockedCloseDt ? styles.closedBody : undefined}>
         {/* Master INTERACT_IND toggle */}
         <View style={styles.card}>
           <Text style={styles.cardHeader}>{t('form222.interactCard')}</Text>
@@ -899,15 +911,15 @@ export default function Form222Screen({ onClose, registerClose, entryUid }: Prop
 
         </View>
         {/* S125 7b: Close & Save (view-only banner once closed). Send is on the list card. */}
-        {closedAt ? (
+        {lockedCloseDt ? (
           <View style={styles.closedBanner}>
             <Lock size={14} color="#64748B" />
-            <Text style={styles.closedBannerText}>{t('form234.closedAtLabel', { time: formatClose(closedAt) })}</Text>
+            <Text style={styles.closedBannerText}>{t('form234.closedAtLabel', { time: formatClose(lockedCloseDt) })}</Text>
           </View>
         ) : (
-          <TouchableOpacity style={styles.closeSectionBtn} onPress={handleCloseAndSave} activeOpacity={0.8}>
-            <Lock size={16} color="#B45309" />
-            <Text style={styles.closeSectionBtnText}>{t('form222.closeButton')}</Text>
+          <TouchableOpacity style={styles.submitButton} onPress={handleCloseAndSave} activeOpacity={0.8}>
+            <Save size={18} color="#FFFFFF" />
+            <Text style={styles.submitText}>{t('form222.closeButton')}</Text>
           </TouchableOpacity>
         )}
       </ScrollView>
@@ -1152,35 +1164,16 @@ const styles = StyleSheet.create({
   ynButtonTextActive: {
     color: '#FFFFFF',
   },
+  // S125 7d: Close & Save foot button — copied verbatim from FullDfoForm's submitButton/submitText
+  // (the 234's Close & Save All) so the three forms match, not merely resemble. The old near-miss
+  // submitButton (#1E40AF / radius 12) and the amber closeSectionBtn are deleted (rulings 3/6).
   submitButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 14,
-    borderRadius: 12,
-    backgroundColor: '#1E40AF',
-  },
-  submitButtonSending: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    padding: 14,
-    borderRadius: 12,
-    backgroundColor: '#1E40AF',
-  },
-  submitButtonText: {
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    fontSize: 16,
-  },
-  // S125 7b: Close & Save control + Closed banner — copied verbatim from FullDfoForm's closure styles.
-  closedBody: { opacity: 0.55 },
-  closeSectionBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, paddingVertical: 11, borderRadius: 8, marginTop: 10,
-    backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#B45309',
+    gap: 8, backgroundColor: '#1E3A8A', paddingVertical: 14, borderRadius: 10,
   },
-  closeSectionBtnText: { fontSize: 13, fontWeight: '700', color: '#B45309' },
+  submitText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
+  // S125 7b: Closed banner + frozen body — copied verbatim from FullDfoForm's closure styles.
+  closedBody: { opacity: 0.55 },
   closedBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10,
     paddingVertical: 9, paddingHorizontal: 10, borderRadius: 8,
