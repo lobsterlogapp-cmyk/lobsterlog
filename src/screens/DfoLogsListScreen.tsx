@@ -596,19 +596,38 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
           { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
       : '';
     const isSending = sendingLogs.has(entry.uid);
+    // S125 8a: derive the failed-send state from the PERSISTED register by this card's own record id
+    // (FORM222-/FORM233-<uid>) — survives an app restart, unlike the 234's in-memory failedSends. A
+    // still-closed-unsent entry with a failure record means the last attempt failed (a success would
+    // have flipped sentToDfo → out of this bucket). Reuses the 234 card's failed treatment verbatim.
+    const recordId = `${kind === 'form222' ? 'FORM222' : 'FORM233'}-${entry.uid}`;
+    const failError = register
+      .filter(r => r.logId === recordId && r.outcome === 'failure')
+      .map(r => r.errorMessage || r.wsErrCode || '')
+      .pop() || '';
     return (
-      <View key={`closed-${kind}-${entry.uid}`} style={styles.logCard}>
+      <View key={`closed-${kind}-${entry.uid}`} style={[styles.logCard, !!failError && styles.logCardFailed]}>
         <Text style={styles.logId}>{title}</Text>
         {!!dateLine && <Text style={styles.logDate}>{dateLine}</Text>}
         {!!closedWhen && <Text style={styles.logUidLine}>{t('form234.closedAtLabel', { time: closedWhen })}</Text>}
-        {/* S125 7d two-row layout (ruling 3): row 1 = Send to DFO full-width solid primary (common
-            action, biggest tap target — matters for wet hands); row 2 = Review + Delete. */}
+        {!!failError && (
+          <View style={styles.failedBadge}>
+            <Text style={styles.failedBadgeText}>{t('logs.lastSendFailed', { error: failError })}</Text>
+          </View>
+        )}
+        {/* S125 7d/8a: row 1 = Send to DFO full-width primary — or a red Retry when the last attempt
+            failed (matches the 234 card). Row 2 = Review + Delete. */}
         <View style={styles.logActions}>
           {isSending ? (
             <View style={styles.sendingButton}>
               <ActivityIndicator size="small" color="#FFFFFF" />
               <Text style={styles.sendButtonText}>{t('logs.sending')}</Text>
             </View>
+          ) : failError ? (
+            <TouchableOpacity style={styles.retryButton} onPress={() => handleSendForm(kind, entry)} activeOpacity={0.8}>
+              <RotateCcw size={16} color="#FFFFFF" />
+              <Text style={styles.sendButtonText}>{t('logs.retry')}</Text>
+            </TouchableOpacity>
           ) : (
             <TouchableOpacity style={styles.sendButton} onPress={() => handleSendForm(kind, entry)} activeOpacity={0.8}>
               <Send size={16} color="#FFFFFF" />
