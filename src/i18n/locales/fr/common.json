@@ -88,6 +88,7 @@
     "finError": "NIP invalide — doit être 9 chiffres, 5–6 chiffres, C/D + 7 chiffres, ou DFOCC + 9 chiffres.",
     "fishingLicenceLabel": "NUMÉRO DE PERMIS DE PÊCHE",
     "fishingLicencePlaceholder": "ex. T-123456",
+    "licenceError": "Numéro de permis invalide — lettres et chiffres seulement, maximum 18 caractères.",
     "fishingAreaLabel": "ZONE DE PÊCHE (EX. ZPH 34)",
     "fishingAreaPlaceholder": "Sélectionne une zone de pêche…",
     "totalGearLabel": "NOMBRE TOTAL D'ENGINS DE PÊCHE",

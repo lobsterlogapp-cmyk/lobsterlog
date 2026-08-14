@@ -1118,9 +1118,32 @@ export const DFO_SOAP_ACTION_SAVE = 'http://www.dfo-mpo.gc.ca/SaveIncomingFile';
 // Single source of truth; imported by DfoLogsListScreen + DfoTestHarnessScreen.
 export const DFO_UAT_ENDPOINT = 'https://inter-w01-uat.dfo-mpo.gc.ca/ws/ElogXMLFileTransfer/ElogXMLFileTransfer.asmx';
 
+// S128 Phase 2(a): a DFO licence number is CHAR(18) in the XML data dictionary (LIC_NO,
+// ELEMENT_ID 307 — legend "Char = Alphanumeric characters"): alphanumeric, 1–18 chars.
+// Derived from LIC_NO's own definition, NOT copied from the VRN pattern (which is 1–12).
+// Exported for the licence inputs (DfoSetupScreen / CaptainProfileScreen) and used as the
+// §3.10 file-name backstop below.
+export function isValidDfoLicence(s: string): boolean {
+  return /^[A-Za-z0-9]{1,18}$/.test(s);
+}
+
 // XML file name per Standard v6.1 §3.10: [RegionalID]-[LicenceNumber]-[YYYYMMDDHHMMSS].XML
 // Timestamp is generation time, UTC, 14 digits, no separators. Uncompressed .XML (no 7z).
 export function generateDfoXmlFileName(regId: number, licenceNo: string, when: Date = new Date()): string {
+  // S128 Phase 2(b): NEVER emit a name that violates §3.10 — the dash is the field SEPARATOR,
+  // so a dash (or any non-alphanumeric) in the licence, or a non-numeric Regional ID, breaks
+  // the three-field structure. Founder ruling: REJECT (block the send), never silently strip
+  // (a mangled licence would misidentify the file). This is a backstop for already-stored
+  // pre-validator values; the licence inputs reject bad characters at entry.
+  if (!Number.isInteger(regId) || regId <= 0) {
+    throw new Error(`Cannot build DFO file name: invalid Regional ID "${regId}".`);
+  }
+  if (!isValidDfoLicence(licenceNo)) {
+    throw new Error(
+      `Cannot build DFO file name: licence number "${licenceNo}" must be letters and digits only ` +
+      `(maximum 18 characters). Correct it in your Captain Profile before sending.`
+    );
+  }
   const p = (n: number) => String(n).padStart(2, '0');
   const ts =
     `${when.getUTCFullYear()}${p(when.getUTCMonth() + 1)}${p(when.getUTCDate())}` +

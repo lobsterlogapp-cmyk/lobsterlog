@@ -16,6 +16,7 @@ import { X } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { loadCaptainProfile, saveCaptainProfile } from '../utils/captainStorage';
 import { DFO_SUBFORM_REGISTRY } from '../utils/dfoConstants';
+import { isValidDfoLicence } from '../utils/dfoXmlGenerator';
 
 interface Props {
   onActivated: () => void;
@@ -26,6 +27,10 @@ interface Props {
 // Rule 260 — valid FIN formats: 9 digits | C/D + 7 digits | 5–6 digits | DFOCC + 9 digits
 const isValidFin = (s: string): boolean =>
   /^(\d{9}|[CD]\d{7}|\d{5,6}|DFOCC\d{9})$/.test(s);
+
+// S128 Phase 2(a): a DFO licence number is CHAR(18) — alphanumeric, 1–18 chars (XML data
+// dictionary LIC_NO). A stray character (e.g. a dash) would break the §3.10 file name.
+const LICENCE_ERR = 'Invalid Licence Number — letters and digits only, maximum 18 characters.';
 
 // Display-only FR via i18n (S104 L5): stored value is subformId — the label never persists.
 // EN pill = defaultValue fallback; FR from MV_DFO_REGION_rel3.csv DESC_FRE (regId==CODE_ID).
@@ -43,10 +48,15 @@ export default function DfoSetupScreen({ onActivated, onClose, canActivateDfoFre
   const [fin, setFin] = useState('');
   const [loading, setLoading] = useState(false);
   const [finError, setFinError] = useState('');
+  const [licenceError, setLicenceError] = useState('');
 
   const handleActivate = async () => {
     if (!licenceNo.trim()) {
       Alert.alert('Missing', 'Please enter your Licence Number.');
+      return;
+    }
+    if (!isValidDfoLicence(licenceNo.trim())) {
+      setLicenceError(LICENCE_ERR);
       return;
     }
     if (!fin.trim()) {
@@ -94,6 +104,10 @@ export default function DfoSetupScreen({ onActivated, onClose, canActivateDfoFre
   };
 
   const handleRestore = async () => {
+    if (licenceNo.trim() && !isValidDfoLicence(licenceNo.trim())) {
+      setLicenceError(LICENCE_ERR);
+      return;
+    }
     if (!fin.trim()) {
       Alert.alert('Missing', 'Please enter your FIN (Fisher ID Number).');
       return;
@@ -178,11 +192,15 @@ export default function DfoSetupScreen({ onActivated, onClose, canActivateDfoFre
             <TextInput
               style={styles.input}
               value={licenceNo}
-              onChangeText={setLicenceNo}
+              onChangeText={v => {
+                setLicenceNo(v);
+                setLicenceError(v.trim() && !isValidDfoLicence(v.trim()) ? LICENCE_ERR : '');
+              }}
               placeholder={t('setup.licenceNoPlaceholder')}
               placeholderTextColor="#CBD5E1"
               autoCapitalize="characters"
             />
+            {!!licenceError && <Text style={styles.fieldError}>{licenceError}</Text>}
           </View>
           <View style={[styles.inputGroup, styles.lastInputGroup]}>
             <Text style={styles.label}>{t('setup.finLabel')}</Text>

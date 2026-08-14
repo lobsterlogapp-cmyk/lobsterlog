@@ -24,6 +24,7 @@ import {
   saveCaptainProfile,
 } from '../utils/captainStorage';
 import { DFO_FMA_LIST } from '../utils/dfoConstants';
+import { isValidDfoLicence } from '../utils/dfoXmlGenerator';
 import { loadBackupConsent, saveBackupConsent, backupNow } from '../utils/dfoBackup';
 import BackupExplainerModal from './BackupExplainerModal';
 import { changeLanguage } from '../i18n';
@@ -61,6 +62,7 @@ export default function CaptainProfileScreen({ onClose }: Props) {
   const [showElogKey, setShowElogKey] = useState(false);
   const [finError, setFinError] = useState('');
   const [vrnError, setVrnError] = useState('');
+  const [licenceError, setLicenceError] = useState('');
   const [backupConsent, setBackupConsent] = useState(false);
   const [explainerOpen, setExplainerOpen] = useState(false);
   const [backingUp, setBackingUp] = useState(false);
@@ -116,6 +118,12 @@ export default function CaptainProfileScreen({ onClose }: Props) {
     }
     if (profile.vesselNumber.trim() && !isValidVrn(profile.vesselNumber.trim())) {
       setVrnError(t('profile.vrnError'));
+      return;
+    }
+    // S128 Phase 2(a): licence is CHAR(18) alphanumeric (XML dictionary LIC_NO). A stray
+    // character here reaches the §3.10 transmitted file name — block it at the profile.
+    if (profile.fishingNumber.trim() && !isValidDfoLicence(profile.fishingNumber.trim())) {
+      setLicenceError(t('profile.licenceError'));
       return;
     }
     await saveCaptainProfile(profile);
@@ -196,11 +204,15 @@ export default function CaptainProfileScreen({ onClose }: Props) {
             <TextInput
               style={styles.input}
               value={profile.fishingNumber}
-              onChangeText={setField('fishingNumber')}
+              onChangeText={v => {
+                setField('fishingNumber')(v);
+                setLicenceError(v.trim() && !isValidDfoLicence(v.trim()) ? t('profile.licenceError') : '');
+              }}
               placeholder={t('profile.fishingLicencePlaceholder')}
               placeholderTextColor="#CBD5E1"
               keyboardType="number-pad"
             />
+            {!!licenceError && <Text style={styles.fieldError}>{licenceError}</Text>}
           </View>
 
           <View style={styles.inputGroup}>

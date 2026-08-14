@@ -87,6 +87,7 @@
     "finError": "Invalid FIN — must be 9 digits, 5–6 digits, C/D + 7 digits, or DFOCC + 9 digits.",
     "fishingLicenceLabel": "FISHING LICENCE NUMBER",
     "fishingLicencePlaceholder": "e.g. T-123456",
+    "licenceError": "Invalid Licence Number — letters and digits only, maximum 18 characters.",
     "fishingAreaLabel": "FISHING AREA (E.G. LFA 34)",
     "fishingAreaPlaceholder": "Select fishing area…",
     "totalGearLabel": "TOTAL # OF FISHING GEAR",
