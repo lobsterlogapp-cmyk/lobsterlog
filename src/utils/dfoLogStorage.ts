@@ -227,6 +227,7 @@ export const saveDraft = async (log: Omit<DfoLog, 'status'>): Promise<boolean> =
 export interface DataGroupInputs {
   subformId: number;
   fmaId: number;            // NaN when absent — the hlFma test below is false for NaN
+  effortYes: boolean;       // S128 Phase 5: false on a no-haul (setting) day → EFFORT omitted
   baitCount: number;
   bycatchYes: boolean;
   bycatchCount: number;
@@ -240,12 +241,17 @@ export interface DataGroupInputs {
 export function usedDataGroupKeys(v: DataGroupInputs): string[] {
   const hlFma = v.fmaId === 28599 || v.fmaId === 1595;
   const used: Record<string, boolean> = {
-    dgCloseEffort: true,    // always used (Rule: EFFORT present; no-haul omits the NODE separately)
+    // S128 Phase 5: EFFORT is used only when a haul is declared — on a no-haul day the generator
+    // omits the whole EFFORT node (dfoXmlGenerator: `if (d.effortYes !== 'false')`), so counting
+    // it "used" over-counted the open sections and stamped an orphan close nothing reads.
+    dgCloseEffort: v.effortYes,
     dgCloseLanding: true,   // LANDING always used (port landed is mandatory)
     dgCloseBaitUsed: v.baitCount > 0,
     dgClosePconsBycatch: v.bycatchYes && v.bycatchCount > 0,
     dgClosePconsPersonal: v.personalUse.trim().length > 0,
-    dgCloseSar: v.sarYes,
+    // SAR lives inside EFFORT — the generator gates it on effortYes too, so it can't be "used"
+    // on a no-haul day even if a stale sarYes survived a haul→no-haul toggle.
+    dgCloseSar: v.effortYes && v.sarYes,
     dgCloseTransfer: v.subformId === 88 && v.transferYes,
     dgCloseHlin: hlFma && !!(v.hlinCompany || v.hlinConfirmNo),
     dgCloseHlout: hlFma && !!(v.hloutCompany || v.hloutConfirmNo),
@@ -261,6 +267,8 @@ export function dataGroupInputsFromLog(log: Pick<DfoLog, 'subformId' | 'data'>):
   return {
     subformId: log.subformId ?? 90,
     fmaId: Number(d.fmaId),
+    // Matches the generator's gate exactly: missing key (old logs) = haul, only 'false' = no-haul.
+    effortYes: d.effortYes !== 'false',
     baitCount: len(d.baitEntries),
     bycatchYes: d.bycatchYes === 'true',
     bycatchCount: len(d.bycatchEntries),

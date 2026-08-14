@@ -1785,6 +1785,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const openUsedGroups = (): string[] =>
     usedDataGroupKeys({
       subformId, fmaId: fmaId ?? NaN,
+      effortYes, // S128 Phase 5: a no-haul day omits EFFORT — don't count it as an open section
       baitCount: baitEntries.length,
       bycatchYes: bycatchYes === true, bycatchCount: bycatchEntries.length,
       personalUse, sarYes: sarYes === true, transferYes: transferYes === true,
