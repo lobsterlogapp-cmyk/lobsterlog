@@ -53,6 +53,7 @@ import {
   ExtraEffortDetail,
   ExtraSarDetail,
   usedDataGroupKeys,
+  isNoteLocked,
 } from '../utils/dfoLogStorage';
 import { triggerBackup } from '../utils/dfoBackup';
 import { REQUIRED_ASTERISK_COLOR } from '../styles/GlobalStyles';
@@ -330,14 +331,32 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     setRemarks(prev => ({ ...prev, [key]: value }));
   const toggleNote = (openKey: string) =>
     setNoteOpen(prev => ({ ...prev, [openKey]: !prev[openKey] }));
-  const renderNoteButton = (openKey: string) => (
+  // S128 Phase 1 (§5.2.1 irreversibility): once a data group this note transmits into is
+  // closed, the note can no longer change. The "Add a note" control is REMOVED (not greyed —
+  // a control that can't be used is removed, S124), and an EXISTING note stays VISIBLE,
+  // read-only (S125). isNoteLocked resolves the note→close-key mapping (single-sourced in
+  // dfoLogStorage). This holds for all eight closeable note sections; 'trip' has no close key
+  // so it is never locked.
+  const renderNoteButton = (openKey: string) =>
+    isNoteLocked(openKey, closes) ? null : (
     <TouchableOpacity style={styles.addNoteBtn} onPress={() => toggleNote(openKey)} activeOpacity={0.7}>
       <StickyNote size={13} color="#1E3A8A" />
       <Text style={styles.addNoteBtnText}>{t('form234.addNote')}</Text>
     </TouchableOpacity>
   );
-  const renderNoteInput = (openKey: string, value: string, onChangeText: (v: string) => void) =>
-    noteOpen[openKey] ? (
+  const renderNoteInput = (openKey: string, value: string, onChangeText: (v: string) => void) => {
+    // Closed: the note is frozen. Show any existing note read-only; render nothing if empty.
+    if (isNoteLocked(openKey, closes)) {
+      return value.trim() ? (
+        <TextInput
+          style={styles.noteInput}
+          value={value}
+          multiline
+          editable={false}
+        />
+      ) : null;
+    }
+    return noteOpen[openKey] ? (
       <TextInput
         style={styles.noteInput}
         value={value}
@@ -349,6 +368,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         editable={!readOnly}
       />
     ) : null;
+  };
 
   // Quick capture — driven by global TimerContext, no local state needed
   const {

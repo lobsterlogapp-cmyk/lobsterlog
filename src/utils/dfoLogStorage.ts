@@ -278,6 +278,31 @@ export function unclosedUsedGroupKeys(log: Pick<DfoLog, 'subformId' | 'data'>): 
   return usedDataGroupKeys(dataGroupInputsFromLog(log)).filter(k => !log.data[k]);
 }
 
+// --- S128 Phase 1: per-section REM note lock (§5.2.1 irreversibility) ---
+// Once a data group's DG_CLOSE_DT is stamped, NOTHING that group transmits can change —
+// and that includes its REM note. This maps each LogRemarks note key to the data-group
+// close key(s) whose stamp freezes it. A note is locked the moment ANY group it transmits
+// into is closed (founder ruling S128: 'pcons' rides BOTH PCONS occurrences — Bycatch AND
+// Personal Use — so either close freezes it). 'trip' has no close control (never locked)
+// and is intentionally absent from the map.
+export const NOTE_CLOSE_KEYS: Record<string, string[]> = {
+  landing:  ['dgCloseLanding'],
+  catch:    ['dgCloseEffort'],   // the Catch & Effort note writes catch+haul, all inside EFFORT
+  haul:     ['dgCloseEffort'],   // (haul is written together with catch; same close group)
+  bait:     ['dgCloseBaitUsed'],
+  pcons:    ['dgClosePconsBycatch', 'dgClosePconsPersonal'], // one note, two PCONS groups
+  sar:      ['dgCloseSar'],
+  transfer: ['dgCloseTransfer'],
+  hlin:     ['dgCloseHlin'],
+  hlout:    ['dgCloseHlout'],
+};
+
+// True when the note for `noteKey` may no longer change because a group it transmits into
+// is already closed. `closes` is the DG_CLOSE_DT stamp map (data-map keys → ISO stamp).
+export function isNoteLocked(noteKey: string, closes: Record<string, string>): boolean {
+  return (NOTE_CLOSE_KEYS[noteKey] ?? []).some(k => !!closes[k]);
+}
+
 // --- COMPLETION PERCENTAGE ---
 
 // Required fields for the Full DFO form — per subform
