@@ -21,7 +21,7 @@ import { useTimer } from '../context/TimerContext';
 import { triggerBackup } from '../utils/dfoBackup';
 import { SentLogCard, SentLogDetailModal, indexSuccessRecords, indexFailureRecords } from '../components/SentLogCard';
 import { FormSentCard } from '../components/FormSentCard';
-import { generateElogXml, generateSoapEnvelope, generateReportUid, validateElogXml, generateDfoXmlFileName, findEffortOverlap, DFO_SOAP_ACTION_SAVE, DFO_UAT_ENDPOINT } from '../utils/dfoXmlGenerator';
+import { generateElogXml, generateSoapEnvelope, generateReportUid, validateElogXml, generateUniqueDfoXmlFileName, findEffortOverlap, DFO_SOAP_ACTION_SAVE, DFO_UAT_ENDPOINT } from '../utils/dfoXmlGenerator';
 import { parseDfoSoapResponse, isValidFormVrn } from '../utils/submitDfoXml';
 // S125 7b: send a CLOSED-unsent form from its list card (send moved off the form).
 import { sendForm222Entry, sendForm233Entry } from '../utils/sendFormEntry';
@@ -309,8 +309,11 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
         return;
       }
 
-      // File name: [RegionalID]-[LicenceNumber]-[UTC timestamp].XML (Standard v6.1 §3.10)
-      fileName = generateDfoXmlFileName(log.regId ?? 1004, captainProfile.fishingNumber);
+      // File name: [RegionalID]-[LicenceNumber]-[UTC timestamp].XML (Standard v6.1 §3.10).
+      // S128 Phase 3: never reuse a name this account has already sent — the register holds
+      // every prior file name (success + failure); advance the second past any collision.
+      const usedNames = (await loadTransmissionRegister()).map(r => r.fileName).filter(Boolean) as string[];
+      fileName = generateUniqueDfoXmlFileName(log.regId ?? 1004, captainProfile.fishingNumber, usedNames);
       soap = generateSoapEnvelope(xml, captainProfile.elogKey, fileName);
 
       const controller = new AbortController();

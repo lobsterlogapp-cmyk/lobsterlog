@@ -1151,6 +1151,32 @@ export function generateDfoXmlFileName(regId: number, licenceNo: string, when: D
   return `${regId}-${licenceNo}-${ts}.XML`;
 }
 
+// S128 Phase 3: the file name's only varying field is a UTC timestamp at SECOND resolution,
+// so two sends in the same second from one account collide (observed live S112; WS1034 can't
+// be relied on to catch it). §3.10 mandates EXACTLY three fields, so uniqueness can't be an
+// appended token — instead advance the generation second until the name is not already used
+// by this account. `usedNames` = every file name in this account's transmission register
+// (successes AND failures; the register is the ONLY local store that records file names —
+// XmlArchiveEntry does not). The register is a bounded, finite set, so this resolves in a
+// couple of steps in practice; the loop cap is a pure runaway backstop. The first build also
+// applies the Phase 2 §3.10 guard (throws on a bad licence / Regional ID).
+export function generateUniqueDfoXmlFileName(
+  regId: number,
+  licenceNo: string,
+  usedNames: Iterable<string>,
+  when: Date = new Date(),
+): string {
+  const used = usedNames instanceof Set ? usedNames : new Set(usedNames);
+  let ms = when.getTime();
+  for (let step = 0; step < 100000; step++) {
+    const name = generateDfoXmlFileName(regId, licenceNo, new Date(ms));
+    if (!used.has(name)) return name;
+    ms += 1000; // bump one second and try again
+  }
+  // Unreachable in practice (every second for >24h taken); prefer the base name to looping.
+  return generateDfoXmlFileName(regId, licenceNo, when);
+}
+
 // SOAP 1.1 envelope invoking SaveIncomingFile. Auth is the ELOG key alone;
 // CIE_ID and SOFT_VER travel only inside the ELOG XML (GENERAL_INFO), never the envelope.
 // Base64 values are XML-safe, so no escaping is needed.

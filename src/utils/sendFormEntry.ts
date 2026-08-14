@@ -8,7 +8,8 @@
 // failure, so a failed send leaves the closed-unsent entry exactly as it was.
 
 import { CaptainProfile } from './captainStorage';
-import { generateDfoXmlFileName } from './dfoXmlGenerator';
+import { generateUniqueDfoXmlFileName } from './dfoXmlGenerator';
+import { loadTransmissionRegister } from './dfoLogStorage';
 import { submitDfoXml, SubmitDfoXmlResult } from './submitDfoXml';
 import { triggerBackup } from './dfoBackup';
 import {
@@ -32,7 +33,9 @@ export async function sendForm222Entry(
   const validation = validateForm222Xml(xml);
   if (!validation.valid) return { ok: false, validationErrors: validation.errors };
 
-  const fileName = generateDfoXmlFileName(profile.regId ?? 1004, profile.fishingNumber);
+  // S128 Phase 3: collision-free file name — never reuse a name in this account's register.
+  const usedNames = (await loadTransmissionRegister()).map(r => r.fileName).filter(Boolean) as string[];
+  const fileName = generateUniqueDfoXmlFileName(profile.regId ?? 1004, profile.fishingNumber, usedNames);
   const result = await submitDfoXml({
     soap: generateSoap222Envelope(xml, profile.elogKey, fileName),
     xml,
@@ -60,7 +63,9 @@ export async function sendForm233Entry(
   const validation = validateForm233Xml(xml);
   if (!validation.valid) return { ok: false, validationErrors: validation.errors };
 
-  const fileName = generateDfoXmlFileName(profile.regId ?? 1004, profile.fishingNumber);
+  // S128 Phase 3: collision-free file name — never reuse a name in this account's register.
+  const usedNames = (await loadTransmissionRegister()).map(r => r.fileName).filter(Boolean) as string[];
+  const fileName = generateUniqueDfoXmlFileName(profile.regId ?? 1004, profile.fishingNumber, usedNames);
   const result = await submitDfoXml({
     soap: generateSoap233Envelope(xml, profile.elogKey, fileName),
     xml,
