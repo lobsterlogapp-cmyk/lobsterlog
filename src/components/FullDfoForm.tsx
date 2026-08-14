@@ -2130,6 +2130,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               <CrewSelector selected={crewMembers} onChange={setCrewMembers} />
             </View>
           )}
+          {/* S128 Phase 4: departure port (TRIP.PORT_ID, Rule 299) is Mandatory on QC(88)/NL(91)
+              and BLOCKED on GLF(89)/MAR(90). Gate the render on isVisible so a blocked field is
+              not shown (S120) — renders on 88/91 only, matching the generator's 88/91 emit gate;
+              this render previously showed on all four subforms. */}
+          {isVisible('departurePort') && (
           <View style={styles.fieldRow}>
             <Text style={styles.label}>{t('form234.departurePortLabel')}</Text>
             <DfoPortSelector
@@ -2141,6 +2146,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               onChange={(sel) => { setDeparturePort(sel.name); setDeparturePortCodeId(sel.codeId); }}
             />
           </View>
+          )}
           {/* S124 Phase 5: TIME SAILED moved here (under departure port) from the dissolved
               Timestamps card. TRIP data — Trip Information is NOT a closeable group (no button). */}
           {isVisible('sailTime') && renderTimestampField(t('form234.timeSailedLabel'), formatDateTimeDisplay(sailDate, timeSailed), 'sailed', false, isRequired('sailTime'))}
