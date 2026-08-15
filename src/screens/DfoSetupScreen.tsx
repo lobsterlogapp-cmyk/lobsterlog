@@ -213,7 +213,8 @@ export default function DfoSetupScreen({ onActivated, onClose, canActivateDfoFre
               }}
               placeholder={t('setup.finPlaceholder')}
               placeholderTextColor="#CBD5E1"
-              keyboardType="number-pad"
+              autoCapitalize="characters"
+              autoCorrect={false}
             />
             {!!finError && <Text style={styles.fieldError}>{finError}</Text>}
           </View>

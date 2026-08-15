@@ -178,7 +178,8 @@ export default function CaptainProfileScreen({ onClose }: Props) {
               }}
               placeholder={t('profile.finPlaceholder')}
               placeholderTextColor="#CBD5E1"
-              keyboardType="number-pad"
+              autoCapitalize="characters"
+              autoCorrect={false}
             />
             {!!finError && <Text style={styles.fieldError}>{finError}</Text>}
           </View>
@@ -194,7 +195,8 @@ export default function CaptainProfileScreen({ onClose }: Props) {
               }}
               placeholder={t('profile.vesselNumberPlaceholder')}
               placeholderTextColor="#CBD5E1"
-              keyboardType="number-pad"
+              autoCapitalize="characters"
+              autoCorrect={false}
             />
             {!!vrnError && <Text style={styles.fieldError}>{vrnError}</Text>}
           </View>
@@ -210,7 +212,8 @@ export default function CaptainProfileScreen({ onClose }: Props) {
               }}
               placeholder={t('profile.fishingLicencePlaceholder')}
               placeholderTextColor="#CBD5E1"
-              keyboardType="number-pad"
+              autoCapitalize="characters"
+              autoCorrect={false}
             />
             {!!licenceError && <Text style={styles.fieldError}>{licenceError}</Text>}
           </View>
