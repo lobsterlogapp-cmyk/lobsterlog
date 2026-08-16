@@ -2,7 +2,7 @@
   "_todo": "TRANSLATION PENDING",
   "sendGate": {
     "title": "Complétez votre profil de capitaine",
-    "body": "Avant de transmettre au MPO, veuillez remplir les éléments suivants dans votre profil de capitaine :",
+    "body": "Avant de transmettre au MPO, veuillez remplir les éléments suivants dans votre profil de capitaine:",
     "openProfile": "Ouvrir le profil",
     "vrnRule528Title": "NEB invalide",
     "vrnRule528": "Le numéro d’enregistrement du bateau (NEB) doit comporter de 4 à 6 chiffres pour ce formulaire (règle 528 du MPO)."
@@ -58,7 +58,7 @@
     "sarNbSpcmnLabel": "NOMBRE D’INDIVIDUS",
     "sarCondLabel": "CONDITION DES INDIVIDUS",
     "sarCondPlaceholder": "Sélectionnez la condition…",
-    "missingSarFields": "Remplissez tous les champs requis pour l’espèce en péril : espèce, nombre de spécimens, état, position (lat/long) et date/heure.",
+    "missingSarFields": "Remplissez tous les champs requis pour l’espèce en péril: espèce, nombre de spécimens, état, position (lat/long) et date/heure.",
     "mmInterIndLabel": "Y a-t-il eu interaction avec un mammifère marin durant cet effort de pêche?",
     "mmInterIndPrompt": "Veuillez S.V.P. remplir la déclaration d’interaction avec un mammifère marin.",
     "missingTitle": "Champ manquant",
@@ -73,7 +73,7 @@
     "missingBycatchAnswer": "Répondez Oui ou Non pour les prises accessoires.",
     "missingBycatchEntries": "Vous avez sélectionné Oui pour les prises accessoires — ajoutez au moins une entrée.",
     "missingTransferAnswer": "Répondez Oui ou Non pour les transferts.",
-    "missingTransferFields": "Remplissez tous les champs requis pour le transfert : heure du transfert, poids transféré et destination (NEB du navire ou numéro de vivier).",
+    "missingTransferFields": "Remplissez tous les champs requis pour le transfert: heure du transfert, poids transféré et destination (NEB du navire ou numéro de vivier).",
     "missingIndicatorsAnswer": "Répondez Oui ou Non pour l’interaction avec un mammifère marin et l’interaction avec une espèce en péril.",
     "missingFieldsBody": "Remplissez tous les champs avant de sauvegarder.\n\nManquants:\n• ",
     "saveError": "Impossible de sauvegarder le journal. Réessayez.",
@@ -86,7 +86,7 @@
     "quickCaptureTitle": "Saisie rapide",
     "quickCaptureSubtitle": "Appuyez pour horodater — ou remplissez manuellement ci-dessous",
     "stopSail": "Arrêter la navigation",
-    "sailed": "Navigation : {{time}}",
+    "sailed": "Navigation: {{time}}",
     "startSail": "Démarrer la navigation",
     "stopHaul": "Arrêter la levée",
     "hauledRange": "Levée {{start}}–{{end}}",
@@ -213,24 +213,24 @@
     "gpsNoFixBody": "Aucun signal GPS disponible. Réessayez avec une vue dégagée du ciel, ou saisissez les coordonnées manuellement.",
     "saveButton": "Sauvegarder le journal MPO",
     "closeSectionButton": "Fermer et enregistrer la section",
-    "closeConfirmTitle": "Fermer la section {{section}} ?",
+    "closeConfirmTitle": "Fermer la section {{section}}?",
     "closeConfirmBody": "Après la fermeture, vous ne pourrez plus modifier ces renseignements. Vérifiez-les d’abord.",
     "closeConfirmNotYet": "Pas encore",
     "closeConfirmYes": "Fermer",
     "closedAtLabel": "Fermée {{time}}",
     "personalUseSection": "Usage personnel",
     "closeAllButton": "Fermer et tout enregistrer",
-    "closeAllConfirmTitle": "Fermer et tout enregistrer ?",
+    "closeAllConfirmTitle": "Fermer et tout enregistrer?",
     "closeAllConfirmBody_one": "Ceci fermera {{count}} section ouverte et enregistrera le journal. Une fois fermée, vous ne pourrez plus la modifier dans ce journal.",
     "closeAllConfirmBody_other": "Ceci fermera {{count}} sections ouvertes et enregistrera le journal. Une fois fermées, vous ne pourrez plus les modifier dans ce journal.",
     "closeAllConfirmYes": "Tout fermer",
-    "plainSaveConfirmTitle": "Enregistrer ce journal ?",
+    "plainSaveConfirmTitle": "Enregistrer ce journal?",
     "plainSaveConfirmYes": "Enregistrer",
     "rule1052Title": "Aucun effort de pêche",
     "rule1052Warning": "Vous n’avez déclaré aucun effort de pêche dans ce journal de bord. Si vous avez levé un engin de pêche, vous devez compléter la section effort de pêche, autrement, continuez.",
     "rule1052Continue": "Continuer",
-    "effortQuestion": "Avez-vous levé un engin ?",
-    "effortNoConfirmTitle": "Effacer les captures et l’effort ?",
+    "effortQuestion": "Avez-vous levé un engin?",
+    "effortNoConfirmTitle": "Effacer les captures et l’effort?",
     "effortNoConfirmBody": "Marquer « aucune levée » effacera les renseignements de captures et d’effort que vous avez saisis. Cette action est irréversible.",
     "effortNoConfirmYes": "Effacer",
     "baitTypeLabel": "TYPE D’APPÂT",
@@ -339,11 +339,11 @@
     "detailNoRecord": "Aucun enregistrement de transmission trouvé pour ce journal.",
     "formSavedAt": "Enregistré {{when}}",
     "reviewButton": "Consulter",
-    "deleteLogTitle": "Supprimer ce journal ?",
+    "deleteLogTitle": "Supprimer ce journal?",
     "deleteLogBody": "Le journal {{logId}} ({{dateFished}}) sera supprimé définitivement. Il n’a pas été envoyé au MPO. Cette action est irréversible.",
     "editReviewButton": "Voir / Modifier",
     "unclosedGroupsTitle": "Terminez la fermeture de ce journal",
-    "unclosedGroupsBody": "Ces sections doivent être fermées avant la transmission : {{sections}}. Ouvrez le journal, fermez-les, puis transmettez."
+    "unclosedGroupsBody": "Ces sections doivent être fermées avant la transmission: {{sections}}. Ouvrez le journal, fermez-les, puis transmettez."
   },
   "form233": {
     "headerTitle": "Formulaire 233 · Inactivité",
@@ -383,7 +383,7 @@
     "submissionFailedTitle": "Échec de la transmission",
     "unknownError": "Erreur inconnue",
     "closeButton": "Fermer et enregistrer",
-    "closeConfirmTitle": "Fermer le formulaire Inactivité ?"
+    "closeConfirmTitle": "Fermer le formulaire Inactivité?"
   },
   "form222": {
     "headerTitle": "Formulaire 222 · Mammifère marin",
@@ -462,7 +462,7 @@
     "submissionFailedTitle": "Échec de la transmission",
     "unknownError": "Erreur inconnue",
     "closeButton": "Fermer et enregistrer",
-    "closeConfirmTitle": "Fermer le formulaire Mammifère marin ?"
+    "closeConfirmTitle": "Fermer le formulaire Mammifère marin?"
   },
   "portSelector": {
     "searchPlaceholder": "Rechercher un port…",

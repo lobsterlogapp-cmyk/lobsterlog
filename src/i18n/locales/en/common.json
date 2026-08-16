@@ -83,7 +83,7 @@
     "licenceNo": "DFO Licence No",
     "fin": "Licence Holder's FIN",
     "finLabel": "LICENCE HOLDER’S FIN",
-    "finPlaceholder": "Fisher Identification Number",
+    "finPlaceholder": "e.g. 123456789",
     "finError": "Invalid FIN — must be 9 digits, 5–6 digits, C/D + 7 digits, or DFOCC + 9 digits.",
     "fishingLicenceLabel": "FISHING LICENCE NUMBER",
     "fishingLicencePlaceholder": "e.g. T123456",
