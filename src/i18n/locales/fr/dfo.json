@@ -197,7 +197,7 @@
     "personalUseLabel": "DÉCLARATION D’USAGE PERSONNEL (LBS)",
     "hlinSection": "HLIN — Appel en mer",
     "companyLabel": "COMPAGNIE",
-    "companyPlaceholder": "Nom de l’acheteur ou du courtier",
+    "companyPlaceholder": "Compagnie émettrice du no de confirmation",
     "confirmNoLabel": "N° DE CONFIRMATION",
     "confirmNoPlaceholder": "Numéro de confirmation MPO",
     "etaLabel": "DATE/HEURE ESTIMÉE D’ARRIVÉE",
