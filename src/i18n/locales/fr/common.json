@@ -84,7 +84,7 @@
     "licenceNo": "N° de permis MPO",
     "fin": "NIP du titulaire du permis",
     "finLabel": "NIP DU DÉTENTEUR DE PERMIS",
-    "finPlaceholder": "Numéro d’identification du pêcheur",
+    "finPlaceholder": "ex. 123456789",
     "finError": "NIP invalide — doit être 9 chiffres, 5–6 chiffres, C/D + 7 chiffres, ou DFOCC + 9 chiffres.",
     "fishingLicenceLabel": "NUMÉRO DE PERMIS DE PÊCHE",
     "fishingLicencePlaceholder": "ex. T123456",

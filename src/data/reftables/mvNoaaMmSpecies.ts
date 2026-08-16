@@ -28,7 +28,7 @@ export const MV_NOAA_MM_SPECIES: DfoNoaaMmSpecies[] = [
   { noaaCode: '100', descFr: 'Otarie de Steller', descEn: 'Steller (Northern) Sea Lion' },
   { noaaCode: '135', descFr: 'Loutre de mer', descEn: 'Sea Otter' },
   { noaaCode: '039', descFr: 'Épaulard', descEn: 'Killer Whale' },
-  { noaaCode: '105', descFr: 'Otarie à fourrure des îles Pribilof)', descEn: 'Northern (Pribilof) Fur Seal' },
+  { noaaCode: '105', descFr: 'Otarie à fourrure des îles Pribilof', descEn: 'Northern (Pribilof) Fur Seal' },
   { noaaCode: '231', descFr: 'Rorqual de Bryde', descEn: 'Bryde’s Whale' },
   { noaaCode: '040', descFr: 'Rorqual bleu', descEn: 'Blue Whale' },
   { noaaCode: '053', descFr: 'Dauphin commun', descEn: 'Common Dolphin' },
