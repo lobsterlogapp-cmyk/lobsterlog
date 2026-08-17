@@ -248,7 +248,7 @@ export function usedDataGroupKeys(v: DataGroupInputs): string[] {
     dgCloseLanding: true,   // LANDING always used (port landed is mandatory)
     dgCloseBaitUsed: v.baitCount > 0,
     dgClosePconsBycatch: v.bycatchYes && v.bycatchCount > 0,
-    dgClosePconsPersonal: v.personalUse.trim().length > 0,
+    dgClosePconsPersonal: v.subformId === 90 && v.personalUse.trim().length > 0,
     // SAR lives inside EFFORT — the generator gates it on effortYes too, so it can't be "used"
     // on a no-haul day even if a stale sarYes survived a haul→no-haul toggle.
     dgCloseSar: v.effortYes && v.sarYes,

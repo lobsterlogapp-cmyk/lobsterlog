@@ -188,15 +188,17 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
       );
     }
 
+    // S134: personal-use PCONS is MAR(90)-ONLY — its hardcoded USG_ID (37822) is Blocked on
+    // 88/89/91 (Subforms_requirements_234.xlsx row 58), so the whole node is withheld there.
+    // A stored value on a blocked subform is ignored on read, never cleared (ruling D3).
     const personalUseWt = kgStr(d.personalUse ?? '', inLbs);
-    if (personalUseWt) {
-      // SPECIE_SZ_ID: GLF(89) ONLY; blocked for 88/90/91 — same as the bycatch node above.
-      const szLine = subformId === 89 ? `      <SPECIE_SZ_ID>826</SPECIE_SZ_ID>\n` : '';
+    if (subformId === 90 && personalUseWt) {
+      // No SPECIE_SZ_ID here: it is GLF(89)-only (row 56) and this node is now MAR(90)-only,
+      // so the old 89 szLine became unreachable and was removed (S134; '' on 90 before).
       parts.push(
         `    <PCONS>\n` +
         `      <SPECIE_ID>1312</SPECIE_ID>\n` +
         `      <SPECIE_FRM_ID>${DFO_SPECIE_FRM_ID}</SPECIE_FRM_ID>\n` +
-        szLine +
         `      <WT>${personalUseWt}</WT>\n` +
         `      <USG_ID>37822</USG_ID>\n` +
         (personalClose ? `      <DG_CLOSE_DT>${personalClose}</DG_CLOSE_DT>\n` : '') +

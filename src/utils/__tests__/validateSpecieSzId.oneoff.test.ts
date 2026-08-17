@@ -37,7 +37,10 @@ function baseLog(subformId: number, regId: number): any {
       crewRegistry: '[]',
       catchWeight: '500',
       trapHauls: '250',
-      bycatchEntries: '[]',
+      // S134: a bycatch entry keeps a PCONS node in every doc — the personal-use node no
+      // longer emits off MAR(90), so it can't be this suite's SPECIE_SZ_ID anchor anymore.
+      // 'Lobster' (1312) is on all four PCONS species lists.
+      bycatchEntries: JSON.stringify([{ species: 'Lobster', lbs: '40' }]),
       personalUse: '10',
       dgClosePcons: '2026-06-10T15:00:00.000Z',
       mmYes: 'false',

@@ -4,6 +4,8 @@
 // pre-S121 generator. The four PRE_S121_BASELINE_* constants below were captured by
 // running the UNMODIFIED generator (pre-change working tree) against these exact fixtures;
 // toBe() against them is the byte-for-byte guarantee protecting the 20 graded TRG files.
+// S134: the personal-use PCONS block was DELETED from the 88/89/91 baselines — that node is
+// now MAR(90)-only (its hardcoded USG_ID is Blocked on 88/89/91, row 58); the 90 baseline is untouched.
 // Two-grid logs must emit one EFFORT_DETAIL per block with sequential GEAR_GRP_NUM
 // (Rule 609x) and one CATCH per block, and still pass the structural validator.
 import { generateElogXml, validateElogXml } from '../dfoXmlGenerator';
@@ -147,13 +149,6 @@ const PRE_S121_BASELINE_88 = `<?xml version="1.0" encoding="UTF-8"?>
       <BT_WT>45.36</BT_WT>
       <DG_CLOSE_DT>20260610150000</DG_CLOSE_DT>
     </BAIT_USED>
-    <PCONS>
-      <SPECIE_ID>1312</SPECIE_ID>
-      <SPECIE_FRM_ID>4691</SPECIE_FRM_ID>
-      <WT>4.54</WT>
-      <USG_ID>37822</USG_ID>
-      <DG_CLOSE_DT>20260610150000</DG_CLOSE_DT>
-    </PCONS>
     <EFFORT>
       <START_DT>202606100900</START_DT>
       <END_DT>202606101630</END_DT>
@@ -223,14 +218,6 @@ const PRE_S121_BASELINE_89 = `<?xml version="1.0" encoding="UTF-8"?>
       <BT_WT>45.36</BT_WT>
       <DG_CLOSE_DT>20260610150000</DG_CLOSE_DT>
     </BAIT_USED>
-    <PCONS>
-      <SPECIE_ID>1312</SPECIE_ID>
-      <SPECIE_FRM_ID>4691</SPECIE_FRM_ID>
-      <SPECIE_SZ_ID>826</SPECIE_SZ_ID>
-      <WT>4.54</WT>
-      <USG_ID>37822</USG_ID>
-      <DG_CLOSE_DT>20260610150000</DG_CLOSE_DT>
-    </PCONS>
     <EFFORT>
       <START_DT>202606100900</START_DT>
       <END_DT>202606101630</END_DT>
@@ -355,13 +342,6 @@ const PRE_S121_BASELINE_91 = `<?xml version="1.0" encoding="UTF-8"?>
       <BT_WT>45.36</BT_WT>
       <DG_CLOSE_DT>20260610150000</DG_CLOSE_DT>
     </BAIT_USED>
-    <PCONS>
-      <SPECIE_ID>1312</SPECIE_ID>
-      <SPECIE_FRM_ID>4691</SPECIE_FRM_ID>
-      <WT>4.54</WT>
-      <USG_ID>37822</USG_ID>
-      <DG_CLOSE_DT>20260610150000</DG_CLOSE_DT>
-    </PCONS>
     <EFFORT>
       <START_DT>202606100900</START_DT>
       <END_DT>202606101630</END_DT>

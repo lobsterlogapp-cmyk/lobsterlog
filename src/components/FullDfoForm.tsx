@@ -2788,8 +2788,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           </View>}
 
           {/* PCONS occurrence #2 — Personal Use, its own sub-card so it closes independently
-              of the Bycatch occurrence (S124 ruling). */}
-          <View style={styles.incidentSection}>
+              of the Bycatch occurrence (S124 ruling). MAR(90) ONLY — its node's hardcoded
+              USG_ID is Blocked on 88/89/91 (Subforms_requirements_234.xlsx row 58, S134). */}
+          {subformId === 90 && <View style={styles.incidentSection}>
             <View style={styles.sectionHeader}>
               <View style={[styles.sectionIcon, { backgroundColor: '#EDE9FE' }]}>
                 <AlertTriangle size={16} color="#7C3AED" />
@@ -2800,7 +2801,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             {renderField(t('form234.personalUseLabel'), personalUse, setPersonalUse, '0', false, false, 'numeric')}
             </View>
             {renderCloseControl('dgClosePconsPersonal', 'form234.personalUseSection', personalUse.trim().length > 0)}
-          </View>
+          </View>}
         </View>
 
         {(fmaId === 28599 || fmaId === 1595) && (
