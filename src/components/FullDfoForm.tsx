@@ -37,6 +37,7 @@ import {
   LocateFixed,
   StickyNote,
   Lock,
+  Edit3,
 } from 'lucide-react-native';
 import {
   saveLog,
@@ -53,6 +54,8 @@ import {
   ExtraEffortDetail,
   ExtraSarDetail,
   usedDataGroupKeys,
+  baitRowsAllClosed,
+  stampOpenBaitRows,
   isNoteLocked,
 } from '../utils/dfoLogStorage';
 import { triggerBackup } from '../utils/dfoBackup';
@@ -94,7 +97,10 @@ interface FullDfoFormProps {
   onBack?: () => void;
 }
 
-type BaitEntry = { type: string; lbs: string; condition?: number; };
+// S134: closeDt/note are OPTIONAL additions — each bait row is its own BAIT_USED occurrence
+// and closes independently (§5 per-occurrence closure). Legacy rows without them parse
+// unchanged and fall back to the card-level dgCloseBaitUsed stamp / rem.bait note at emit.
+type BaitEntry = { type: string; lbs: string; condition?: number; closeDt?: string; note?: string; };
 type BycatchEntry = { species: string; lbs: string; usage?: string; };
 
 // S124 Phase 3: the dgClose* data-map keys the generator reads for DG_CLOSE_DT, one per
@@ -439,6 +445,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // BT_COND_ID (bait condition) — held only while a 'mandatory' bait type is selected
   const [sheetCondition, setSheetCondition] = useState<number | null>(null);
   const [sheetConditionOpen, setSheetConditionOpen] = useState(false);
+  // S134: per-row bait note (Ruling B) + edit-in-place. sheetEditIndex null = adding a new
+  // row; a number = the bait row being EDITED — confirm must UPDATE that row, never append
+  // (an append here would double the bait weight sent to DFO).
+  const [sheetNote, setSheetNote] = useState('');
+  const [sheetEditIndex, setSheetEditIndex] = useState<number | null>(null);
 
   // Apply a stored DfoLog's fields into form state. Shared by the edit-load path AND the S95
   // crash-safety restore path (restoring the scratch draft is identical to opening a saved log).
@@ -1039,6 +1050,29 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     setSheetCondition(null);
     setSheetConditionOpen(false);
     setSheetDropdownOpen(false);
+    setSheetNote('');           // S134: a new row starts with a fresh, empty note (Ruling B)
+    setSheetEditIndex(null);    // S134: add mode
+    setSheetVisible(true);
+  };
+
+  // S134: reopen the SAME sheet on an existing bait row, seeded with that row's values.
+  // Confirm updates the row in place (see handleSheetConfirm). A stored type that matches
+  // no list label is a custom 'Other' entry — reopen it as Other + the stored text.
+  const openBaitEdit = (index: number) => {
+    const e = baitEntries[index];
+    if (!e) return;
+    const match = getDfoBaitTypeList(subformId).find(b => b.label === e.type);
+    setSheetMode('bait');
+    setSheetSelectedType(match ? e.type : 'Other');
+    setSheetSelectedCodeId(match?.codeId ?? null);
+    setSheetCustomType(match ? '' : e.type);
+    setSheetLbs(e.lbs);
+    setSheetUsage('');
+    setSheetCondition(e.condition ?? null);
+    setSheetConditionOpen(false);
+    setSheetDropdownOpen(false);
+    setSheetNote(e.note ?? '');
+    setSheetEditIndex(index);
     setSheetVisible(true);
   };
 
@@ -1067,7 +1101,28 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         return;
       }
       const condition = condState === 'mandatory' ? sheetCondition ?? undefined : undefined;
-      setBaitEntries(prev => [...prev, { type: finalType, lbs: sheetLbs.trim(), condition }]);
+      const note = sheetNote.trim() || undefined;
+      if (sheetEditIndex != null) {
+        // S134 edit-in-place: UPDATE the row (spread keeps any fields the sheet doesn't
+        // carry) — appending here would double the bait weight sent to DFO.
+        setBaitEntries(prev => prev.map((en, i) =>
+          i === sheetEditIndex ? { ...en, type: finalType, lbs: sheetLbs.trim(), condition, note } : en));
+      } else {
+        const newRow: BaitEntry = { type: finalType, lbs: sheetLbs.trim(), condition, note };
+        // S134 T1: a NEW row must never inherit a close through the legacy card-stamp
+        // fallback. If this log still carries a pre-S134 dgCloseBaitUsed, first copy that
+        // stamp into each existing row lacking its own (same value -> identical emitted
+        // bytes) and drop the card key; the new row then joins genuinely OPEN. This is the
+        // one value-preserving rewrite, triggered only by the harvester's own add.
+        const legacyCardStamp = closes['dgCloseBaitUsed'];
+        if (legacyCardStamp) {
+          const adopted = JSON.parse(stampOpenBaitRows(JSON.stringify(baitEntries), legacyCardStamp)) as BaitEntry[];
+          setBaitEntries([...adopted, newRow]);
+          setCloses(prev => { const { dgCloseBaitUsed: _dropped, ...rest } = prev; return rest; });
+        } else {
+          setBaitEntries(prev => [...prev, newRow]);
+        }
+      }
     } else {
       setBycatchEntries(prev => [...prev, { species: finalType, lbs: sheetLbs.trim(), usage: sheetUsage || undefined }]);
     }
@@ -1548,6 +1603,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
 
   // ── S124 Phase 3: data-group closure (Close & Save Section) ──────────────────────────────
   const isClosed = (k: string) => !!closes[k];
+  // S134: a bait ROW is closed by its own stamp OR by the card-level close-all (the row's
+  // stamp wins at emit; the card stamp is the fallback — the SAR pattern).
+  const baitRowClosed = (e: BaitEntry) => !!(e.closeDt || closes['dgCloseBaitUsed']);
   // Local "YYYY-MM-DD HH:MM" — §2: the app's existing timestamp display format.
   const formatClose = (iso?: string): string => {
     if (!iso) return '';
@@ -1621,6 +1679,66 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       [
         { text: t('form234.closeConfirmNotYet'), style: 'cancel' }, // go back to add the effort
         { text: t('form234.rule1052Continue'), onPress: proceed },  // "otherwise, continue"
+      ],
+    );
+  };
+
+  // ── S134: per-row bait closure (§5 per-occurrence) ─────────────────────────────────────
+  // Closes ONE bait row: stamps that row's own closeDt and persists immediately (closure is
+  // irreversible and must survive without a later Save — mirrors closeSection). Other rows
+  // are untouched; the Add Bait control stays live.
+  const closeBaitRow = (index: number) => {
+    if (readOnly) return;
+    const e = baitEntries[index];
+    if (!e || baitRowClosed(e)) return;
+    Alert.alert(
+      t('form234.closeBaitRowConfirmTitle'),
+      t('form234.closeBaitRowConfirmBody'),
+      [
+        { text: t('form234.closeConfirmNotYet'), style: 'cancel' },
+        {
+          text: t('form234.closeConfirmYes'),
+          style: 'destructive',
+          onPress: () => {
+            const nowIso = new Date().toISOString();
+            const next = baitEntries.map((en, i) => (i === index ? { ...en, closeDt: nowIso } : en));
+            setBaitEntries(next);
+            if (isLoaded && !editingCompleted) {
+              // buildLogData reads the (still-stale) state, so override baitEntries with `next`.
+              void saveLog({ ...buildDraftLog(), data: { ...buildLogData(), baitEntries: JSON.stringify(next) } });
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  // S134 T1 (supersedes the D2 build): the card-level control closes EVERY OPEN ROW — each
+  // row gets its own closeDt — and writes NO card-level stamp. The card has no closed state
+  // of its own; only rows do. Already-closed rows are untouched (their earlier stamp stays).
+  // The button renders only while at least one row is open, so it disappears once everything
+  // is closed and reappears when a new (open) row is added.
+  const closeAllOpenBaitRows = () => {
+    if (readOnly) return;
+    const lockCount = baitEntries.filter(e => !baitRowClosed(e)).length;
+    if (lockCount === 0) return;
+    Alert.alert(
+      t('form234.closeConfirmTitle', { section: t('form234.baitReportingSection') }),
+      t('form234.closeBaitAllConfirmBody', { count: lockCount }),
+      [
+        { text: t('form234.closeConfirmNotYet'), style: 'cancel' },
+        {
+          text: t('form234.closeConfirmYes'),
+          style: 'destructive',
+          onPress: () => {
+            const nowIso = new Date().toISOString();
+            const next = JSON.parse(stampOpenBaitRows(JSON.stringify(baitEntries), nowIso)) as BaitEntry[];
+            setBaitEntries(next);
+            if (isLoaded && !editingCompleted) {
+              void saveLog({ ...buildDraftLog(), data: { ...buildLogData(), baitEntries: JSON.stringify(next) } });
+            }
+          },
+        },
       ],
     );
   };
@@ -1790,7 +1908,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       bycatchYes: bycatchYes === true, bycatchCount: bycatchEntries.length,
       personalUse, sarYes: sarYes === true, transferYes: transferYes === true,
       hlinCompany, hlinConfirmNo, hloutCompany, hloutConfirmNo,
-    }).filter(k => !isClosed(k));
+    }).filter(k => !isClosed(k)
+      // S134: bait also counts as closed when every row carries its own closeDt — mirrors
+      // the send guard (unclosedUsedGroupKeys) via the same shared helper, so Close & Save
+      // All neither restamps nor counts a fully row-closed bait section.
+      && !(k === 'dgCloseBaitUsed' && baitRowsAllClosed(JSON.stringify(baitEntries))));
 
   const handleSave = async () => {
     // S124 Phase 1: bait is now OPTIONAL (Rule 1051 — the app must not force a data group; a
@@ -1977,8 +2099,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     const openUsed = openUsedGroups();
 
     // Persist as a complete log, merging the close-all stamps into the data map.
-    const persist = (extraCloses: Record<string, string>) => {
+    const persist = (extraCloses: Record<string, string>, baitNext: BaitEntry[] | null = null) => {
       if (Object.keys(extraCloses).length) setCloses(prev => ({ ...prev, ...extraCloses }));
+      if (baitNext) setBaitEntries(baitNext);
       const log: DfoLog = {
         id: tripId,
         lgbkUid,
@@ -1987,7 +2110,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         status: 'complete',
         dateFished,
         createdAt: Date.now(),
-        data: { ...buildLogData(), ...extraCloses },
+        // buildLogData reads the (still-stale) state, so the per-row bait stamps ride an
+        // explicit override (S134 T1: the close-all's bait member stamps ROWS, never the card).
+        data: { ...buildLogData(), ...extraCloses, ...(baitNext ? { baitEntries: JSON.stringify(baitNext) } : {}) },
         remarks: buildRemarks(),
         subformId,
         regId,
@@ -2009,13 +2134,18 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     const confirmThenSave = () => {
       if (openUsed.length > 0) {
         const stamp = new Date().toISOString();
-        const extra = Object.fromEntries(openUsed.map(k => [k, stamp]));
+        // S134 T1: bait has NO card-level close state — when the close-all covers bait, it
+        // stamps each still-open ROW's own closeDt instead of writing dgCloseBaitUsed.
+        const extra = Object.fromEntries(openUsed.filter(k => k !== 'dgCloseBaitUsed').map(k => [k, stamp]));
+        const baitNext = openUsed.includes('dgCloseBaitUsed')
+          ? (JSON.parse(stampOpenBaitRows(JSON.stringify(baitEntries), stamp)) as BaitEntry[])
+          : null;
         Alert.alert(
           t('form234.closeAllConfirmTitle'),
           t('form234.closeAllConfirmBody', { count: openUsed.length }),
           [
             { text: t('form234.closeConfirmNotYet'), style: 'cancel' },
-            { text: t('form234.closeAllConfirmYes'), style: 'destructive', onPress: () => persist(extra) },
+            { text: t('form234.closeAllConfirmYes'), style: 'destructive', onPress: () => persist(extra, baitNext) },
           ],
         );
       } else {
@@ -2515,35 +2645,79 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
 
         {isVisible('baitEntries') && (
         <View style={styles.section}>
+          {/* S134: the card-level Add-a-note affordance is REMOVED — bait notes are per row
+              now (Ruling B), entered in the add/edit sheet. A legacy card-level rem.bait is
+              untouched in storage and still emits as the fallback for rows without their own
+              note (Ruling D3), but has no edit surface. */}
           <View style={styles.sectionHeader}>
             <View style={[styles.sectionIcon, { backgroundColor: '#FEE2E2' }]}><Fish size={16} color="#B91C1C" /></View>
             <Text style={styles.sectionTitle}>{t('form234.baitReportingSection')}{isRequired('baitEntries') && <Text style={{ color: REQUIRED_ASTERISK_COLOR, fontSize: 13 }}> *</Text>}</Text>
-            {renderNoteButton('bait')}
           </View>
-          <View {...closedBodyProps('dgCloseBaitUsed')}>
-          {renderNoteInput('bait', remarks.bait ?? '', (v) => setNote('bait', v))}
+          {/* S134 T1: NO card-level freeze — the card has no closed state of its own. */}
           {baitEntries.length === 0 && <Text style={styles.emptyHint}>{t('form234.noBaitYet')}</Text>}
-          {baitEntries.map((entry, i) => (
-            <View key={i} style={styles.entryRow}>
-              <View style={styles.entryInfo}>
-                <Text style={styles.entryType}>{baitTypeDisplay(entry.type)}</Text>
-                <Text style={styles.entryLbs}>{t('form234.lbsSuffix', { lbs: entry.lbs })}</Text>
+          {baitEntries.map((entry, i) => {
+            const rowClosed = baitRowClosed(entry);
+            const condLabel = entry.condition != null
+              ? refDesc(MV_BAIT_CONDITION.find(c => c.codeId === entry.condition), isFr)
+              : undefined;
+            return (
+            <View key={i} style={[styles.baitRowWrap, rowClosed && styles.closedBody]}>
+              <View style={[styles.entryRow, { marginBottom: 0 }]}>
+                <View style={styles.entryInfo}>
+                  <Text style={styles.entryType}>{baitTypeDisplay(entry.type)}</Text>
+                  {/* S134 (D1c, defect 12): the condition, mandatory in the sheet, now shows
+                      on the row instead of vanishing after entry. */}
+                  {!!condLabel && <Text style={styles.entryLbs}>{condLabel}</Text>}
+                  <Text style={styles.entryLbs}>{t('form234.lbsSuffix', { lbs: entry.lbs })}</Text>
+                  {!!entry.note?.trim() && <Text style={styles.baitRowNote}>{entry.note}</Text>}
+                </View>
+                {/* D1b: a CLOSED row loses its trash icon; open rows keep theirs. */}
+                {!readOnly && !rowClosed && (
+                  <TouchableOpacity style={styles.deleteBtn} onPress={() => deleteBait(i)}>
+                    <Trash2 size={16} color="#EF4444" />
+                  </TouchableOpacity>
+                )}
               </View>
-              {!readOnly && !isClosed('dgCloseBaitUsed') && (
-                <TouchableOpacity style={styles.deleteBtn} onPress={() => deleteBait(i)}>
-                  <Trash2 size={16} color="#EF4444" />
-                </TouchableOpacity>
+              {/* D1: split side-by-side pair BELOW the row (logs-list Edit|Delete pattern);
+                  D1b: closed → the pair is replaced by the same grey lock bar the card uses. */}
+              {rowClosed ? (
+                <View style={styles.closedBanner}>
+                  <Lock size={14} color="#64748B" />
+                  <Text style={styles.closedBannerText}>{t('form234.closedAtLabel', { time: formatClose(entry.closeDt || closes['dgCloseBaitUsed']) })}</Text>
+                </View>
+              ) : !readOnly && (
+                <View style={styles.baitRowActions}>
+                  <TouchableOpacity style={styles.baitRowEditBtn} onPress={() => openBaitEdit(i)} activeOpacity={0.8}>
+                    <Edit3 size={14} color="#1E3A8A" />
+                    <Text style={styles.baitRowEditText}>{t('form234.baitRowEdit')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.baitRowCloseBtn} onPress={() => closeBaitRow(i)} activeOpacity={0.8}>
+                    <Lock size={14} color="#B45309" />
+                    <Text style={styles.baitRowCloseText}>{t('form234.baitRowClose')}</Text>
+                  </TouchableOpacity>
+                </View>
               )}
             </View>
-          ))}
-          {!readOnly && !isClosed('dgCloseBaitUsed') && (
+            );
+          })}
+          {/* S134 T1: Add Bait is ALWAYS available — never gated on any close state. A row
+              added after closes joins OPEN (a legacy card stamp is adopted into the existing
+              rows and dropped at add time, so nothing can be inherited). */}
+          {!readOnly && (
             <TouchableOpacity style={styles.addBtn} onPress={() => openSheet('bait')}>
               <Plus size={16} color="#1E3A8A" />
               <Text style={styles.addBtnText}>{t('form234.addBait')}</Text>
             </TouchableOpacity>
           )}
-          </View>
-          {renderCloseControl('dgCloseBaitUsed', 'form234.baitReportingSection', baitEntries.length > 0)}
+          {/* S134 T1: the card control closes OPEN ROWS ONLY (own key, bait card only — T2).
+              Visible only while at least one row is open; no section-level banner EVER (rows
+              carry their own lock bars). */}
+          {!readOnly && baitEntries.some(e => !baitRowClosed(e)) && (
+            <TouchableOpacity style={styles.closeSectionBtn} onPress={closeAllOpenBaitRows} activeOpacity={0.8}>
+              <Lock size={16} color="#B45309" />
+              <Text style={styles.closeSectionBtnText}>{t('form234.closeAllBaitButton')}</Text>
+            </TouchableOpacity>
+          )}
         </View>
         )}
 
@@ -2884,7 +3058,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           <TouchableOpacity activeOpacity={1} onPress={() => {}}>
             <View style={styles.sheetContent}>
               <Text style={styles.sheetTitle}>
-                {sheetMode === 'bait' ? t('form234.addBait') : t('form234.addBycatch')}
+                {sheetMode === 'bait'
+                  ? (sheetEditIndex != null ? t('form234.editBait') : t('form234.addBait'))
+                  : t('form234.addBycatch')}
               </Text>
 
               <Text style={styles.sheetLabel}>
@@ -2979,6 +3155,23 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 keyboardType="numeric"
               />
 
+              {/* S134 (Ruling B): per-row note — one REM per BAIT_USED occurrence. Optional
+                  (unmarked-means-optional, the screen convention). */}
+              {sheetMode === 'bait' && (
+                <>
+                  <Text style={[styles.sheetLabel, { marginTop: 14 }]}>{t('form234.baitNoteLabel')}</Text>
+                  <TextInput
+                    style={[styles.input, { minHeight: 60, textAlignVertical: 'top' }]}
+                    value={sheetNote}
+                    onChangeText={setSheetNote}
+                    placeholder={t('form234.baitNotePlaceholder')}
+                    placeholderTextColor="#94A3B8"
+                    multiline
+                    maxLength={2000}
+                  />
+                </>
+              )}
+
               {sheetMode === 'bycatch' && subformId === 90 && (
                 <>
                   <Text style={[styles.sheetLabel, { marginTop: 14 }]}>
@@ -3001,7 +3194,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               )}
 
               <TouchableOpacity style={styles.sheetConfirmBtn} onPress={handleSheetConfirm}>
-                <Text style={styles.sheetConfirmText}>{t('form234.addEntry')}</Text>
+                <Text style={styles.sheetConfirmText}>
+                  {sheetMode === 'bait' && sheetEditIndex != null ? t('form234.saveEntry') : t('form234.addEntry')}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.sheetCancelBtn} onPress={() => setSheetVisible(false)}>
                 <Text style={styles.sheetCancelText}>{tc('nav.cancel')}</Text>
@@ -3116,6 +3311,23 @@ const styles = StyleSheet.create({
   },
   closedBannerText: { fontSize: 12, fontWeight: '600', color: '#64748B' },
   closedBody: { opacity: 0.55 },
+  // S134: per-row bait chrome — the split Edit | Close & Save pair below each row
+  // (logs-list Edit|Delete pattern), plus the row wrapper and per-row note line.
+  baitRowWrap: { marginBottom: 8 },
+  baitRowNote: { fontSize: 12, color: '#64748B', fontStyle: 'italic', marginTop: 3 },
+  baitRowActions: { flexDirection: 'row', gap: 8, marginTop: 6 },
+  baitRowEditBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 8, borderRadius: 8,
+    borderWidth: 1, borderColor: '#1E3A8A', backgroundColor: '#EFF6FF',
+  },
+  baitRowEditText: { fontSize: 13, fontWeight: '700', color: '#1E3A8A' },
+  baitRowCloseBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 8, borderRadius: 8,
+    borderWidth: 1, borderColor: '#B45309', backgroundColor: '#FEF3C7',
+  },
+  baitRowCloseText: { fontSize: 13, fontWeight: '700', color: '#B45309' },
   // S121 multi-grid: additional catch-effort block chrome
   effortBlock: {
     backgroundColor: '#F8FAFC', borderRadius: 10, padding: 12,

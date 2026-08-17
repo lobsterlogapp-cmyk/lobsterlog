@@ -13,7 +13,6 @@ test('single-group notes lock only when their own group is closed', () => {
     ['landing', 'dgCloseLanding'],
     ['catch', 'dgCloseEffort'],
     ['haul', 'dgCloseEffort'],
-    ['bait', 'dgCloseBaitUsed'],
     ['sar', 'dgCloseSar'],
     ['transfer', 'dgCloseTransfer'],
     ['hlin', 'dgCloseHlin'],
@@ -46,15 +45,17 @@ test('trip note is never locked', () => {
 // An unrelated group's close must not leak into another section's note.
 test('an unrelated close does not lock a note', () => {
   expect(isNoteLocked('landing', closed('dgCloseBaitUsed'))).toBe(false);
-  expect(isNoteLocked('bait', closed('dgCloseLanding'))).toBe(false);
   expect(isNoteLocked('sar', closed('dgCloseHlin'))).toBe(false);
 });
 
-// The map covers exactly the closeable note sections (trip absent by design).
-test('NOTE_CLOSE_KEYS covers the eight closeable note keys and not trip', () => {
+// The map covers exactly the closeable note sections. trip is absent by design (no close
+// control); bait is absent as of S134 — bait notes are PER ROW, locked by the row's own
+// closeDt, and the legacy card-level bait note has no edit surface (so no lock entry).
+test('NOTE_CLOSE_KEYS covers the seven closeable note keys — not trip, not bait (S134)', () => {
   expect(Object.keys(NOTE_CLOSE_KEYS).sort()).toEqual(
-    ['bait', 'catch', 'haul', 'hlin', 'hlout', 'landing', 'pcons', 'sar', 'transfer'].sort(),
+    ['catch', 'haul', 'hlin', 'hlout', 'landing', 'pcons', 'sar', 'transfer'].sort(),
   );
   expect(NOTE_CLOSE_KEYS.trip).toBeUndefined();
+  expect(NOTE_CLOSE_KEYS.bait).toBeUndefined();
   expect(NOTE_CLOSE_KEYS.pcons).toEqual(['dgClosePconsBycatch', 'dgClosePconsPersonal']);
 });

@@ -280,10 +280,37 @@ export function dataGroupInputsFromLog(log: Pick<DfoLog, 'subformId' | 'data'>):
   };
 }
 
+// S134: bait closes PER ROW (per-occurrence closure, §5). The bait group counts as closed
+// when the card-level close-all stamp exists OR every stored bait row carries its own
+// closeDt. One definition, two callers (the send guard below and FullDfoForm's
+// openUsedGroups) — keep them on this helper so they can't drift.
+export function baitRowsAllClosed(entriesJson?: string): boolean {
+  try {
+    const rows = JSON.parse(entriesJson || '[]') as { closeDt?: string }[];
+    return rows.length > 0 && rows.every(r => !!r.closeDt);
+  } catch { return false; }
+}
+
+// S134 T1: stamp every still-open bait row with `stamp`; rows that already carry their own
+// closeDt are untouched (skip, never restamp). One helper, three callers in FullDfoForm:
+// the bait card's close-all button, the bait member of the form-level Close & Save All
+// (both of which write NO card-level stamp — only rows have close states), and the
+// adopt-on-add path that converts a legacy card-level dgCloseBaitUsed into per-row stamps
+// (same value → identical emitted bytes) so a newly added row can never inherit a close.
+export function stampOpenBaitRows(entriesJson: string | undefined, stamp: string): string {
+  try {
+    const rows = JSON.parse(entriesJson || '[]') as { closeDt?: string }[];
+    return JSON.stringify(rows.map(r => (r.closeDt ? r : { ...r, closeDt: stamp })));
+  } catch { return entriesJson ?? '[]'; }
+}
+
 // The send-path guard's refusal list: used groups whose data map carries NO real close stamp.
 // Non-empty ⇒ the send must refuse and name these sections (loud, not lossy).
+// S134: bait is also satisfied by all-rows-closed — the card key is now the close-ALL, not
+// the only close, so a log whose bait rows were each closed individually must not be refused.
 export function unclosedUsedGroupKeys(log: Pick<DfoLog, 'subformId' | 'data'>): string[] {
-  return usedDataGroupKeys(dataGroupInputsFromLog(log)).filter(k => !log.data[k]);
+  return usedDataGroupKeys(dataGroupInputsFromLog(log)).filter(k =>
+    !log.data[k] && !(k === 'dgCloseBaitUsed' && baitRowsAllClosed(log.data.baitEntries)));
 }
 
 // --- S128 Phase 1: per-section REM note lock (§5.2.1 irreversibility) ---
@@ -293,11 +320,14 @@ export function unclosedUsedGroupKeys(log: Pick<DfoLog, 'subformId' | 'data'>): 
 // into is closed (founder ruling S128: 'pcons' rides BOTH PCONS occurrences — Bycatch AND
 // Personal Use — so either close freezes it). 'trip' has no close control (never locked)
 // and is intentionally absent from the map.
+// S134: 'bait' is absent too — bait notes are PER ROW now (each row's note rides the row,
+// locked by that row's own close). The legacy card-level rem.bait has no edit surface any
+// more (the bait card's Add-a-note affordance was removed), so it needs no lock entry; it
+// still EMITS as the fallback for legacy rows without their own note.
 export const NOTE_CLOSE_KEYS: Record<string, string[]> = {
   landing:  ['dgCloseLanding'],
   catch:    ['dgCloseEffort'],   // the Catch & Effort note writes catch+haul, all inside EFFORT
   haul:     ['dgCloseEffort'],   // (haul is written together with catch; same close group)
-  bait:     ['dgCloseBaitUsed'],
   pcons:    ['dgClosePconsBycatch', 'dgClosePconsPersonal'], // one note, two PCONS groups
   sar:      ['dgCloseSar'],
   transfer: ['dgCloseTransfer'],

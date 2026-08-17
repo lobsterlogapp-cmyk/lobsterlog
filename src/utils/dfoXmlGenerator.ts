@@ -127,7 +127,11 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   let baitXml = '';
   try {
     const baitList = getDfoBaitTypeList(subformId);
-    const entries: { type: string; lbs: string; condition?: number }[] = JSON.parse(d.baitEntries || '[]');
+    // S134: rows may carry their OWN closeDt/note (per-occurrence closure, §5 — DFO ruling
+    // Aug 17). Both are optional additions; legacy rows without them fall back to the
+    // card-level dgCloseBaitUsed stamp and the card-level rem.bait note (the SAR pattern,
+    // :404-407), so a pre-S134 log emits byte-identically.
+    const entries: { type: string; lbs: string; condition?: number; closeDt?: string; note?: string }[] = JSON.parse(d.baitEntries || '[]');
     // S125 Phase 9: DG_CLOSE_DT ONLY from a real stored stamp — no now() fallback. Absent → tag()
     // drops the element (used-but-unclosed is refused before the send by unclosedUsedGroupKeys).
     const baitCloseDt = d.dgCloseBaitUsed ? toCloseTimestamp(d.dgCloseBaitUsed) : '';
@@ -145,8 +149,8 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
              tag('BT_TYP_ID',   typeCode, '      ') +
              tag('BT_WT',       wtKg, '      ') +
              tag('BT_COND_ID',  condStr, '      ') +
-             tag('DG_CLOSE_DT', baitCloseDt, '      ') +
-             tag('REM',         rem.bait ?? '', '      ') +
+             tag('DG_CLOSE_DT', e.closeDt ? toCloseTimestamp(e.closeDt) : baitCloseDt, '      ') +
+             tag('REM',         e.note || (rem.bait ?? ''), '      ') +
              `    </BAIT_USED>\n`;
     }).join('');
   } catch { /* noop */ }
