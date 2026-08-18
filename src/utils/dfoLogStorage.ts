@@ -52,6 +52,7 @@ export interface ExtraSarDetail {
   nbSpcmn?: string;
   condId?: string;        // MV_SPECIMENS_CONDITION codeId → SPCMN_COND_ID
   closeDt?: string;       // S124: per-block DG_CLOSE_DT (ISO) — SAR closes one block at a time
+  note?: string;          // S135: per-block REM text; absent → falls back to rem.sar at emit
 }
 
 export interface ExtraEffortDetail {
@@ -313,16 +314,46 @@ export function stampOpenRows(entriesJson: string | undefined, stamp: string): s
 // Bait-named alias kept so the S134 bait-pilot call sites and tests stay untouched.
 export const stampOpenBaitRows = stampOpenRows;
 
+// S135: SAR closes PER BLOCK (§5 per-occurrence closure — the bait/bycatch pattern, but
+// SAR's occurrences are NOT one uniform JSON array: block 1 lives as flat d.sar* keys with
+// its own stamp/note in the new flat d.sarCloseDt / d.sarNote keys (ruling 1 — block 1
+// does not move into extraSars), blocks 2+ ride d.extraSars. This is THE one reader that
+// synthesizes the uniform block list, mirroring the synthesis the generator's <SAR> loop
+// has done since S121. The emit, the send-guard escape below, and FullDfoForm's close-all
+// all read THIS list, so they cannot disagree about what a "block" is.
+export function sarBlocksFromData(d: Record<string, string | undefined>): ExtraSarDetail[] {
+  let extraSars: ExtraSarDetail[] = [];
+  try {
+    const parsed = JSON.parse(d.extraSars || '[]');
+    if (Array.isArray(parsed)) extraSars = parsed;
+  } catch { /* noop */ }
+  return [
+    { species: d.sarSpecies, lat: d.sarLat, lng: d.sarLng, gpsSrc: d.sarGpsSrc,
+      date: d.sarDate, time: d.sarTime, nbSpcmn: d.sarNbSpcmn, condId: d.sarCondId,
+      closeDt: d.sarCloseDt || undefined, note: d.sarNote || undefined },
+    ...extraSars,
+  ];
+}
+
+// True when EVERY SAR block carries its own close stamp. Block 1 is always in the reader's
+// list, so this is never vacuously true — an unstamped block 1 keeps the group open.
+export function sarBlocksAllClosed(d: Record<string, string | undefined>): boolean {
+  return sarBlocksFromData(d).every(b => !!b.closeDt);
+}
+
 // The send-path guard's refusal list: used groups whose data map carries NO real close stamp.
 // Non-empty ⇒ the send must refuse and name these sections (loud, not lossy).
 // S134: the row-based groups (bait; bycatch since Phase 3) are also satisfied by
 // all-rows-closed — nothing writes their card keys any more (legacy logs only), so a log
 // whose rows were each closed individually must not be refused.
+// S135: SAR joins them — closed when the legacy card stamp exists OR every block from
+// sarBlocksFromData carries its own stamp.
 export function unclosedUsedGroupKeys(log: Pick<DfoLog, 'subformId' | 'data'>): string[] {
   return usedDataGroupKeys(dataGroupInputsFromLog(log)).filter(k =>
     !log.data[k]
     && !(k === 'dgCloseBaitUsed' && rowsAllClosed(log.data.baitEntries))
-    && !(k === 'dgClosePconsBycatch' && rowsAllClosed(log.data.bycatchEntries)));
+    && !(k === 'dgClosePconsBycatch' && rowsAllClosed(log.data.bycatchEntries))
+    && !(k === 'dgCloseSar' && sarBlocksAllClosed(log.data)));
 }
 
 // --- S128 Phase 1: per-section REM note lock (§5.2.1 irreversibility) ---

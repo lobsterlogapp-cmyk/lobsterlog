@@ -425,6 +425,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const [extraSars, setExtraSars] = useState<ExtraSarDetail[]>([]);
   const [extraSarDropdown, setExtraSarDropdown] = useState<{ idx: number; kind: 'species' | 'cond' } | null>(null);
   const [sarGpsSrc, setSarGpsSrc] = useState<'gps' | 'manual'>('manual');
+  // S135: block 1's OWN close stamp and note — NEW FLAT data keys beside the other sar*
+  // scalars (ruling 1: block 1 does not move into extraSars; nothing stored is rewritten
+  // on load). In Phase 1 only the adopt-on-add guard writes them; the per-block close/note
+  // UI arrives in Phase 2.
+  const [sarCloseDt, setSarCloseDt] = useState('');
+  const [sarNote, setSarNote] = useState('');
 
   // Lost Gear — REMOVED (S93): LOST_GEAR_IND is Blocked in the 234.12 XSD (maxOccurs=0).
   // FGRS handles lost/found gear reporting externally; no app capture.
@@ -571,6 +577,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             setSarNbSpcmn(d.sarNbSpcmn || '');
             setSarCondId(d.sarCondId || '');
             setSarGpsSrc(d.sarGpsSrc === 'gps' ? 'gps' : 'manual');
+            // S135: block 1's own stamp/note (absent on pre-S135 logs)
+            setSarCloseDt(d.sarCloseDt || '');
+            setSarNote(d.sarNote || '');
             // S121 multi-SAR: additional encounters (absent on pre-S121 logs)
             try {
               const ex = JSON.parse(d.extraSars || '[]');
@@ -741,6 +750,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     sarYes: String(sarYes),
     sarSpecies, sarSpeciesOther, sarWhat, sarLat, sarLng, sarDate, sarTime,
     sarNbSpcmn, sarCondId, sarGpsSrc,
+    // S135: block 1's own stamp/note — written only when set, so an untouched legacy
+    // log keeps its exact stored shape (the extraSars rationale below)
+    ...(sarCloseDt ? { sarCloseDt } : {}),
+    ...(sarNote ? { sarNote } : {}),
     // S121: additional SAR encounters — key written only when blocks exist (see
     // extraEffortDetails above for the rationale)
     ...(extraSars.length > 0 ? { extraSars: JSON.stringify(extraSars) } : {}),
@@ -988,6 +1001,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       setSarSpecies(''); setSarSpeciesOther(''); setSarWhat('');
       setSarLat(''); setSarLng(''); setSarDate(''); setSarTime('');
       setSarNbSpcmn(''); setSarCondId(''); setSarGpsSrc('manual');
+      setSarCloseDt(''); setSarNote(''); // S135: block 1's own stamp/note clear with it
       setSarDropdownOpen(false); setSarCondPickerOpen(false);
       setExtraSars([]); setExtraSarDropdown(null); // S121: No clears the extra encounters too
     }
@@ -1494,7 +1508,28 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     // Mirror handleSarYes: stamp the encounter's date/time now and try a GPS fix
     const now = new Date();
     const idx = extraSars.length;
-    setExtraSars(prev => [...prev, { date: formatDate(now), time: formatTime(now), gpsSrc: 'manual' }]);
+    const newBlock: ExtraSarDetail = { date: formatDate(now), time: formatTime(now), gpsSrc: 'manual' };
+    // S135 adopt-on-add (the bait pattern above): a NEW block must never inherit a close
+    // through the legacy card-stamp fallback. If this log still carries a pre-S135
+    // dgCloseSar, copy that stamp AND the shared rem.sar note onto every block lacking its
+    // own — block 1 (flat keys) included; same values → identical emitted bytes — then
+    // drop the card key so the new block joins genuinely OPEN. This is the one
+    // value-preserving rewrite, triggered only by the harvester's own add; an untouched
+    // legacy log is never rewritten. (The note is copied verbatim: rem.sar is locked while
+    // the card is closed, so state equals the stored bytes.)
+    const legacyCardStamp = closes['dgCloseSar'];
+    if (legacyCardStamp) {
+      const sharedNote = remarks.sar ?? '';
+      if (!sarCloseDt) setSarCloseDt(legacyCardStamp);
+      if (!sarNote && sharedNote) setSarNote(sharedNote);
+      const adopted = extraSars.map(s => (s.closeDt ? s : {
+        ...s, closeDt: legacyCardStamp, ...(s.note || !sharedNote ? {} : { note: sharedNote }),
+      }));
+      setExtraSars([...adopted, newBlock]);
+      setCloses(prev => { const { dgCloseSar: _dropped, ...rest } = prev; return rest; });
+    } else {
+      setExtraSars(prev => [...prev, newBlock]);
+    }
     await captureGps(
       (v: string) => updateExtraSar(idx, { lat: v }),
       (v: string) => updateExtraSar(idx, { lng: v }),

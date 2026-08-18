@@ -5,7 +5,7 @@
 // digits only). Flat ISO-8601 fields still inside TRIP are S2/S3 scope.
 
 import forge from 'node-forge';
-import { DfoLog, ExtraEffortDetail, ExtraSarDetail } from './dfoLogStorage';
+import { DfoLog, ExtraEffortDetail, ExtraSarDetail, sarBlocksFromData } from './dfoLogStorage';
 import { CaptainProfile } from './captainStorage';
 import { getDfoBaitTypeList, baitConditionState, getDfoPconsSpeciesList, DFO_SPECIE_FRM_ID, DFO_PCONS_OTHER_SIZE_ID, DFO_GEAR_ID, DFO_SOFT_VER, DFO_CIE_ID, DFO_FORM_VER_ID, DFO_HLIN_COMPANY_LIST, DFO_HLOUT_COMPANY_LIST, DFO_SUBFORM_REGISTRY, DFO_FMA_38B, DFO_FMA_NB_VNTCH, DFO_FMA_NB_VNTCH_YOU, DFO_FMA_STAT_SECT_REQUIRED, DFO_STAT_SECT_BY_FMA, DFO_FMA_GRID_MAP, DFO_GRID_BLOCKED_FMA, clampCoord4 } from './dfoConstants';
 import { MV_PARTNERSHIP_TYPE, MV_GRID } from '../data/reftables';
@@ -394,16 +394,11 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
     // S121 multi-SAR: block 1 = the legacy d.sar* fields; blocks 2+ = the additive
     // d.extraSars JSON array (XSD allows SAR 0..unbounded under TRIP). A single-SAR log
     // emits byte-identically to pre-S121.
-    let extraSars: ExtraSarDetail[] = [];
-    try {
-      const parsed = JSON.parse(d.extraSars || '[]');
-      if (Array.isArray(parsed)) extraSars = parsed;
-    } catch { /* noop */ }
-    const sars: ExtraSarDetail[] = [
-      { species: d.sarSpecies, lat: d.sarLat, lng: d.sarLng, gpsSrc: d.sarGpsSrc,
-        date: d.sarDate, time: d.sarTime, nbSpcmn: d.sarNbSpcmn, condId: d.sarCondId },
-      ...extraSars,
-    ];
+    // S135: the synthesis moved into sarBlocksFromData — the SAME reader the send guard
+    // (and the close-all) use, so the emit and the guard cannot disagree about the block
+    // list. Block 1 now also carries its own closeDt/note from the flat
+    // d.sarCloseDt / d.sarNote keys (absent on legacy logs → the fallbacks below).
+    const sars: ExtraSarDetail[] = sarBlocksFromData(d);
     sars.forEach(s => {
       const sarMode = s.gpsSrc === 'gps' ? 'G' : 'M';
       body += `    <SAR>\n`;
@@ -417,7 +412,9 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
       // legacy d.dgCloseSar; blocks 2..n carry their own s.closeDt. Absent → falls back to
       // d.dgCloseSar exactly as before, so existing logs emit byte-identically.
       body += tag('DG_CLOSE_DT',   (s.closeDt || d.dgCloseSar) ? toCloseTimestamp(s.closeDt || d.dgCloseSar) : '', '      ');
-      body += tag('REM',           rem.sar ?? '', '      ');
+      // S135: each block emits its OWN note; the legacy shared rem.sar is the fallback
+      // (the bait shape), so a pre-S135 log emits byte-identically.
+      body += tag('REM',           s.note || (rem.sar ?? ''), '      ');
       body += `    </SAR>\n`;
     });
   }
