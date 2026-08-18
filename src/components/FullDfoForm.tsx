@@ -998,6 +998,14 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   };
 
   const handleSarYes = async (val: boolean) => {
+    // S135 Phase 3 (ruling 5, the bycatch shape): flipping to No wipes every SAR block —
+    // REFUSED while any block is closed (its own stamp or the legacy card stamp), because
+    // closed occurrences are irreversible (§5.2.1). Nothing changes on refusal; with only
+    // OPEN blocks the wipe below behaves exactly as before.
+    if (!val && sarAnyBlockClosed()) {
+      Alert.alert(t('form234.sarSubsection'), t('form234.sarClosedNoToggle'));
+      return;
+    }
     setSarYes(val);
     if (val) {
       Alert.alert('', t('form234.sarIndPrompt'), [{ text: tc('nav.ok') }]);
@@ -3262,16 +3270,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                   The legacy shared rem.sar stays in storage and still emits as the fallback
                   for blocks without their own note; it has no edit surface any more. */}
             </View>
-            {/* S135: NO card-level freeze — only blocks carry close states (ruling 4).
-                TEMPORARY (§2.2 ruling b): the toggle is disabled (greyed, untouchable)
-                while any closed block exists — flipping to No would destroy closed
-                occurrences (§5.2.1). Phase 3 replaces this disable with the refusal alert. */}
-            <View
-              pointerEvents={!readOnly && sarAnyBlockClosed() ? 'none' : 'auto'}
-              style={!readOnly && sarAnyBlockClosed() ? styles.closedBody : undefined}
-            >
-              {renderYesNoToggle(t('form234.sarIndLabel'), sarYes, handleSarYes)}
-            </View>
+            {/* S135 Phase 3: NO card-level freeze — only blocks carry close states (ruling
+                4). The toggle is LIVE; flipping to No while any block is closed is REFUSED
+                inside handleSarYes (ruling 5, the bycatch shape) — closed occurrences are
+                irreversible (§5.2.1). The Phase 2 temporary grey-out is gone. */}
+            {renderYesNoToggle(t('form234.sarIndLabel'), sarYes, handleSarYes)}
             {sarYes === true && (
               <>
                 {/* Block 1 — the flat sar* keys, framed by the SAME chrome as blocks 2+

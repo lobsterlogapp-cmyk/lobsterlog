@@ -246,6 +246,7 @@
     "closeSarAllConfirmBody_one": "Ceci verrouillera {{count}} entrée d’espèce en péril. Une fois fermée, vous ne pourrez plus la modifier dans ce journal.",
     "closeSarAllConfirmBody_other": "Ceci verrouillera {{count}} entrées d’espèces en péril. Une fois fermées, vous ne pourrez plus les modifier dans ce journal.",
     "closeAllSarButton": "Fermer et enregistrer toutes les espèces en péril",
+    "sarClosedNoToggle": "Les entrées d’espèces en péril déjà fermées ne peuvent pas être retirées, donc ce choix ne peut pas passer à Non.",
     "personalUseSection": "Usage personnel",
     "closeAllButton": "Fermer et tout enregistrer",
     "closeAllConfirmTitle": "Fermer et tout enregistrer?",

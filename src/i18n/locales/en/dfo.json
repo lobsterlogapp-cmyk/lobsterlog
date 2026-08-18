@@ -245,6 +245,7 @@
     "closeSarAllConfirmBody_one": "This will lock {{count}} species at risk entry. Once closed you can't change it in this log.",
     "closeSarAllConfirmBody_other": "This will lock {{count}} species at risk entries. Once closed you can't change them in this log.",
     "closeAllSarButton": "Close & Save All Species at Risk",
+    "sarClosedNoToggle": "Species at risk entries that are already closed can't be removed, so this can't be switched to No.",
     "personalUseSection": "Personal Use",
     "closeAllButton": "Close & Save All",
     "closeAllConfirmTitle": "Close and save all sections?",
