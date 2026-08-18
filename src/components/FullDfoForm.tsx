@@ -56,6 +56,8 @@ import {
   usedDataGroupKeys,
   baitRowsAllClosed,
   stampOpenBaitRows,
+  rowsAllClosed,
+  stampOpenRows,
   isNoteLocked,
 } from '../utils/dfoLogStorage';
 import { triggerBackup } from '../utils/dfoBackup';
@@ -101,7 +103,10 @@ interface FullDfoFormProps {
 // and closes independently (§5 per-occurrence closure). Legacy rows without them parse
 // unchanged and fall back to the card-level dgCloseBaitUsed stamp / rem.bait note at emit.
 type BaitEntry = { type: string; lbs: string; condition?: number; closeDt?: string; note?: string; };
-type BycatchEntry = { species: string; lbs: string; usage?: string; };
+// S134 Phase 3: closeDt/note are OPTIONAL additions — each bycatch row is its own PCONS
+// occurrence and closes independently (the bait pattern). Legacy rows parse unchanged and
+// fall back to the card-level dgClosePconsBycatch stamp / rem.pcons note at emit.
+type BycatchEntry = { species: string; lbs: string; usage?: string; closeDt?: string; note?: string; };
 
 // S124 Phase 3: the dgClose* data-map keys the generator reads for DG_CLOSE_DT, one per
 // closeable Form-234 data group (§5.2.1). PCONS has two occurrences (bycatch + personal use);
@@ -1076,6 +1081,26 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     setSheetVisible(true);
   };
 
+  // S134 Phase 3: reopen the sheet on an existing bycatch row (the bait pattern). Confirm
+  // updates the row in place. A stored species matching no list label is a custom 'Other'.
+  const openBycatchEdit = (index: number) => {
+    const e = bycatchEntries[index];
+    if (!e) return;
+    const match = getDfoCatchSpeciesList(subformId).find(o => o.label === e.species);
+    setSheetMode('bycatch');
+    setSheetSelectedType(match ? e.species : 'Other');
+    setSheetSelectedCodeId(match?.codeId ?? null);
+    setSheetCustomType(match ? '' : e.species);
+    setSheetLbs(e.lbs);
+    setSheetUsage(e.usage ?? '');
+    setSheetCondition(null);
+    setSheetConditionOpen(false);
+    setSheetDropdownOpen(false);
+    setSheetNote(e.note ?? '');
+    setSheetEditIndex(index);
+    setSheetVisible(true);
+  };
+
   const handleSheetConfirm = () => {
     const finalType = sheetSelectedType === 'Other' ? sheetCustomType.trim() : sheetSelectedType;
     if (!finalType) {
@@ -1124,7 +1149,25 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         }
       }
     } else {
-      setBycatchEntries(prev => [...prev, { species: finalType, lbs: sheetLbs.trim(), usage: sheetUsage || undefined }]);
+      const note = sheetNote.trim() || undefined;
+      if (sheetEditIndex != null) {
+        // S134 Phase 3 edit-in-place: UPDATE the row — appending here would double the
+        // bycatch weight sent to DFO.
+        setBycatchEntries(prev => prev.map((en, i) =>
+          i === sheetEditIndex ? { ...en, species: finalType, lbs: sheetLbs.trim(), usage: sheetUsage || undefined, note } : en));
+      } else {
+        const newRow: BycatchEntry = { species: finalType, lbs: sheetLbs.trim(), usage: sheetUsage || undefined, note };
+        // S134 Phase 3: adopt-on-add — a NEW row must never inherit a close through the
+        // legacy card-stamp fallback (same one value-preserving rewrite as bait).
+        const legacyCardStamp = closes['dgClosePconsBycatch'];
+        if (legacyCardStamp) {
+          const adopted = JSON.parse(stampOpenRows(JSON.stringify(bycatchEntries), legacyCardStamp)) as BycatchEntry[];
+          setBycatchEntries([...adopted, newRow]);
+          setCloses(prev => { const { dgClosePconsBycatch: _dropped, ...rest } = prev; return rest; });
+        } else {
+          setBycatchEntries(prev => [...prev, newRow]);
+        }
+      }
     }
     setSheetVisible(false);
   };
@@ -1606,6 +1649,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // S134: a bait ROW is closed by its own stamp OR by the card-level close-all (the row's
   // stamp wins at emit; the card stamp is the fallback — the SAR pattern).
   const baitRowClosed = (e: BaitEntry) => !!(e.closeDt || closes['dgCloseBaitUsed']);
+  // S134 Phase 3: same rule for bycatch rows (legacy dgClosePconsBycatch = fallback only).
+  const bycatchRowClosed = (e: BycatchEntry) => !!(e.closeDt || closes['dgClosePconsBycatch']);
   // Local "YYYY-MM-DD HH:MM" — §2: the app's existing timestamp display format.
   const formatClose = (iso?: string): string => {
     if (!iso) return '';
@@ -1657,6 +1702,60 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       </TouchableOpacity>
     );
   };
+
+  // ── S134 Phase 3: per-row bycatch closure (the bait pattern, verbatim) ─────────────────
+  const closeBycatchRow = (index: number) => {
+    if (readOnly) return;
+    const e = bycatchEntries[index];
+    if (!e || bycatchRowClosed(e)) return;
+    Alert.alert(
+      t('form234.closeBycatchRowConfirmTitle'),
+      t('form234.closeBycatchRowConfirmBody'),
+      [
+        { text: t('form234.closeConfirmNotYet'), style: 'cancel' },
+        {
+          text: t('form234.closeConfirmYes'),
+          style: 'destructive',
+          onPress: () => {
+            const nowIso = new Date().toISOString();
+            const next = bycatchEntries.map((en, i) => (i === index ? { ...en, closeDt: nowIso } : en));
+            setBycatchEntries(next);
+            if (isLoaded && !editingCompleted) {
+              void saveLog({ ...buildDraftLog(), data: { ...buildLogData(), bycatchEntries: JSON.stringify(next) } });
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  // S134 Phase 3: the bycatch card control closes EVERY OPEN ROW (own stamps) and writes NO
+  // card-level stamp — identical to the bait close-all.
+  const closeAllOpenBycatchRows = () => {
+    if (readOnly) return;
+    const lockCount = bycatchEntries.filter(e => !bycatchRowClosed(e)).length;
+    if (lockCount === 0) return;
+    Alert.alert(
+      t('form234.closeConfirmTitle', { section: t('form234.bycatchSubsection') }),
+      t('form234.closeBycatchAllConfirmBody', { count: lockCount }),
+      [
+        { text: t('form234.closeConfirmNotYet'), style: 'cancel' },
+        {
+          text: t('form234.closeConfirmYes'),
+          style: 'destructive',
+          onPress: () => {
+            const nowIso = new Date().toISOString();
+            const next = JSON.parse(stampOpenRows(JSON.stringify(bycatchEntries), nowIso)) as BycatchEntry[];
+            setBycatchEntries(next);
+            if (isLoaded && !editingCompleted) {
+              void saveLog({ ...buildDraftLog(), data: { ...buildLogData(), bycatchEntries: JSON.stringify(next) } });
+            }
+          },
+        },
+      ],
+    );
+  };
+
   // Props that grey + freeze a closed card/block's editable body (blocks all input).
   const closedBodyProps = (dataKey: string) => ({
     pointerEvents: (isClosed(dataKey) ? 'none' : 'auto') as 'none' | 'auto',
@@ -1909,10 +2008,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       personalUse, sarYes: sarYes === true, transferYes: transferYes === true,
       hlinCompany, hlinConfirmNo, hloutCompany, hloutConfirmNo,
     }).filter(k => !isClosed(k)
-      // S134: bait also counts as closed when every row carries its own closeDt — mirrors
-      // the send guard (unclosedUsedGroupKeys) via the same shared helper, so Close & Save
-      // All neither restamps nor counts a fully row-closed bait section.
-      && !(k === 'dgCloseBaitUsed' && baitRowsAllClosed(JSON.stringify(baitEntries))));
+      // S134: the row-based groups (bait; bycatch since Phase 3) also count as closed when
+      // every row carries its own closeDt — mirrors the send guard (unclosedUsedGroupKeys)
+      // via the same shared helper, so Close & Save All neither restamps nor counts them.
+      && !(k === 'dgCloseBaitUsed' && baitRowsAllClosed(JSON.stringify(baitEntries)))
+      && !(k === 'dgClosePconsBycatch' && rowsAllClosed(JSON.stringify(bycatchEntries))));
 
   const handleSave = async () => {
     // S124 Phase 1: bait is now OPTIONAL (Rule 1051 — the app must not force a data group; a
@@ -2099,9 +2199,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     const openUsed = openUsedGroups();
 
     // Persist as a complete log, merging the close-all stamps into the data map.
-    const persist = (extraCloses: Record<string, string>, baitNext: BaitEntry[] | null = null) => {
+    const persist = (extraCloses: Record<string, string>, baitNext: BaitEntry[] | null = null, bycatchNext: BycatchEntry[] | null = null) => {
       if (Object.keys(extraCloses).length) setCloses(prev => ({ ...prev, ...extraCloses }));
       if (baitNext) setBaitEntries(baitNext);
+      if (bycatchNext) setBycatchEntries(bycatchNext);
       const log: DfoLog = {
         id: tripId,
         lgbkUid,
@@ -2110,9 +2211,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         status: 'complete',
         dateFished,
         createdAt: Date.now(),
-        // buildLogData reads the (still-stale) state, so the per-row bait stamps ride an
-        // explicit override (S134 T1: the close-all's bait member stamps ROWS, never the card).
-        data: { ...buildLogData(), ...extraCloses, ...(baitNext ? { baitEntries: JSON.stringify(baitNext) } : {}) },
+        // buildLogData reads the (still-stale) state, so the per-row stamps ride explicit
+        // overrides (S134: the close-all's bait/bycatch members stamp ROWS, never the card).
+        data: {
+          ...buildLogData(), ...extraCloses,
+          ...(baitNext ? { baitEntries: JSON.stringify(baitNext) } : {}),
+          ...(bycatchNext ? { bycatchEntries: JSON.stringify(bycatchNext) } : {}),
+        },
         remarks: buildRemarks(),
         subformId,
         regId,
@@ -2134,18 +2239,24 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     const confirmThenSave = () => {
       if (openUsed.length > 0) {
         const stamp = new Date().toISOString();
-        // S134 T1: bait has NO card-level close state — when the close-all covers bait, it
-        // stamps each still-open ROW's own closeDt instead of writing dgCloseBaitUsed.
-        const extra = Object.fromEntries(openUsed.filter(k => k !== 'dgCloseBaitUsed').map(k => [k, stamp]));
+        // S134: the row-based groups have NO card-level close state — when the close-all
+        // covers bait or bycatch, it stamps each still-open ROW's own closeDt instead of
+        // writing the card key.
+        const extra = Object.fromEntries(openUsed
+          .filter(k => k !== 'dgCloseBaitUsed' && k !== 'dgClosePconsBycatch')
+          .map(k => [k, stamp]));
         const baitNext = openUsed.includes('dgCloseBaitUsed')
           ? (JSON.parse(stampOpenBaitRows(JSON.stringify(baitEntries), stamp)) as BaitEntry[])
+          : null;
+        const bycatchNext = openUsed.includes('dgClosePconsBycatch')
+          ? (JSON.parse(stampOpenRows(JSON.stringify(bycatchEntries), stamp)) as BycatchEntry[])
           : null;
         Alert.alert(
           t('form234.closeAllConfirmTitle'),
           t('form234.closeAllConfirmBody', { count: openUsed.length }),
           [
             { text: t('form234.closeConfirmNotYet'), style: 'cancel' },
-            { text: t('form234.closeAllConfirmYes'), style: 'destructive', onPress: () => persist(extra, baitNext) },
+            { text: t('form234.closeAllConfirmYes'), style: 'destructive', onPress: () => persist(extra, baitNext, bycatchNext) },
           ],
         );
       } else {
@@ -2766,9 +2877,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           <View style={styles.sectionHeader}>
             <View style={[styles.sectionIcon, { backgroundColor: '#FEF3C7' }]}><Anchor size={16} color="#B45309" /></View>
             <Text style={styles.sectionTitle}>{t('form234.interactionsSection')}</Text>
-            {renderNoteButton('pcons')}
+            {/* S134 Phase 3 (B4): the shared card-header note is GONE — bycatch notes are
+                per row and Personal Use has its own note. A legacy rem.pcons is untouched
+                in storage and still emits as the fallback, with no edit surface. Accepted
+                consequence: on 88/89/91 this header has no note button at all (Personal
+                Use is MAR-only). */}
           </View>
-          {renderNoteInput('pcons', remarks.pcons ?? '', (v) => setNote('pcons', v))}
 
           {/* Bycatch */}
           <View style={[styles.incidentSection, { marginBottom: 12 }]}>
@@ -2778,40 +2892,77 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               </View>
               <Text style={[styles.sectionTitle, { fontSize: 13 }]}>{t('form234.bycatchSubsection')}</Text>
             </View>
-            <View {...closedBodyProps('dgClosePconsBycatch')}>
+            {/* S134 Phase 3: NO card-level freeze — only rows have close states. Flipping
+                the toggle to No is refused while any row is closed (it would delete closed
+                occurrences — §5.2.1). */}
             {renderYesNoToggle(t('form234.bycatchQuestion'), bycatchYes, (val) => {
+              if (!val && bycatchEntries.some(e => bycatchRowClosed(e))) {
+                Alert.alert(t('form234.bycatchSubsection'), t('form234.bycatchClosedNoToggle'));
+                return;
+              }
               setBycatchYes(val);
               if (!val) setBycatchEntries([]);
             })}
             {bycatchYes === true && (
               <View style={styles.incidentBlock}>
                 {bycatchEntries.length === 0 && <Text style={styles.emptyHint}>{t('form234.noBycatchYet')}</Text>}
-                {bycatchEntries.map((entry, i) => (
-                  <View key={i} style={styles.entryRow}>
-                    <View style={styles.entryInfo}>
-                      <Text style={styles.entryType}>{bycatchSpeciesDisplay(entry.species)}</Text>
-                      {entry.usage && (
-                        <Text style={[styles.entryLbs, { color: '#64748B' }]}>{t(`form234.usageOption_${entry.usage}`)}</Text>
+                {bycatchEntries.map((entry, i) => {
+                  const rowClosed = bycatchRowClosed(entry);
+                  return (
+                  <View key={i} style={[styles.baitRowWrap, rowClosed && styles.closedBody]}>
+                    <View style={[styles.entryRow, { marginBottom: 0 }]}>
+                      <View style={styles.entryInfo}>
+                        <Text style={styles.entryType}>{bycatchSpeciesDisplay(entry.species)}</Text>
+                        {entry.usage && (
+                          <Text style={[styles.entryLbs, { color: '#64748B' }]}>{t(`form234.usageOption_${entry.usage}`)}</Text>
+                        )}
+                        <Text style={styles.entryLbs}>{t('form234.lbsSuffix', { lbs: entry.lbs })}</Text>
+                        {!!entry.note?.trim() && <Text style={styles.baitRowNote}>{entry.note}</Text>}
+                      </View>
+                      {!readOnly && !rowClosed && (
+                        <TouchableOpacity style={styles.deleteBtn} onPress={() => deleteBycatch(i)}>
+                          <Trash2 size={16} color="#EF4444" />
+                        </TouchableOpacity>
                       )}
-                      <Text style={styles.entryLbs}>{t('form234.lbsSuffix', { lbs: entry.lbs })}</Text>
                     </View>
-                    {!readOnly && !isClosed('dgClosePconsBycatch') && (
-                      <TouchableOpacity style={styles.deleteBtn} onPress={() => deleteBycatch(i)}>
-                        <Trash2 size={16} color="#EF4444" />
-                      </TouchableOpacity>
+                    {rowClosed ? (
+                      <View style={styles.closedBanner}>
+                        <Lock size={14} color="#64748B" />
+                        <Text style={styles.closedBannerText}>{t('form234.closedAtLabel', { time: formatClose(entry.closeDt || closes['dgClosePconsBycatch']) })}</Text>
+                      </View>
+                    ) : !readOnly && (
+                      <View style={styles.baitRowActions}>
+                        <TouchableOpacity style={styles.baitRowEditBtn} onPress={() => openBycatchEdit(i)} activeOpacity={0.8}>
+                          <Edit3 size={14} color="#1E3A8A" />
+                          <Text style={styles.baitRowEditText}>{t('form234.bycatchRowEdit')}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.baitRowCloseBtn} onPress={() => closeBycatchRow(i)} activeOpacity={0.8}>
+                          <Lock size={14} color="#B45309" />
+                          <Text style={styles.baitRowCloseText}>{t('form234.bycatchRowClose')}</Text>
+                        </TouchableOpacity>
+                      </View>
                     )}
                   </View>
-                ))}
-                {!readOnly && !isClosed('dgClosePconsBycatch') && (
+                  );
+                })}
+                {/* S134 Phase 3: Add Bycatch is ALWAYS available — never gated on any close
+                    state (adopt-on-add keeps a new row from inheriting a legacy stamp). */}
+                {!readOnly && (
                   <TouchableOpacity style={[styles.addBtn, { marginTop: 4 }]} onPress={() => openSheet('bycatch')}>
                     <Plus size={16} color="#1E3A8A" />
                     <Text style={styles.addBtnText}>{t('form234.addBycatch')}</Text>
                   </TouchableOpacity>
                 )}
+                {/* S134 Phase 3: the card control closes OPEN ROWS ONLY (own key — B3).
+                    Visible only while at least one row is open; no section banner ever. */}
+                {!readOnly && bycatchEntries.some(e => !bycatchRowClosed(e)) && (
+                  <TouchableOpacity style={[styles.closeSectionBtn, { marginTop: 8 }]} onPress={closeAllOpenBycatchRows} activeOpacity={0.8}>
+                    <Lock size={16} color="#B45309" />
+                    <Text style={styles.closeSectionBtnText}>{t('form234.closeAllBycatchButton')}</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
-            </View>
-            {renderCloseControl('dgClosePconsBycatch', 'form234.bycatchSubsection', bycatchYes === true && bycatchEntries.length > 0)}
           </View>
 
           {/* S124 Phase 6: MM_INTER_IND / SAR_IND live in EFFORT — hide these two sub-cards on a
@@ -2970,8 +3121,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 <AlertTriangle size={16} color="#7C3AED" />
               </View>
               <Text style={[styles.sectionTitle, { fontSize: 13 }]}>{t('form234.personalUseSection')}</Text>
+              {/* S134 Phase 3 (B4): Personal Use gets its OWN note, locked by its own close
+                  (NOTE_CLOSE_KEYS.personalUse → dgClosePconsPersonal). Single occurrence,
+                  single close — deliberately NOT per-row. */}
+              {renderNoteButton('personalUse')}
             </View>
             <View {...closedBodyProps('dgClosePconsPersonal')}>
+            {renderNoteInput('personalUse', remarks.personalUse ?? '', (v) => setNote('personalUse', v))}
             {renderField(t('form234.personalUseLabel'), personalUse, setPersonalUse, '0', false, false, 'numeric')}
             </View>
             {renderCloseControl('dgClosePconsPersonal', 'form234.personalUseSection', personalUse.trim().length > 0)}
@@ -3060,7 +3216,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               <Text style={styles.sheetTitle}>
                 {sheetMode === 'bait'
                   ? (sheetEditIndex != null ? t('form234.editBait') : t('form234.addBait'))
-                  : t('form234.addBycatch')}
+                  : (sheetEditIndex != null ? t('form234.editBycatch') : t('form234.addBycatch'))}
               </Text>
 
               <Text style={styles.sheetLabel}>
@@ -3155,16 +3311,18 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 keyboardType="numeric"
               />
 
-              {/* S134 (Ruling B): per-row note — one REM per BAIT_USED occurrence. Optional
-                  (unmarked-means-optional, the screen convention). */}
-              {sheetMode === 'bait' && (
+              {/* S134 (Ruling B / Phase 3 B2): per-row note — one REM per BAIT_USED / PCONS
+                  occurrence. Optional (unmarked-means-optional, the screen convention). */}
+              {(sheetMode === 'bait' || sheetMode === 'bycatch') && (
                 <>
-                  <Text style={[styles.sheetLabel, { marginTop: 14 }]}>{t('form234.baitNoteLabel')}</Text>
+                  <Text style={[styles.sheetLabel, { marginTop: 14 }]}>
+                    {sheetMode === 'bait' ? t('form234.baitNoteLabel') : t('form234.bycatchNoteLabel')}
+                  </Text>
                   <TextInput
                     style={[styles.input, { minHeight: 60, textAlignVertical: 'top' }]}
                     value={sheetNote}
                     onChangeText={setSheetNote}
-                    placeholder={t('form234.baitNotePlaceholder')}
+                    placeholder={sheetMode === 'bait' ? t('form234.baitNotePlaceholder') : t('form234.bycatchNotePlaceholder')}
                     placeholderTextColor="#94A3B8"
                     multiline
                     maxLength={2000}
@@ -3195,7 +3353,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
 
               <TouchableOpacity style={styles.sheetConfirmBtn} onPress={handleSheetConfirm}>
                 <Text style={styles.sheetConfirmText}>
-                  {sheetMode === 'bait' && sheetEditIndex != null ? t('form234.saveEntry') : t('form234.addEntry')}
+                  {sheetEditIndex != null ? t('form234.saveEntry') : t('form234.addEntry')}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.sheetCancelBtn} onPress={() => setSheetVisible(false)}>

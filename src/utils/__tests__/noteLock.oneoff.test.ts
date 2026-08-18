@@ -13,6 +13,7 @@ test('single-group notes lock only when their own group is closed', () => {
     ['landing', 'dgCloseLanding'],
     ['catch', 'dgCloseEffort'],
     ['haul', 'dgCloseEffort'],
+    ['personalUse', 'dgClosePconsPersonal'],
     ['sar', 'dgCloseSar'],
     ['transfer', 'dgCloseTransfer'],
     ['hlin', 'dgCloseHlin'],
@@ -24,12 +25,13 @@ test('single-group notes lock only when their own group is closed', () => {
   }
 });
 
-// pcons is ONE note transmitting into TWO independently-closeable PCONS groups.
-test('pcons note locks when EITHER PCONS occurrence is closed', () => {
-  expect(isNoteLocked('pcons', {})).toBe(false);
-  expect(isNoteLocked('pcons', closed('dgClosePconsBycatch'))).toBe(true);   // bycatch only
-  expect(isNoteLocked('pcons', closed('dgClosePconsPersonal'))).toBe(true);  // personal only
-  expect(isNoteLocked('pcons', closed('dgClosePconsBycatch', 'dgClosePconsPersonal'))).toBe(true);
+// S134 Phase 3: the shared pcons note left the map (bycatch notes are per row; the legacy
+// rem.pcons has no edit surface). Personal Use has its own note, locked ONLY by its own close.
+test('personalUse note locks only on the Personal Use close; the legacy pcons key is gone', () => {
+  expect(isNoteLocked('personalUse', {})).toBe(false);
+  expect(isNoteLocked('personalUse', closed('dgClosePconsBycatch'))).toBe(false); // bycatch close does NOT lock it
+  expect(isNoteLocked('personalUse', closed('dgClosePconsPersonal'))).toBe(true);
+  expect(isNoteLocked('pcons', closed('dgClosePconsBycatch', 'dgClosePconsPersonal'))).toBe(false);
 });
 
 // trip has no close control — it is never lockable, even with everything else closed.
@@ -49,13 +51,15 @@ test('an unrelated close does not lock a note', () => {
 });
 
 // The map covers exactly the closeable note sections. trip is absent by design (no close
-// control); bait is absent as of S134 — bait notes are PER ROW, locked by the row's own
-// closeDt, and the legacy card-level bait note has no edit surface (so no lock entry).
-test('NOTE_CLOSE_KEYS covers the seven closeable note keys — not trip, not bait (S134)', () => {
+// control); bait and pcons are absent as of S134 — those notes are PER ROW, locked by the
+// row's own closeDt, and the legacy card-level notes have no edit surface (so no lock
+// entry). personalUse joined in Phase 3 (its own note on its own single-occurrence card).
+test('NOTE_CLOSE_KEYS covers the eight closeable note keys — not trip, not bait, not pcons (S134)', () => {
   expect(Object.keys(NOTE_CLOSE_KEYS).sort()).toEqual(
-    ['catch', 'haul', 'hlin', 'hlout', 'landing', 'pcons', 'sar', 'transfer'].sort(),
+    ['catch', 'haul', 'hlin', 'hlout', 'landing', 'personalUse', 'sar', 'transfer'].sort(),
   );
   expect(NOTE_CLOSE_KEYS.trip).toBeUndefined();
   expect(NOTE_CLOSE_KEYS.bait).toBeUndefined();
-  expect(NOTE_CLOSE_KEYS.pcons).toEqual(['dgClosePconsBycatch', 'dgClosePconsPersonal']);
+  expect(NOTE_CLOSE_KEYS.pcons).toBeUndefined();
+  expect(NOTE_CLOSE_KEYS.personalUse).toEqual(['dgClosePconsPersonal']);
 });

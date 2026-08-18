@@ -13,9 +13,12 @@ export type DfoLogStatus = 'draft' | 'complete';
 
 // Per-section REM (note) text, grouped at the human-section level. Each key fans out to
 // one or more XSD REM nodes in dfoXmlGenerator.ts (T1 Logbook test):
-//   trip -> TRIP | bait -> BAIT_USED | haul -> EFFORT + EFFORT_BY_GEAR + EFFORT_DETAIL |
-//   catch -> CATCH | landing -> LANDING | hlin -> HLIN | hlout -> HLOUT | pcons -> PCONS |
-//   transfer -> TRANSFER + TRANSFER_DTL (QC-88 only) | sar -> SAR
+//   trip -> TRIP | bait -> BAIT_USED (legacy fallback; bait notes are per-row since S134) |
+//   haul -> EFFORT + EFFORT_BY_GEAR + EFFORT_DETAIL | catch -> CATCH | landing -> LANDING |
+//   hlin -> HLIN | hlout -> HLOUT | pcons -> legacy shared PCONS fallback (bycatch notes are
+//   per-row and Personal Use has its own key since S134 Phase 3) |
+//   personalUse -> the Personal Use PCONS node | transfer -> TRANSFER + TRANSFER_DTL (QC-88) |
+//   sar -> SAR
 // All optional, free text, type string_2000 (max 2000 chars) in the XSD.
 export interface LogRemarks {
   trip?: string;
@@ -26,6 +29,7 @@ export interface LogRemarks {
   hlin?: string;
   hlout?: string;
   pcons?: string;
+  personalUse?: string;
   transfer?: string;
   sar?: string;
 }
@@ -280,37 +284,45 @@ export function dataGroupInputsFromLog(log: Pick<DfoLog, 'subformId' | 'data'>):
   };
 }
 
-// S134: bait closes PER ROW (per-occurrence closure, §5). The bait group counts as closed
-// when the card-level close-all stamp exists OR every stored bait row carries its own
-// closeDt. One definition, two callers (the send guard below and FullDfoForm's
-// openUsedGroups) — keep them on this helper so they can't drift.
-export function baitRowsAllClosed(entriesJson?: string): boolean {
+// S134: bait — and, since Phase 3, bycatch — close PER ROW (per-occurrence closure, §5).
+// A row-based group counts as closed when the legacy card-level stamp exists OR every
+// stored row carries its own closeDt. One definition, two callers per group (the send
+// guard below and FullDfoForm's openUsedGroups) — keep them on this helper so they can't drift.
+export function rowsAllClosed(entriesJson?: string): boolean {
   try {
     const rows = JSON.parse(entriesJson || '[]') as { closeDt?: string }[];
     return rows.length > 0 && rows.every(r => !!r.closeDt);
   } catch { return false; }
 }
+// Bait-named alias kept so the S134 bait-pilot call sites and tests stay untouched.
+export const baitRowsAllClosed = rowsAllClosed;
 
-// S134 T1: stamp every still-open bait row with `stamp`; rows that already carry their own
-// closeDt are untouched (skip, never restamp). One helper, three callers in FullDfoForm:
-// the bait card's close-all button, the bait member of the form-level Close & Save All
-// (both of which write NO card-level stamp — only rows have close states), and the
-// adopt-on-add path that converts a legacy card-level dgCloseBaitUsed into per-row stamps
-// (same value → identical emitted bytes) so a newly added row can never inherit a close.
-export function stampOpenBaitRows(entriesJson: string | undefined, stamp: string): string {
+// S134 T1: stamp every still-open row with `stamp`; rows that already carry their own
+// closeDt are untouched (skip, never restamp). Serves bait AND bycatch (S134 Phase 3),
+// three callers each in FullDfoForm: the card's close-all button, the group's member of
+// the form-level Close & Save All (both of which write NO card-level stamp — only rows
+// have close states), and the adopt-on-add path that converts a legacy card-level stamp
+// into per-row stamps (same value → identical emitted bytes) so a newly added row can
+// never inherit a close.
+export function stampOpenRows(entriesJson: string | undefined, stamp: string): string {
   try {
     const rows = JSON.parse(entriesJson || '[]') as { closeDt?: string }[];
     return JSON.stringify(rows.map(r => (r.closeDt ? r : { ...r, closeDt: stamp })));
   } catch { return entriesJson ?? '[]'; }
 }
+// Bait-named alias kept so the S134 bait-pilot call sites and tests stay untouched.
+export const stampOpenBaitRows = stampOpenRows;
 
 // The send-path guard's refusal list: used groups whose data map carries NO real close stamp.
 // Non-empty ⇒ the send must refuse and name these sections (loud, not lossy).
-// S134: bait is also satisfied by all-rows-closed — the card key is now the close-ALL, not
-// the only close, so a log whose bait rows were each closed individually must not be refused.
+// S134: the row-based groups (bait; bycatch since Phase 3) are also satisfied by
+// all-rows-closed — nothing writes their card keys any more (legacy logs only), so a log
+// whose rows were each closed individually must not be refused.
 export function unclosedUsedGroupKeys(log: Pick<DfoLog, 'subformId' | 'data'>): string[] {
   return usedDataGroupKeys(dataGroupInputsFromLog(log)).filter(k =>
-    !log.data[k] && !(k === 'dgCloseBaitUsed' && baitRowsAllClosed(log.data.baitEntries)));
+    !log.data[k]
+    && !(k === 'dgCloseBaitUsed' && rowsAllClosed(log.data.baitEntries))
+    && !(k === 'dgClosePconsBycatch' && rowsAllClosed(log.data.bycatchEntries)));
 }
 
 // --- S128 Phase 1: per-section REM note lock (§5.2.1 irreversibility) ---
@@ -324,15 +336,19 @@ export function unclosedUsedGroupKeys(log: Pick<DfoLog, 'subformId' | 'data'>): 
 // locked by that row's own close). The legacy card-level rem.bait has no edit surface any
 // more (the bait card's Add-a-note affordance was removed), so it needs no lock entry; it
 // still EMITS as the fallback for legacy rows without their own note.
+// S134 Phase 3: 'pcons' is absent for the same reason — bycatch notes are per row, and the
+// Interactions & Other header note affordance was removed; the legacy shared rem.pcons
+// still emits as the fallback. Personal Use gained its OWN note ('personalUse'), locked by
+// the Personal Use close (it stays a single occurrence with a single card-level close).
 export const NOTE_CLOSE_KEYS: Record<string, string[]> = {
-  landing:  ['dgCloseLanding'],
-  catch:    ['dgCloseEffort'],   // the Catch & Effort note writes catch+haul, all inside EFFORT
-  haul:     ['dgCloseEffort'],   // (haul is written together with catch; same close group)
-  pcons:    ['dgClosePconsBycatch', 'dgClosePconsPersonal'], // one note, two PCONS groups
-  sar:      ['dgCloseSar'],
-  transfer: ['dgCloseTransfer'],
-  hlin:     ['dgCloseHlin'],
-  hlout:    ['dgCloseHlout'],
+  landing:     ['dgCloseLanding'],
+  catch:       ['dgCloseEffort'],   // the Catch & Effort note writes catch+haul, all inside EFFORT
+  haul:        ['dgCloseEffort'],   // (haul is written together with catch; same close group)
+  personalUse: ['dgClosePconsPersonal'],
+  sar:         ['dgCloseSar'],
+  transfer:    ['dgCloseTransfer'],
+  hlin:        ['dgCloseHlin'],
+  hlout:       ['dgCloseHlout'],
 };
 
 // True when the note for `noteKey` may no longer change because a group it transmits into

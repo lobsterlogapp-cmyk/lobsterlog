@@ -158,7 +158,11 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   let pconsXml = '';
   try {
     const pconsList = getDfoPconsSpeciesList(subformId);
-    const bycatch: { species: string; lbs: string; usage?: string }[] = JSON.parse(d.bycatchEntries || '[]');
+    // S134 Phase 3: bycatch rows may carry their OWN closeDt/note (per-occurrence closure,
+    // §5 — the bait pattern). Optional additions; legacy rows fall back to the card-level
+    // dgClosePconsBycatch stamp and the card-level rem.pcons note, so a pre-S134 log emits
+    // byte-identically.
+    const bycatch: { species: string; lbs: string; usage?: string; closeDt?: string; note?: string }[] = JSON.parse(d.bycatchEntries || '[]');
     // S124 Phase 2: PCONS closes per occurrence — one for the bycatch block, one for personal
     // use (Rule 1505, §5.2.1). S125 Phase 9: each DG_CLOSE_DT comes ONLY from its real stored
     // stamp — no now() fallback (the legacy shared `dgClosePcons` fallback is gone). Absent → the
@@ -179,6 +183,8 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
       // resolution. Lobster 826 / non-lobster 10670 value logic unchanged for the 89 case.
       const szLine = subformId === 89 ? `      <SPECIE_SZ_ID>${szId}</SPECIE_SZ_ID>\n` : '';
       const usgLine = subformId === 90 && e.usage ? `      <USG_ID>${xmlEscape(e.usage)}</USG_ID>\n` : '';
+      // S134 Phase 3: the row's own stamp/note WIN; the card-level values are the fallback.
+      const rowClose = e.closeDt ? toCloseTimestamp(e.closeDt) : bycatchClose;
       parts.push(
         `    <PCONS>\n` +
         `      <SPECIE_ID>${xmlEscape(specieId)}</SPECIE_ID>\n` +
@@ -186,8 +192,8 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
         szLine +
         `      <WT>${wt}</WT>\n` +
         usgLine +
-        (bycatchClose ? `      <DG_CLOSE_DT>${bycatchClose}</DG_CLOSE_DT>\n` : '') +
-        tag('REM', rem.pcons ?? '', '      ') +
+        (rowClose ? `      <DG_CLOSE_DT>${rowClose}</DG_CLOSE_DT>\n` : '') +
+        tag('REM', e.note || (rem.pcons ?? ''), '      ') +
         `    </PCONS>\n`
       );
     }
@@ -206,7 +212,9 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
         `      <WT>${personalUseWt}</WT>\n` +
         `      <USG_ID>37822</USG_ID>\n` +
         (personalClose ? `      <DG_CLOSE_DT>${personalClose}</DG_CLOSE_DT>\n` : '') +
-        tag('REM', rem.pcons ?? '', '      ') +
+        // S134 Phase 3 (B4): Personal Use has its OWN note; the legacy shared rem.pcons is
+        // the fallback so pre-split logs emit byte-identically.
+        tag('REM', rem.personalUse || (rem.pcons ?? ''), '      ') +
         `    </PCONS>\n`
       );
     }
