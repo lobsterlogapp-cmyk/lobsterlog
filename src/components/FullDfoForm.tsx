@@ -200,7 +200,10 @@ const parseDateTime = (dateStr: string, timeStr: string): Date => {
   return d;
 };
 
-type PickerField = 'sailed' | 'startHaul' | 'stopHaul' | 'landing' | 'mmTime' | 'sarTime';
+// S135 Phase 4 (ruling 6): 'extraSarTime' is the combined Date & Time field on SAR blocks
+// 2+ — one PickerField for every extra block, disambiguated by the block index (passed
+// explicitly on Android, staged in extraSarPickerIdx for the iOS Done handler).
+type PickerField = 'sailed' | 'startHaul' | 'stopHaul' | 'landing' | 'mmTime' | 'sarTime' | 'extraSarTime';
 type SheetMode = 'bait' | 'bycatch' | null;
 
 const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLogId, onSaved, readOnly = false, onBack }, ref) => {
@@ -447,6 +450,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // DateTime picker
   const [pickerVisible, setPickerVisible] = useState(false);
   const [pickerField, setPickerField] = useState<PickerField | null>(null);
+  // S135 Phase 4: which extra SAR block the open 'extraSarTime' picker belongs to (iOS).
+  const [extraSarPickerIdx, setExtraSarPickerIdx] = useState<number | null>(null);
   const [pickerDate, setPickerDate] = useState(new Date());
   const [tempDate, setTempDate] = useState(new Date());
 
@@ -1026,7 +1031,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
 
   // handleLostGearYes removed (S93) — LOST_GEAR_IND Blocked in 234.12; question deleted below.
 
-  const openPicker = (field: PickerField) => {
+  const openPicker = (field: PickerField, extraIdx?: number) => {
     let current: Date;
     switch (field) {
       case 'sailed':      current = parseDateTime(sailDate || dateFished, timeSailed); break;
@@ -1035,22 +1040,29 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       case 'landing':    current = parseDateTime(landingDate || dateFished, timeOfLanding); break;
       case 'mmTime':     current = parseDateTime(mmDate, mmTime); break;
       case 'sarTime':    current = parseDateTime(sarDate, sarTime); break;
+      // S135 Phase 4: SAR blocks 2+ — seed from the block's own stored strings (tolerant
+      // parse: a blank/typed-malformed half falls back to now, never crashes the seed).
+      case 'extraSarTime':
+        current = parseDateTime(extraSars[extraIdx ?? -1]?.date ?? '', extraSars[extraIdx ?? -1]?.time ?? '');
+        break;
     }
     if (Platform.OS === 'android') {
       // Imperative date→time flow — avoids the mode="datetime" unmount-dismiss crash (S95).
-      openAndroidDateTime(current, (d) => applyPickerValueForField(field, d));
+      // extraIdx rides the closure, so the async callback can never read a stale index.
+      openAndroidDateTime(current, (d) => applyPickerValueForField(field, d, extraIdx));
       return;
     }
     // iOS: stage into the Modal spinner (Done → applyPickerValue).
     setPickerDate(current);
     setTempDate(current);
     setPickerField(field);
+    setExtraSarPickerIdx(extraIdx ?? null);
     setPickerVisible(true);
   };
 
   // Writes the picked Date into the field's stored strings. Takes `field` explicitly so the
   // async Android imperative callback can never read a stale `pickerField` state value.
-  const applyPickerValueForField = (field: PickerField | null, d: Date) => {
+  const applyPickerValueForField = (field: PickerField | null, d: Date, extraIdx?: number) => {
       if (field === null) {
         // Date Fished date-only picker
         setDateFished(formatDate(d));
@@ -1070,6 +1082,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           setMmDate(formatDate(d)); setMmTime(formatTime(d)); break;
         case 'sarTime':
           setSarDate(formatDate(d)); setSarTime(formatTime(d)); break;
+        case 'extraSarTime': {
+          // S135 Phase 4: same YYYY-MM-DD / HH:MM strings the old type-in boxes held —
+          // stored slots and the SAR_DT emit are byte-unchanged; only the entry changed.
+          const i = extraIdx ?? extraSarPickerIdx;
+          if (i != null && i >= 0) updateExtraSar(i, { date: formatDate(d), time: formatTime(d) });
+          break;
+        }
       }
     };
 
@@ -1245,14 +1264,15 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   };
 
   const renderTimestampField = (
-    label: string, value: string, field: PickerField, isProblem: boolean = false, isReq: boolean = false
+    label: string, value: string, field: PickerField, isProblem: boolean = false, isReq: boolean = false,
+    extraIdx?: number // S135 Phase 4: which SAR block 2+ this field belongs to (default: none)
   ) => (
     <View style={styles.fieldRow}>
       <View style={styles.labelRow}>
         {isProblem && <View style={styles.problemDot} />}
         <Text style={styles.label}>{label}{isReq && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
       </View>
-      <TouchableOpacity style={styles.timeButton} onPress={() => { if (!readOnly) openPicker(field); }}>
+      <TouchableOpacity style={styles.timeButton} onPress={() => { if (!readOnly) openPicker(field, extraIdx); }}>
         <Text style={[styles.timeButtonText, !value && styles.timeButtonPlaceholder]}>
           {value || t('form234.tapToSetDateTime')}
         </Text>
@@ -1728,27 +1748,14 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       )}
       <View style={{ height: 10 }} />
       {extraSarInput(i, t('form234.whatHappenedLabel'), 'what', t('form234.describeInteraction'))}
-      <Text style={styles.label}>{t('form234.dateTimeLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
-      <View style={styles.gpsRow}>
-        <TextInput
-          style={[styles.input, { flex: 1 }, readOnly && styles.inputReadOnly]}
-          value={s.date ?? ''}
-          onChangeText={(v: string) => updateExtraSar(i, { date: v })}
-          placeholder="YYYY-MM-DD"
-          placeholderTextColor="#94A3B8"
-          editable={!readOnly}
-        />
-        <View style={{ width: 8 }} />
-        <TextInput
-          style={[styles.input, { flex: 1 }, readOnly && styles.inputReadOnly]}
-          value={s.time ?? ''}
-          onChangeText={(v: string) => updateExtraSar(i, { time: v })}
-          placeholder="HH:MM"
-          placeholderTextColor="#94A3B8"
-          editable={!readOnly}
-          keyboardType="numbers-and-punctuation"
-        />
-      </View>
+      {/* S135 Phase 4 (ruling 6): ONE combined Date & Time field opening the wheel picker —
+          the exact block-1 shape (same label key, asterisk and display format). Stored
+          slots (date/time strings) and the SAR_DT emit are unchanged. */}
+      {renderTimestampField(
+        t('form234.dateTimeLabel'),
+        s.date && s.time ? `${s.date} ${s.time}` : '',
+        'extraSarTime', false, true, i,
+      )}
       <Text style={styles.label}>{t('form234.gpsLocationLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
       <View style={styles.gpsRow}>
         <TextInput
