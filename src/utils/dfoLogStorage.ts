@@ -341,6 +341,32 @@ export function sarBlocksAllClosed(d: Record<string, string | undefined>): boole
   return sarBlocksFromData(d).every(b => !!b.closeDt);
 }
 
+// S135 Phase 2: the close-all-visibility / toggle-lockout predicates, single-sourced so the
+// UI and the tests read the same rule. A block counts as closed by its own stamp OR by the
+// legacy card-level dgCloseSar, which closed every block at once — so a legacy-closed log
+// has nothing open and at least one thing closed.
+export function sarBlocksAnyClosed(d: Record<string, string | undefined>): boolean {
+  return !!d.dgCloseSar || sarBlocksFromData(d).some(b => !!b.closeDt);
+}
+export function sarBlocksAnyOpen(d: Record<string, string | undefined>): boolean {
+  return !d.dgCloseSar && sarBlocksFromData(d).some(b => !b.closeDt);
+}
+
+// S135 Phase 2: stamp every still-open SAR block with `stamp` — block 1 via the flat
+// sarCloseDt (kept if already set, never restamped), blocks 2+ via stampOpenRows (same
+// skip-never-restamp rule). ONE definition for both writers (the SAR card's close-all and
+// the form-level Close & Save All), mirroring stampOpenRows for bait/bycatch.
+export function stampOpenSarBlocks(
+  sarCloseDt: string | undefined,
+  extraSarsJson: string | undefined,
+  stamp: string,
+): { sarCloseDt: string; extraSars: string } {
+  return {
+    sarCloseDt: sarCloseDt || stamp,
+    extraSars: stampOpenRows(extraSarsJson, stamp),
+  };
+}
+
 // The send-path guard's refusal list: used groups whose data map carries NO real close stamp.
 // Non-empty ⇒ the send must refuse and name these sections (loud, not lossy).
 // S134: the row-based groups (bait; bycatch since Phase 3) are also satisfied by
@@ -371,12 +397,14 @@ export function unclosedUsedGroupKeys(log: Pick<DfoLog, 'subformId' | 'data'>): 
 // Interactions & Other header note affordance was removed; the legacy shared rem.pcons
 // still emits as the fallback. Personal Use gained its OWN note ('personalUse'), locked by
 // the Personal Use close (it stays a single occurrence with a single card-level close).
+// S135 Phase 2: 'sar' is absent too — SAR notes are PER BLOCK now (block 1's rides the flat
+// sarNote key, blocks 2+ ride their extraSars item; each locks with its own block's close).
+// The legacy shared rem.sar has no edit surface any more and still emits as the fallback.
 export const NOTE_CLOSE_KEYS: Record<string, string[]> = {
   landing:     ['dgCloseLanding'],
   catch:       ['dgCloseEffort'],   // the Catch & Effort note writes catch+haul, all inside EFFORT
   haul:        ['dgCloseEffort'],   // (haul is written together with catch; same close group)
   personalUse: ['dgClosePconsPersonal'],
-  sar:         ['dgCloseSar'],
   transfer:    ['dgCloseTransfer'],
   hlin:        ['dgCloseHlin'],
   hlout:       ['dgCloseHlout'],

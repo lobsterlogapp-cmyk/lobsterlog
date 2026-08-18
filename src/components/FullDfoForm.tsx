@@ -58,6 +58,11 @@ import {
   stampOpenBaitRows,
   rowsAllClosed,
   stampOpenRows,
+  sarBlocksFromData,
+  sarBlocksAllClosed,
+  sarBlocksAnyClosed,
+  sarBlocksAnyOpen,
+  stampOpenSarBlocks,
   isNoteLocked,
 } from '../utils/dfoLogStorage';
 import { triggerBackup } from '../utils/dfoBackup';
@@ -431,6 +436,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // UI arrives in Phase 2.
   const [sarCloseDt, setSarCloseDt] = useState('');
   const [sarNote, setSarNote] = useState('');
+  // S135 Phase 2: which SAR blocks have their note editor toggled open, keyed by UI index
+  // (0 = block 1). Purely visual — a block whose note is non-empty always shows it; this map
+  // only opens EMPTY editors, and resets when indexes shift (delete / toggle-No).
+  const [sarNoteOpen, setSarNoteOpen] = useState<Record<number, boolean>>({});
 
   // Lost Gear — REMOVED (S93): LOST_GEAR_IND is Blocked in the 234.12 XSD (maxOccurs=0).
   // FGRS handles lost/found gear reporting externally; no app capture.
@@ -612,7 +621,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           setNoteOpen({
             trip: !!seeded.trip, landing: !!seeded.landing, catch: !!ce, bait: !!seeded.bait,
             pcons: !!seeded.pcons, transfer: !!seeded.transfer, hlin: !!seeded.hlin, hlout: !!seeded.hlout,
-            sar: !!seeded.sar,
+            // S135: no card-level sar entry — the SAR note affordance is per block now
           });
   };
 
@@ -1001,7 +1010,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       setSarSpecies(''); setSarSpeciesOther(''); setSarWhat('');
       setSarLat(''); setSarLng(''); setSarDate(''); setSarTime('');
       setSarNbSpcmn(''); setSarCondId(''); setSarGpsSrc('manual');
-      setSarCloseDt(''); setSarNote(''); // S135: block 1's own stamp/note clear with it
+      setSarCloseDt(''); setSarNote(''); setSarNoteOpen({}); // S135: block 1's own stamp/note clear with it
       setSarDropdownOpen(false); setSarCondPickerOpen(false);
       setExtraSars([]); setExtraSarDropdown(null); // S121: No clears the extra encounters too
     }
@@ -1527,6 +1536,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       }));
       setExtraSars([...adopted, newBlock]);
       setCloses(prev => { const { dgCloseSar: _dropped, ...rest } = prev; return rest; });
+      // S135 ruling 7: the shared note is CLEARED once copied — the existing blocks now own
+      // their copies (identical bytes), and without this the new block would silently inherit
+      // the legacy note through the emit's rem.sar fallback instead of starting blank.
+      if (sharedNote) setRemarks(prev => ({ ...prev, sar: '' }));
     } else {
       setExtraSars(prev => [...prev, newBlock]);
     }
@@ -1540,6 +1553,40 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const removeExtraSar = (idx: number) => {
     setExtraSars(prev => prev.filter((_, i) => i !== idx));
     if (extraSarDropdown?.idx === idx) setExtraSarDropdown(null);
+  };
+
+  // S135 Phase 2 (ruling 3): deleting a block by UI index (0 = block 1). Deleting block 1
+  // SLIDES BLOCK 2 UP into the flat keys — every field travels, closeDt and note included,
+  // so a slid CLOSED block stays closed and transmits identical bytes (sarBlocksFromData
+  // maps the flat keys onto the same ExtraSarDetail shape the array item had). Only OPEN
+  // blocks are deletable (a closed block's trash icon is hidden), so a closed block can
+  // move up, never die. Deleting the LAST block clears block 1's fields; the empty titled
+  // block stays while the toggle is Yes, and the SAR save gate keeps an empty first record
+  // from ever completing/transmitting.
+  const removeSarBlock = (uiIdx: number) => {
+    setSarNoteOpen({}); // indexes shift — collapse empty note editors (content-bearing notes stay visible)
+    if (uiIdx === 0) {
+      if (extraSars.length > 0) {
+        const [first, ...rest] = extraSars;
+        setSarSpecies(first.species ?? '');
+        setSarSpeciesOther(first.speciesOther ?? '');
+        setSarWhat(first.what ?? '');
+        setSarLat(first.lat ?? ''); setSarLng(first.lng ?? '');
+        setSarDate(first.date ?? ''); setSarTime(first.time ?? '');
+        setSarNbSpcmn(first.nbSpcmn ?? ''); setSarCondId(first.condId ?? '');
+        setSarGpsSrc(first.gpsSrc === 'gps' ? 'gps' : 'manual');
+        setSarCloseDt(first.closeDt ?? ''); setSarNote(first.note ?? '');
+        setExtraSars(rest);
+      } else {
+        setSarSpecies(''); setSarSpeciesOther(''); setSarWhat('');
+        setSarLat(''); setSarLng(''); setSarDate(''); setSarTime('');
+        setSarNbSpcmn(''); setSarCondId(''); setSarGpsSrc('manual');
+        setSarCloseDt(''); setSarNote('');
+      }
+      setSarDropdownOpen(false); setSarCondPickerOpen(false); setExtraSarDropdown(null);
+    } else {
+      removeExtraSar(uiIdx - 1);
+    }
   };
 
   const extraSarInput = (
@@ -1563,19 +1610,87 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     </View>
   );
 
-  // One additional SAR encounter — mirrors the block-1 field set (species / description /
-  // date+time / coords / count / condition). Date and time are plain inputs seeded from
-  // the moment the block was added, same auto-stamp as handleSarYes.
-  const renderExtraSarBlock = (s: ExtraSarDetail, i: number) => (
-    <View key={i} style={[styles.incidentBlock, { marginTop: 10 }]}>
-      <View style={styles.effortBlockHeader}>
-        <Text style={styles.effortBlockTitle}>{t('form234.sarBlockTitle', { n: i + 2 })}</Text>
-        {!readOnly && !isClosed('dgCloseSar') && (
-          <TouchableOpacity style={styles.deleteBtn} onPress={() => removeExtraSar(i)}>
-            <Trash2 size={16} color="#EF4444" />
-          </TouchableOpacity>
+  // ── S135 Phase 2: the uniform per-block SAR chrome (ruling 2) ──────────────────────────
+  // One frame for EVERY block — block 1 (flat keys) and blocks 2+ (extraSars) read
+  // identically on screen: numbered title, trash + note button in the header while OPEN;
+  // greyed frozen body, read-only note and the closedAtLabel lock bar while CLOSED (a
+  // closed block loses trash, note and close buttons — ruling: its note stays VISIBLE).
+  // The [ Close & Save ] control sits ON the block: these are inline sub-forms, no Edit sheet.
+  const renderSarBlockChrome = (
+    uiIdx: number,
+    note: string,
+    onNoteChange: (v: string) => void,
+    closedStamp: string | undefined,
+    onDelete: () => void,
+    onCloseBlock: () => void,
+    children: React.ReactNode,
+  ) => {
+    const closed = !!closedStamp;
+    const showNote = closed ? !!note.trim() : (sarNoteOpen[uiIdx] || !!note.trim());
+    return (
+      <View key={`sar-${uiIdx}`} style={[styles.incidentBlock, { marginTop: 10 }, closed && styles.closedBody]}>
+        <View style={styles.effortBlockHeader}>
+          <Text style={styles.effortBlockTitle}>{t('form234.sarBlockTitle', { n: uiIdx + 1 })}</Text>
+          {!readOnly && !closed && (
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <TouchableOpacity
+                style={styles.addNoteBtn}
+                onPress={() => setSarNoteOpen(prev => ({ ...prev, [uiIdx]: !prev[uiIdx] }))}
+                activeOpacity={0.7}
+              >
+                <StickyNote size={13} color="#1E3A8A" />
+                <Text style={styles.addNoteBtnText}>{t('form234.addNote')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.deleteBtn} onPress={onDelete}>
+                <Trash2 size={16} color="#EF4444" />
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+        <View pointerEvents={closed ? 'none' : 'auto'}>
+          {children}
+        </View>
+        {showNote && (
+          <TextInput
+            style={styles.noteInput}
+            value={note}
+            onChangeText={onNoteChange}
+            placeholder={t('form234.notePlaceholder')}
+            placeholderTextColor="#94A3B8"
+            multiline
+            maxLength={2000}
+            editable={!readOnly && !closed}
+          />
+        )}
+        {closed ? (
+          <View style={styles.closedBanner}>
+            <Lock size={14} color="#64748B" />
+            <Text style={styles.closedBannerText}>{t('form234.closedAtLabel', { time: formatClose(closedStamp) })}</Text>
+          </View>
+        ) : !readOnly && (
+          <View style={styles.baitRowActions}>
+            <TouchableOpacity style={styles.baitRowCloseBtn} onPress={onCloseBlock} activeOpacity={0.8}>
+              <Lock size={14} color="#B45309" />
+              <Text style={styles.baitRowCloseText}>{t('form234.sarBlockClose')}</Text>
+            </TouchableOpacity>
+          </View>
         )}
       </View>
+    );
+  };
+
+  // One additional SAR encounter — mirrors the block-1 field set (species / description /
+  // date+time / coords / count / condition). Date and time are plain inputs seeded from
+  // the moment the block was added, same auto-stamp as handleSarYes. S135: the frame
+  // (title / trash / note / close / lock bar) comes from the shared chrome; UI index i+1.
+  const renderExtraSarBlock = (s: ExtraSarDetail, i: number) => renderSarBlockChrome(
+    i + 1,
+    s.note ?? '',
+    (v: string) => updateExtraSar(i, { note: v }),
+    sarBlockClosedStamp(s),
+    () => removeSarBlock(i + 1),
+    () => closeSarBlock(i + 1),
+    <>
       <Text style={styles.label}>{t('form234.speciesLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
       <TouchableOpacity
         style={styles.dropdownBtn}
@@ -1676,7 +1791,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           </View>
         )}
       </View>
-    </View>
+    </>,
   );
 
   // ── S124 Phase 3: data-group closure (Close & Save Section) ──────────────────────────────
@@ -1686,6 +1801,22 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const baitRowClosed = (e: BaitEntry) => !!(e.closeDt || closes['dgCloseBaitUsed']);
   // S134 Phase 3: same rule for bycatch rows (legacy dgClosePconsBycatch = fallback only).
   const bycatchRowClosed = (e: BycatchEntry) => !!(e.closeDt || closes['dgClosePconsBycatch']);
+  // S135 Phase 2: same rule per SAR block — its own stamp, else the legacy card stamp.
+  // Returns the stamp itself so the lock bar can show the right time.
+  const sarBlockClosedStamp = (b: ExtraSarDetail): string | undefined =>
+    b.closeDt || closes['dgCloseSar'] || undefined;
+  // Live-state adapter in the stored-data shape, so the UI reads the block list through the
+  // SAME sarBlocksFromData reader as the emit and the send guard (they cannot disagree).
+  const liveSarData = (): Record<string, string | undefined> => ({
+    sarSpecies, sarLat, sarLng, sarGpsSrc, sarDate, sarTime, sarNbSpcmn, sarCondId,
+    ...(sarCloseDt ? { sarCloseDt } : {}),
+    ...(sarNote ? { sarNote } : {}),
+    ...(closes['dgCloseSar'] ? { dgCloseSar: closes['dgCloseSar'] } : {}),
+    ...(extraSars.length > 0 ? { extraSars: JSON.stringify(extraSars) } : {}),
+  });
+  // Thin sarYes gates over the single-sourced dfoLogStorage predicates (tested there).
+  const sarAnyBlockOpen = (): boolean => sarYes === true && sarBlocksAnyOpen(liveSarData());
+  const sarAnyBlockClosed = (): boolean => sarYes === true && sarBlocksAnyClosed(liveSarData());
   // Local "YYYY-MM-DD HH:MM" — §2: the app's existing timestamp display format.
   const formatClose = (iso?: string): string => {
     if (!iso) return '';
@@ -1877,6 +2008,77 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     );
   };
 
+  // ── S135 Phase 2: per-block SAR closure (the bait pattern on inline blocks) ────────────
+  // Closes ONE SAR block: block 1 stamps the flat sarCloseDt, blocks 2+ stamp their own
+  // extraSars item. Persists immediately (closure is irreversible and must survive without
+  // a later Save — mirrors closeBaitRow, with buildLogData's stale state overridden).
+  const closeSarBlock = (uiIdx: number) => {
+    if (readOnly) return;
+    const b = sarBlocksFromData(liveSarData())[uiIdx];
+    if (!b || sarBlockClosedStamp(b)) return;
+    Alert.alert(
+      t('form234.closeSarBlockConfirmTitle'),
+      t('form234.closeSarBlockConfirmBody'),
+      [
+        { text: t('form234.closeConfirmNotYet'), style: 'cancel' },
+        {
+          text: t('form234.closeConfirmYes'),
+          style: 'destructive',
+          onPress: () => {
+            const nowIso = new Date().toISOString();
+            if (uiIdx === 0) {
+              setSarCloseDt(nowIso);
+              if (isLoaded && !editingCompleted) {
+                void saveLog({ ...buildDraftLog(), data: { ...buildLogData(), sarCloseDt: nowIso } });
+              }
+            } else {
+              const next = extraSars.map((en, i) => (i === uiIdx - 1 ? { ...en, closeDt: nowIso } : en));
+              setExtraSars(next);
+              if (isLoaded && !editingCompleted) {
+                void saveLog({ ...buildDraftLog(), data: { ...buildLogData(), extraSars: JSON.stringify(next) } });
+              }
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  // S135 Phase 2 (ruling 4): the SAR card control closes EVERY OPEN BLOCK — each block gets
+  // its own stamp (block 1 = sarCloseDt) — and writes NO card-level stamp; the card never
+  // seals. Identical to the bait/bycatch close-all shape; hidden while no block is open.
+  const closeAllOpenSarBlocks = () => {
+    if (readOnly) return;
+    const lockCount = sarBlocksFromData(liveSarData()).filter(b => !sarBlockClosedStamp(b)).length;
+    if (lockCount === 0) return;
+    Alert.alert(
+      t('form234.closeConfirmTitle', { section: t('form234.sarSubsection') }),
+      t('form234.closeSarAllConfirmBody', { count: lockCount }),
+      [
+        { text: t('form234.closeConfirmNotYet'), style: 'cancel' },
+        {
+          text: t('form234.closeConfirmYes'),
+          style: 'destructive',
+          onPress: () => {
+            const nowIso = new Date().toISOString();
+            // Single-sourced stamping (skip-never-restamp): block 1 keeps an earlier close.
+            const stamped = stampOpenSarBlocks(sarCloseDt || undefined, JSON.stringify(extraSars), nowIso);
+            const closeNext = stamped.sarCloseDt;
+            const extrasNext = JSON.parse(stamped.extraSars) as ExtraSarDetail[];
+            setSarCloseDt(closeNext);
+            setExtraSars(extrasNext);
+            if (isLoaded && !editingCompleted) {
+              void saveLog({ ...buildDraftLog(), data: { ...buildLogData(),
+                sarCloseDt: closeNext,
+                ...(extrasNext.length > 0 ? { extraSars: JSON.stringify(extrasNext) } : {}),
+              } });
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const renderField = (
     label: string, value: string, setter: (v: string) => void,
     placeholder: string, isProblem: boolean = false,
@@ -1943,7 +2145,15 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     setLng: (v: string) => void,
     dateStr: string,
     timeStr: string,
-    pickerFieldName: PickerField
+    pickerFieldName: PickerField,
+    // S135 Phase 2 (ruling 2 finish + asterisk ruling): SAR-block-1 mode. When true: (a) no
+    // bordered container of its own — block 1 sits inside the shared block chrome, and the
+    // inner wrapper read as a card inside a card; (b) Species / Date & Time / GPS Location
+    // carry the required asterisk (all Mandatory for SAR on every subform —
+    // Subforms_requirements_234.xlsx rows 32-40). The Marine Mammal call site does not pass
+    // it, so MM renders byte-identically (default false keeps the exact current markup;
+    // MM's fields are not DFO elements and stay unmarked by ruling).
+    bare: boolean = false
   ) => {
     // Normalize to { value, label }: plain strings (Marine Mammal) keep the EN string as
     // the stored value/code and translate at render via mmSpeciesLabels (defaultValue =
@@ -1956,8 +2166,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         : { value: String(o.codeId), label: (isFr && o.descFr) || o.descEn });
     const selectedLabel = opts.find(o => o.value === species)?.label ?? species;
     return (
-    <View style={styles.incidentBlock}>
-      <Text style={styles.label}>{t('form234.speciesLabel')}</Text>
+    <View style={bare ? undefined : styles.incidentBlock}>
+      <Text style={styles.label}>{t('form234.speciesLabel')}{bare && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
       <TouchableOpacity
         style={styles.dropdownBtn}
         onPress={() => setDropdownOpen(!dropdownOpen)}
@@ -2001,9 +2211,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
 
       <View style={{ height: 10 }} />
       {renderField(t('form234.whatHappenedLabel'), what, setWhat, t('form234.describeInteraction'))}
-      {renderTimestampField(t('form234.dateTimeLabel'), dateStr && timeStr ? `${dateStr} ${timeStr}` : '', pickerFieldName)}
+      {renderTimestampField(t('form234.dateTimeLabel'), dateStr && timeStr ? `${dateStr} ${timeStr}` : '', pickerFieldName, false, bare)}
 
-      <Text style={[styles.label, { marginTop: 6 }]}>{t('form234.gpsLocationLabel')}</Text>
+      <Text style={[styles.label, { marginTop: 6 }]}>{t('form234.gpsLocationLabel')}{bare && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
       <View style={styles.gpsRow}>
         <TextInput
           style={[styles.input, { flex: 1 }]}
@@ -2046,8 +2256,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       // S134: the row-based groups (bait; bycatch since Phase 3) also count as closed when
       // every row carries its own closeDt — mirrors the send guard (unclosedUsedGroupKeys)
       // via the same shared helper, so Close & Save All neither restamps nor counts them.
+      // S135: SAR joins them — closed when every block from the ONE reader carries its own
+      // stamp (block 1 = the flat sarCloseDt).
       && !(k === 'dgCloseBaitUsed' && baitRowsAllClosed(JSON.stringify(baitEntries)))
-      && !(k === 'dgClosePconsBycatch' && rowsAllClosed(JSON.stringify(bycatchEntries))));
+      && !(k === 'dgClosePconsBycatch' && rowsAllClosed(JSON.stringify(bycatchEntries)))
+      && !(k === 'dgCloseSar' && sarBlocksAllClosed(liveSarData())));
 
   const handleSave = async () => {
     // S124 Phase 1: bait is now OPTIONAL (Rule 1051 — the app must not force a data group; a
@@ -2234,10 +2447,18 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     const openUsed = openUsedGroups();
 
     // Persist as a complete log, merging the close-all stamps into the data map.
-    const persist = (extraCloses: Record<string, string>, baitNext: BaitEntry[] | null = null, bycatchNext: BycatchEntry[] | null = null) => {
+    const persist = (
+      extraCloses: Record<string, string>,
+      baitNext: BaitEntry[] | null = null,
+      bycatchNext: BycatchEntry[] | null = null,
+      sarCloseNext: string | null = null,
+      extraSarsNext: ExtraSarDetail[] | null = null,
+    ) => {
       if (Object.keys(extraCloses).length) setCloses(prev => ({ ...prev, ...extraCloses }));
       if (baitNext) setBaitEntries(baitNext);
       if (bycatchNext) setBycatchEntries(bycatchNext);
+      if (sarCloseNext) setSarCloseDt(sarCloseNext);
+      if (extraSarsNext) setExtraSars(extraSarsNext);
       const log: DfoLog = {
         id: tripId,
         lgbkUid,
@@ -2252,6 +2473,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           ...buildLogData(), ...extraCloses,
           ...(baitNext ? { baitEntries: JSON.stringify(baitNext) } : {}),
           ...(bycatchNext ? { bycatchEntries: JSON.stringify(bycatchNext) } : {}),
+          // S135: the close-all's SAR member stamps BLOCKS, never the card (ruling 4).
+          ...(sarCloseNext ? { sarCloseDt: sarCloseNext } : {}),
+          ...(extraSarsNext && extraSarsNext.length > 0 ? { extraSars: JSON.stringify(extraSarsNext) } : {}),
         },
         remarks: buildRemarks(),
         subformId,
@@ -2276,9 +2500,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         const stamp = new Date().toISOString();
         // S134: the row-based groups have NO card-level close state — when the close-all
         // covers bait or bycatch, it stamps each still-open ROW's own closeDt instead of
-        // writing the card key.
+        // writing the card key. S135: SAR is per-BLOCK the same way (block 1 = sarCloseDt).
         const extra = Object.fromEntries(openUsed
-          .filter(k => k !== 'dgCloseBaitUsed' && k !== 'dgClosePconsBycatch')
+          .filter(k => k !== 'dgCloseBaitUsed' && k !== 'dgClosePconsBycatch' && k !== 'dgCloseSar')
           .map(k => [k, stamp]));
         const baitNext = openUsed.includes('dgCloseBaitUsed')
           ? (JSON.parse(stampOpenBaitRows(JSON.stringify(baitEntries), stamp)) as BaitEntry[])
@@ -2286,12 +2510,17 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         const bycatchNext = openUsed.includes('dgClosePconsBycatch')
           ? (JSON.parse(stampOpenRows(JSON.stringify(bycatchEntries), stamp)) as BycatchEntry[])
           : null;
+        const sarOpenHere = openUsed.includes('dgCloseSar');
+        // Single-sourced stamping (skip-never-restamp), same helper as the card's close-all.
+        const sarStamped = sarOpenHere ? stampOpenSarBlocks(sarCloseDt || undefined, JSON.stringify(extraSars), stamp) : null;
+        const sarCloseNext = sarStamped ? sarStamped.sarCloseDt : null;
+        const extraSarsNext = sarStamped ? (JSON.parse(sarStamped.extraSars) as ExtraSarDetail[]) : null;
         Alert.alert(
           t('form234.closeAllConfirmTitle'),
           t('form234.closeAllConfirmBody', { count: openUsed.length }),
           [
             { text: t('form234.closeConfirmNotYet'), style: 'cancel' },
-            { text: t('form234.closeAllConfirmYes'), style: 'destructive', onPress: () => persist(extra, baitNext, bycatchNext) },
+            { text: t('form234.closeAllConfirmYes'), style: 'destructive', onPress: () => persist(extra, baitNext, bycatchNext, sarCloseNext, extraSarsNext) },
           ],
         );
       } else {
@@ -3029,12 +3258,34 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 <AlertTriangle size={16} color="#7C3AED" />
               </View>
               <Text style={[styles.sectionTitle, { fontSize: 13 }]}>{t('form234.sarSubsection')}</Text>
-              {renderNoteButton('sar')}
+              {/* S135 (ruling 2): no card-header note affordance — SAR notes are per block.
+                  The legacy shared rem.sar stays in storage and still emits as the fallback
+                  for blocks without their own note; it has no edit surface any more. */}
             </View>
-            <View {...closedBodyProps('dgCloseSar')}>
-            {renderNoteInput('sar', remarks.sar ?? '', (v) => setNote('sar', v))}
-            {renderYesNoToggle(t('form234.sarIndLabel'), sarYes, handleSarYes)}
-            {sarYes === true && renderIncidentFields(
+            {/* S135: NO card-level freeze — only blocks carry close states (ruling 4).
+                TEMPORARY (§2.2 ruling b): the toggle is disabled (greyed, untouchable)
+                while any closed block exists — flipping to No would destroy closed
+                occurrences (§5.2.1). Phase 3 replaces this disable with the refusal alert. */}
+            <View
+              pointerEvents={!readOnly && sarAnyBlockClosed() ? 'none' : 'auto'}
+              style={!readOnly && sarAnyBlockClosed() ? styles.closedBody : undefined}
+            >
+              {renderYesNoToggle(t('form234.sarIndLabel'), sarYes, handleSarYes)}
+            </View>
+            {sarYes === true && (
+              <>
+                {/* Block 1 — the flat sar* keys, framed by the SAME chrome as blocks 2+
+                    (ruling 2): titled "Species at Risk 1", own trash / note / Close & Save.
+                    Its closed state = the flat sarCloseDt, else the legacy card stamp. */}
+                {renderSarBlockChrome(
+                  0,
+                  sarNote,
+                  setSarNote,
+                  sarCloseDt || closes['dgCloseSar'] || undefined,
+                  () => removeSarBlock(0),
+                  () => closeSarBlock(0),
+                  <>
+                    {renderIncidentFields(
               sarSpecies, setSarSpecies,
               sarSpeciesOther, setSarSpeciesOther,
               sarDropdownOpen, setSarDropdownOpen,
@@ -3042,10 +3293,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               sarWhat, setSarWhat,
               sarLat, (v: string) => { setSarLat(v); setSarGpsSrc('manual'); },
               sarLng, (v: string) => { setSarLng(v); setSarGpsSrc('manual'); },
-              sarDate, sarTime, 'sarTime'
+              sarDate, sarTime, 'sarTime',
+              true // S135 bare: no inner container — the block chrome IS the card
             )}
-            {sarYes === true && (
-              <>
                 {renderField(t('form234.sarNbSpcmnLabel'), sarNbSpcmn, setSarNbSpcmn, '0', false, false, 'numeric', true)}
                 <View style={styles.fieldRow}>
                   <Text style={styles.label}>{t('form234.sarCondLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
@@ -3074,19 +3324,31 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                     </View>
                   )}
                 </View>
+                  </>,
+                )}
                 {/* S121 multi-SAR: additional encounters (SAR node 2..n), each its own
-                    species/date/coords/count/condition. Block 1 = the fields above. */}
+                    species/date/coords/count/condition. Block 1 = the block above. */}
                 {extraSars.map((s, i) => renderExtraSarBlock(s, i))}
-                {!readOnly && !isClosed('dgCloseSar') && (
+                {/* S135: Add is ALWAYS available — never gated on any close state (this is
+                    what makes the Phase 1 adopt-on-add guard reachable; a new block can
+                    never inherit a close). */}
+                {!readOnly && (
                   <TouchableOpacity style={[styles.addBtn, { marginTop: 10 }]} onPress={() => { void addExtraSar(); }}>
                     <Plus size={16} color="#1E3A8A" />
                     <Text style={styles.addBtnText}>{t('form234.addSarEncounter')}</Text>
                   </TouchableOpacity>
                 )}
+                {/* S135 (ruling 4): the card control is a CLOSE-ALL — stamps every open
+                    block's own closeDt, writes NO card-level stamp, never seals the card;
+                    hidden while no block is open. No section-level lock banner ever. */}
+                {!readOnly && sarAnyBlockOpen() && (
+                  <TouchableOpacity style={[styles.closeSectionBtn, { marginTop: 8 }]} onPress={closeAllOpenSarBlocks} activeOpacity={0.8}>
+                    <Lock size={16} color="#B45309" />
+                    <Text style={styles.closeSectionBtnText}>{t('form234.closeAllSarButton')}</Text>
+                  </TouchableOpacity>
+                )}
               </>
             )}
-            </View>
-            {renderCloseControl('dgCloseSar', 'form234.sarSubsection', sarYes === true)}
           </View>
           </>)}
 
