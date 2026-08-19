@@ -198,13 +198,59 @@ Expected: `git diff --cached --stat` shows 4 files (the 2 source files ~205+/73�
 - Any i18n keys left orphaned by the removal: **report them, do not delete them** — orphan
   cleanup is its own queue item.
 
-### 2.2 Gates and verify table
+### 2.2 Gates and verify table — FILLED 2026-08-19
 
-Byte-identity is expected to be trivially preserved (no emit change) — prove it anyway with
-one fixture. Then tsc / jest / staged stat, predicted and measured, and a verify table in
-the Phase 1 shape.
+**What was removed (all in `FullDfoForm.tsx`, the only file touched):** the
+`renderIncidentFields` call on the marine-mammal card (species picker / what happened /
+date & time / GPS row); the `MARINE_MAMMAL_OPTIONS` species list (dead once the call went);
+the `mmDropdownOpen` UI state; the `'mmTime'` picker plumbing (union member + the
+`openPicker` and `applyPickerValueForField` cases — the S93 LOST_GEAR precedent); and
+`handleMmYes`'s Yes-path date/time stamp + GPS capture (they served the removed fields —
+a GPS permission ask would have fired for nothing).
 
-### 2.3 Commit block — write it here
+**What stays, verified in place:** the Yes/No toggle and its **Rule 781 mandated prompt**
+(`mmInterIndPrompt` — fence key, byte-untouched); the seven `mm*` data keys still written
+by `buildLogData` and hydrated by `hydrateFromLog` (no stored log changes shape); the
+No-path wipe of the detail state (today's toggle semantics, unchanged);
+`renderIncidentFields` itself (the SAR block-1 call site still uses it).
+
+| # | Item | Command / evidence | Result |
+|---|---|---|---|
+| 1 | Detail fields removed, toggle + Rule 781 prompt intact | grep: `handleMmYes` renders the alert only; the MM card renders header + toggle + nothing else | ✅ PASS |
+| 2 | mm* keys still written + hydrated | `buildLogData` line `mmSpecies, mmSpeciesOther, mmWhat, mmLat, mmLng, mmDate, mmTime` untouched; hydrate block untouched | ✅ PASS — `git diff` shows neither site modified |
+| 3 | Byte identity — one fixture | Phase-1's retained `after/fixtureA_mar90.xml` (generated at d09d012) vs a fresh generate on the edited tree; `cmp` | ✅ IDENTICAL — 2,287 bytes both sides, `cmp` silent (FullDfoForm is not in the emit path; proven anyway per the gate) |
+| 4 | tsc predicted / measured | predicted 33 | ✅ 33 (0 new) |
+| 5 | jest predicted / measured | predicted 43 suites / 213 tests (no suite touches the removed surface) | ✅ 43 / 213, all green, zero test edits |
+| 6 | Harness deleted | `git status --short` | ✅ tmpByteHarness2 deleted; sole tracked modification = `FullDfoForm.tsx` |
+| 7 | Staged stat | `git diff --stat` | ✅ 1 file, 13 insertions / 22 deletions (+ this gate doc when staged) |
+
+**Known consequence, accepted (report only, per §2.1):** `InspectionModeScreen.tsx:67–73`
+reads `mmSpecies` / `mmWhat` / `mmLat` / `mmLng` / `mmDate` / `mmTime` off the log and will
+show blank for logs created after this phase. NOT changed in this build — Inspection Mode
+is parked behind `{false && …}` with nothing live; its future fix is to read Form 222.
+
+**Orphaned i18n keys (report only — orphan cleanup is its own queue item, nothing deleted):**
+- `form234.mmSpeciesLabels` (the 9-entry EN + 9-entry FR map, S101b L2) — its only lookup
+  was the string-options branch of `renderIncidentFields`, which is now unreachable (the
+  SAR call site passes coded MV_SAR_LIST rows). The branch itself stays as typed, harmless
+  code.
+- Noticed in passing, **pre-existing** (not created by this phase): `form234.mmInterInd`
+  (en/fr dfo.json :49) has zero code references — a duplicate of `mmInterIndLabel` that was
+  already orphaned before S136.
+
+### 2.3 Commit block — Jonathon runs it, one line at a time
+
+```
+git add src/components/FullDfoForm.tsx
+git add docs/GATE_S136_MULTI_EFFORT.md
+git diff --cached --stat
+git commit -m "Remove the marine-mammal detail fields from the Form 234 surface, keeping the indicator toggle and its mandated prompt"
+git push
+git log origin/main..HEAD --oneline
+```
+
+Expected: `git diff --cached --stat` shows 2 files (FullDfoForm.tsx 13+/22−, this gate
+doc); the last command prints **nothing**.
 
 ---
 

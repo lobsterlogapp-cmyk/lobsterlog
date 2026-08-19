@@ -122,7 +122,8 @@ const CLOSE_DATA_KEYS = [
   'dgCloseSar', 'dgCloseTransfer', 'dgCloseHlin', 'dgCloseHlout', 'dgCloseLanding',
 ] as const;
 
-const MARINE_MAMMAL_OPTIONS = ['North Atlantic Right Whale', 'Humpback Whale', 'Fin Whale', 'Minke Whale', 'Harbour Porpoise', 'Grey Seal', 'Harbour Seal', 'Atlantic White-sided Dolphin', 'Other'];
+// MARINE_MAMMAL_OPTIONS removed (S136 Phase 2, ruling 4) — the MM detail fields left the
+// 234 surface; species capture lives on Form 222 (MV_NOAA_MM_SPECIES).
 
 // PCONS USG_ID choices offered on MAR-90 bycatch entries — a curated subset of
 // MV_CATCH_USAGE_rel1 (generated reftable). Labels render via i18n usageOption_<codeId>;
@@ -203,7 +204,7 @@ const parseDateTime = (dateStr: string, timeStr: string): Date => {
 // S135 Phase 4 (ruling 6): 'extraSarTime' is the combined Date & Time field on SAR blocks
 // 2+ — one PickerField for every extra block, disambiguated by the block index (passed
 // explicitly on Android, staged in extraSarPickerIdx for the iOS Done handler).
-type PickerField = 'sailed' | 'startHaul' | 'stopHaul' | 'landing' | 'mmTime' | 'sarTime' | 'extraSarTime';
+type PickerField = 'sailed' | 'startHaul' | 'stopHaul' | 'landing' | 'sarTime' | 'extraSarTime';
 type SheetMode = 'bait' | 'bycatch' | null;
 
 const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLogId, onSaved, readOnly = false, onBack }, ref) => {
@@ -411,7 +412,6 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const [mmLng, setMmLng] = useState('');
   const [mmDate, setMmDate] = useState('');
   const [mmTime, setMmTime] = useState('');
-  const [mmDropdownOpen, setMmDropdownOpen] = useState(false);
 
   // Species at Risk
   const [sarYes, setSarYes] = useState<boolean | null>(null);
@@ -987,18 +987,17 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     }
   };
 
-  const handleMmYes = async (val: boolean) => {
+  // S136 Phase 2 (ruling 4): the Yes path keeps ONLY the Rule 781 mandated prompt — the
+  // date/time stamp and GPS capture served the removed detail fields, and firing a GPS
+  // permission ask for fields that no longer exist would be noise. The No path still wipes
+  // the (now surface-less) detail state, exactly as the toggle always has.
+  const handleMmYes = (val: boolean) => {
     setMmYes(val);
     if (val) {
       Alert.alert('', t('form234.mmInterIndPrompt'), [{ text: tc('nav.ok') }]);
-      const now = new Date();
-      setMmDate(formatDate(now));
-      setMmTime(formatTime(now));
-      await captureGps(setMmLat, setMmLng);
     } else {
       setMmSpecies(''); setMmSpeciesOther(''); setMmWhat('');
       setMmLat(''); setMmLng(''); setMmDate(''); setMmTime('');
-      setMmDropdownOpen(false);
     }
   };
 
@@ -1038,7 +1037,6 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       case 'startHaul':  current = parseDateTime(haulStartDate || dateFished, timeStartedHauling); break;
       case 'stopHaul':   current = parseDateTime(haulEndDate || dateFished, timeStoppedHauling); break;
       case 'landing':    current = parseDateTime(landingDate || dateFished, timeOfLanding); break;
-      case 'mmTime':     current = parseDateTime(mmDate, mmTime); break;
       case 'sarTime':    current = parseDateTime(sarDate, sarTime); break;
       // S135 Phase 4: SAR blocks 2+ — seed from the block's own stored strings (tolerant
       // parse: a blank/typed-malformed half falls back to now, never crashes the seed).
@@ -1078,8 +1076,6 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           setHaulEndDate(formatDate(d)); setTimeStoppedHauling(formatTime(d)); break;
         case 'landing':
           setLandingDate(formatDate(d)); setTimeOfLanding(formatTime(d)); break;
-        case 'mmTime':
-          setMmDate(formatDate(d)); setMmTime(formatTime(d)); break;
         case 'sarTime':
           setSarDate(formatDate(d)); setSarTime(formatTime(d)); break;
         case 'extraSarTime': {
@@ -3254,17 +3250,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               </View>
               <Text style={[styles.sectionTitle, { fontSize: 13 }]}>{t('form234.mmSubsection')}</Text>
             </View>
+            {/* S136 Phase 2 (ruling 4): the marine-mammal DETAIL fields (species / what
+                happened / date & time / GPS) are REMOVED from the 234 surface — the 234
+                emits only the Y/N MM_INTER_IND; the details belong to Form 222. The seven
+                mm* data keys stay written and hydrated (no stored log changes shape), they
+                just have no edit surface (the S135 rem.sar treatment). */}
             {renderYesNoToggle(t('form234.mmInterIndLabel'), mmYes, handleMmYes)}
-            {mmYes === true && renderIncidentFields(
-              mmSpecies, setMmSpecies,
-              mmSpeciesOther, setMmSpeciesOther,
-              mmDropdownOpen, setMmDropdownOpen,
-              MARINE_MAMMAL_OPTIONS,
-              mmWhat, setMmWhat,
-              mmLat, setMmLat,
-              mmLng, setMmLng,
-              mmDate, mmTime, 'mmTime'
-            )}
           </View>
 
           <View style={styles.incidentSection}>
