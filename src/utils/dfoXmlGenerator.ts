@@ -5,7 +5,7 @@
 // digits only). Flat ISO-8601 fields still inside TRIP are S2/S3 scope.
 
 import forge from 'node-forge';
-import { DfoLog, ExtraEffortDetail, ExtraSarDetail, sarBlocksFromData } from './dfoLogStorage';
+import { DfoLog, ExtraSarDetail, ExtraEffortNode, sarBlocksFromData, effortsFromData } from './dfoLogStorage';
 import { CaptainProfile } from './captainStorage';
 import { getDfoBaitTypeList, baitConditionState, getDfoPconsSpeciesList, DFO_SPECIE_FRM_ID, DFO_PCONS_OTHER_SIZE_ID, DFO_GEAR_ID, DFO_SOFT_VER, DFO_CIE_ID, DFO_FORM_VER_ID, DFO_HLIN_COMPANY_LIST, DFO_HLOUT_COMPANY_LIST, DFO_SUBFORM_REGISTRY, DFO_FMA_38B, DFO_FMA_NB_VNTCH, DFO_FMA_NB_VNTCH_YOU, DFO_FMA_STAT_SECT_REQUIRED, DFO_STAT_SECT_BY_FMA, DFO_FMA_GRID_MAP, DFO_GRID_BLOCKED_FMA, clampCoord4 } from './dfoConstants';
 import { MV_PARTNERSHIP_TYPE, MV_GRID } from '../data/reftables';
@@ -92,8 +92,6 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   // quick-capture (time set, date never picked), and same-day trips all resolve to the
   // trip's nominal date, so existing single-day logs emit byte-identically.
   const startDt     = localToUtcIso(d.sailDate || log.dateFished, d.timeSailed);
-  const haulStartDt = localToUtcIso(d.haulStartDate || log.dateFished, d.timeStartedHauling);
-  const haulEndDt   = localToUtcIso(d.haulEndDate || log.dateFished, d.timeStoppedHauling);
   const landDt      = localToUtcIso(d.landingDate || log.dateFished, d.timeOfLanding);
 
   let crewNb = '';
@@ -102,25 +100,13 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
     if (Array.isArray(crew) && crew.length > 0) crewNb = String(crew.length);
   } catch { /* noop */ }
 
-  // S121 multi-grid: uniform per-EFFORT_DETAIL view. Block 1 = the legacy top-level d.*
-  // fields, so every pre-S121 log and every single-grid log emits byte-identically; blocks
-  // 2+ come from the additive d.extraEffortDetails JSON array written by FullDfoForm when
-  // the user adds more catch efforts. XSD allows EFFORT_DETAIL 1..9999 per EFFORT_BY_GEAR.
-  let extraDetails: ExtraEffortDetail[] = [];
-  try {
-    const parsed = JSON.parse(d.extraEffortDetails || '[]');
-    if (Array.isArray(parsed)) extraDetails = parsed;
-  } catch { /* noop */ }
-  const effortDetails: ExtraEffortDetail[] = [
-    {
-      lgridCodeId: d.lgridCodeId, gridId: d.gridId, statSectId: d.statSectId,
-      catchWeight: d.catchWeight, trapHauls: d.trapHauls, soakDuration: d.soakDuration,
-      gpsLat: d.gpsLat, gpsLng: d.gpsLng, gpsSrc: d.gpsSrc, trapSize: d.trapSize,
-      nbSpcmnKept: d.nbSpcmnKept, nbSpcmnBrd: d.nbSpcmnBrd,
-      vNotchCount: d.vNotchCount, nbVntchYou: d.nbVntchYou,
-    },
-    ...extraDetails,
-  ];
+  // S136 multi-effort: uniform per-EFFORT view via THE one reader (effortsFromData,
+  // dfoLogStorage — mirrors sarBlocksFromData). Effort 1 is synthesized from the legacy
+  // flat d.* keys — including its trap groups (the S121 block-1 synthesis moved into the
+  // reader) — so every pre-S136 log and every single-effort log emits byte-identically;
+  // efforts 2+ come from the additive d.extraEffortNodes JSON array. XSD allows EFFORT
+  // 0..unbounded per TRIP (Rule 1050); EFFORT_DETAIL 1..9999 per EFFORT_BY_GEAR.
+  const efforts: ExtraEffortNode[] = effortsFromData(d);
 
   // BAIT_USED — XSD bait_used_type: BT_TYP_ID, BT_WT, BT_COND_ID?, DG_CLOSE_DT, REM?
   // One repeating <BAIT_USED> node per bait entry.
@@ -222,8 +208,9 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
     pconsXml = parts.join('');
   } catch { /* noop */ }
 
-  const mammalInc = d.mmYes === 'true' ? 'Y' : (d.mmYes === 'false' ? 'N' : '');
-  const sarInc    = d.sarYes === 'true' ? 'Y' : (d.sarYes === 'false' ? 'N' : '');
+  // Y/N indicators are per-EFFORT (S136): 'true'/'false' → Y/N, anything else (unanswered)
+  // → '' so tag() drops the element and the validator blocks the send upstream.
+  const indYN = (v?: string) => (v === 'true' ? 'Y' : (v === 'false' ? 'N' : ''));
   // LOST_GEAR_IND de-emitted in 234.12 (maxOccurs 1→0, Blocked) — no longer derived.
 
   // GENERAL_INFO — XSD general_info_type xs:sequence:
@@ -263,38 +250,56 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   // REM: TRIP-level note (last child of trip_type scalar sequence, before sub-nodes)
   trip += tag('REM', rem.trip ?? '', '    ');
 
-  // EFFORT — XSD effort_type xs:sequence (single effort per log):
+  // EFFORT — XSD effort_type xs:sequence, ONE NODE PER EFFORT (S136, Rule 1050):
   //   START_DT, END_DT, LIC_NO, FMA_ID, SAR_IND, MM_INTER_IND,
   //   DG_CLOSE_DT, REM?, TGT_SPECIES, EFFORT_BY_GEAR+
   //   (LOST_GEAR_IND removed — 234.12 XSD sets it maxOccurs=0/Blocked; de-emitted S93)
+  // Effort 1 = the legacy flat keys (synthesized by effortsFromData), so a single-effort
+  // log emits byte-identically to pre-S136; efforts 2+ append their own complete nodes.
   let effort = '';
+  efforts.forEach((ef, ei) => {
+  // Per-effort haul window (S90 multi-day: each timestamp's own date, dateFished fallback)
+  const efStartDt = localToUtcIso(ef.haulStartDate || log.dateFished, ef.haulStartTime ?? '');
+  const efEndDt   = localToUtcIso(ef.haulEndDate || log.dateFished, ef.haulEndTime ?? '');
+  // The effort's own FMA gates its region fields; effort 1's is the legacy d.fmaId.
+  const efFma = Number(ef.fmaId);
+  // Note fan-out (S136 §1.2 ruling): each effort's note reaches the same four slots
+  // effort 1's does today. Effort 1's text lives in log.remarks (haul/catch, same text
+  // since the UI writes both); efforts 2+ carry ONE note on the record.
+  const haulNote  = ei === 0 ? (rem.haul ?? '') : (ef.note ?? '');
+  const catchNote = ei === 0 ? (rem.catch ?? '') : (ef.note ?? '');
   effort += `    <EFFORT>\n`;
-  effort += tag('START_DT',      toDate12(haulStartDt), '      ');
-  effort += tag('END_DT',        toDate12(haulEndDt), '      ');
-  // LIC_NO: the XSD's only licence element (string_18, mandatory) — LICENCE_NO dropped
-  effort += tag('LIC_NO',        captainProfile.fishingNumber, '      ');
-  effort += tag('FMA_ID',        d.fmaId, '      ');
-  // SAR_IND/MM_INTER_IND are mandatory Y/N — empty means unanswered, the element is
-  // simply omitted here and the send must be blocked upstream (S4 validator).
+  effort += tag('START_DT',      toDate12(efStartDt), '      ');
+  effort += tag('END_DT',        toDate12(efEndDt), '      ');
+  // LIC_NO: the XSD's only licence element (string_18, mandatory) — per effort (Rule 1050
+  // footnote: licence-by-licence efforts), falling back to the profile licence. Effort 1
+  // always transmits the profile licence (legacy behavior; its licNo is never set).
+  effort += tag('LIC_NO',        ef.licNo || captainProfile.fishingNumber, '      ');
+  effort += tag('FMA_ID',        ef.fmaId ?? '', '      ');
+  // SAR_IND/MM_INTER_IND are mandatory Y/N PER EFFORT — empty means unanswered, the
+  // element is simply omitted here and the send must be blocked upstream (S4 validator).
   // LOST_GEAR_IND is NOT emitted (234.12 Blocked, maxOccurs=0) — emitting it desyncs the
   // sequence and DFO returns WS1038 (surfacing on the next sibling MM_INTER_IND).
-  effort += tag('SAR_IND',       sarInc, '      ');
-  effort += tag('MM_INTER_IND',  mammalInc, '      ');
-  effort += tag('DG_CLOSE_DT',   d.dgCloseEffort ? toCloseTimestamp(d.dgCloseEffort) : '', '      ');
-  // REM: 'haul' note fans across EFFORT, EFFORT_BY_GEAR and EFFORT_DETAIL (same text)
-  effort += tag('REM', rem.haul ?? '', '      ');
+  effort += tag('SAR_IND',       indYN(ef.sarYes), '      ');
+  effort += tag('MM_INTER_IND',  indYN(ef.mmYes), '      ');
+  // DG_CLOSE_DT: per effort (§5.2.1 — EFFORT closes per occurrence). Effort 1's closeDt IS
+  // the legacy d.dgCloseEffort (synthesized by the reader); no now() fallback (S125 P9).
+  effort += tag('DG_CLOSE_DT',   ef.closeDt ? toCloseTimestamp(ef.closeDt) : '', '      ');
+  // REM: the effort note fans across EFFORT, EFFORT_BY_GEAR and EFFORT_DETAIL (same text)
+  effort += tag('REM', haulNote, '      ');
   // TGT_SPECIES: 1312 = lobster
   effort += `      <TGT_SPECIES>\n${tag('SPECIE_ID', '1312', '        ')}      </TGT_SPECIES>\n`;
   effort += `      <EFFORT_BY_GEAR>\n`;
   // GEAR_ID: 925 = Pot/Trap (Rule 270, mandatory all subforms)
   effort += tag('GEAR_ID', String(DFO_GEAR_ID), '        ');
-  // GEAR_SBTYP_ID: Mandatory for NL(91), Blocked for QC/GLF/MAR (88/89/90)
-  if (subformId === 91) effort += tag('GEAR_SBTYP_ID', d.gearSubtypeId ?? '', '        ');
-  // REM: EFFORT_BY_GEAR note (after GEAR_SBTYP_ID, before EFFORT_DETAIL) — same 'haul' text
-  effort += tag('REM', rem.haul ?? '', '        ');
-  // S121: one <EFFORT_DETAIL> per catch-effort block (multi-grid). Index 0 is the legacy
-  // block; with no extras the loop runs once and the output is byte-identical to pre-S121.
-  effortDetails.forEach((det, di) => {
+  // GEAR_SBTYP_ID: Mandatory for NL(91), Blocked for QC/GLF/MAR (88/89/90) — per effort
+  if (subformId === 91) effort += tag('GEAR_SBTYP_ID', ef.gearSubtypeId ?? '', '        ');
+  // REM: EFFORT_BY_GEAR note (after GEAR_SBTYP_ID, before EFFORT_DETAIL) — same note text
+  effort += tag('REM', haulNote, '        ');
+  // S121: one <EFFORT_DETAIL> per catch-effort block (trap group). Each effort carries its
+  // OWN trap groups (ef.details); effort 1's index 0 is the legacy block, so with one
+  // effort and no extras the loop runs once and the output is byte-identical to pre-S121.
+  (ef.details ?? []).forEach((det, di) => {
   effort += `        <EFFORT_DETAIL>\n`;
   // SOAKED_DUR: blocked for MAR (subform 90) per subforms requirements v234.11.
   // UI captures DAYS (Rule 286); the wire unit is MINUTES (XML dictionary
@@ -306,10 +311,10 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
     effort += tag('SOAKED_DUR', soakMin, '          ');
   }
   // NB_VNTCH / NB_VNTCH_YOU: QC(88) only, mandatory/blocked by FMA (Rules 623-626)
-  if (subformId === 88 && DFO_FMA_NB_VNTCH.has(Number(d.fmaId))) {
+  if (subformId === 88 && DFO_FMA_NB_VNTCH.has(efFma)) {
     effort += tag('NB_VNTCH', det.vNotchCount ?? '', '          ');
   }
-  if (subformId === 88 && DFO_FMA_NB_VNTCH_YOU.has(Number(d.fmaId))) {
+  if (subformId === 88 && DFO_FMA_NB_VNTCH_YOU.has(efFma)) {
     effort += tag('NB_VNTCH_YOU', det.nbVntchYou ?? '', '          ');
   }
   effort += tag('NB_GEAR_HLD',  det.trapHauls ?? '', '          ');
@@ -323,7 +328,7 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   // FMAs are absent from the map, so the gate is false and nothing emits (Rule 1011). Value =
   // stored MV_GRID code_id; value-gate AND-ed via tag(). XSD sequence: after LGRID_ID, before
   // GEAR_GRP_NUM (EFFORT_DETAIL_SPEC). Map digit (613x="4"/614x="1") is enforced by the validator.
-  if (subformId === 88 && d.fmaId != null && (Number(d.fmaId) in DFO_FMA_GRID_MAP)) {
+  if (subformId === 88 && ef.fmaId != null && (efFma in DFO_FMA_GRID_MAP)) {
     effort += tag('GRID_ID', det.gridId ?? '', '          ');
   }
   // GEAR_GRP_NUM: sequential from 1 per EFFORT node (Rule 609x) — the block index
@@ -335,7 +340,7 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   // MODE attribute per Standard v6.1 §11.3: G = GPS-captured, M = manual
   // entry/edit (open question 3 resolution; gpsSrc tracked per block by FullDfoForm).
   const emitEffortCoords = subformId === 88 || subformId === 89 ||
-    (subformId === 90 && Number(d.fmaId) === DFO_FMA_38B);
+    (subformId === 90 && efFma === DFO_FMA_38B);
   if (emitEffortCoords && det.gpsLat && det.gpsLng) {
     const coordMode = det.gpsSrc === 'gps' ? 'G' : 'M';
     // Clamp to the XSD's ≤4-decimal LAT/LONG limit at emit (shared clampCoord4), matching
@@ -351,9 +356,9 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   // LGRID/TRP_SZ_ID this is FMA-GATED, NOT subform-gated — emit only when the effort FMA is
   // in DFO_FMA_STAT_SECT_REQUIRED (those 17 FMAs are all NL-91). Value-gate AND-ed in via
   // tag() (blank → absent). XSD sequence: after TRP_SZ_ID, before REM.
-  if (DFO_FMA_STAT_SECT_REQUIRED.has(Number(d.fmaId))) effort += tag('STAT_SECT_ID', det.statSectId ?? '', '          ');
-  // REM: EFFORT_DETAIL note (last child before CATCH) — same 'haul' text
-  effort += tag('REM', rem.haul ?? '', '          ');
+  if (DFO_FMA_STAT_SECT_REQUIRED.has(efFma)) effort += tag('STAT_SECT_ID', det.statSectId ?? '', '          ');
+  // REM: EFFORT_DETAIL note (last child before CATCH) — same effort-note text
+  effort += tag('REM', haulNote, '          ');
   effort += `          <CATCH>\n`;
   effort += tag('SPECIE_ID',     '1312', '            ');
   // KEPT_WT: a typed 0 must emit as 0.00 (Rule 2020 — "the fisher must enter 0 in the
@@ -369,16 +374,17 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   effort += tag('SPECIE_FRM_ID', String(DFO_SPECIE_FRM_ID), '            ');
   // NB_SPCMN_BRD: lobster in MAR(90) FMA 38b only — mandatory there (Rule 654),
   // blocked for every other FMA (Rule 655) and species (Rule 653)
-  if (subformId === 90 && Number(d.fmaId) === DFO_FMA_38B) {
+  if (subformId === 90 && efFma === DFO_FMA_38B) {
     effort += tag('NB_SPCMN_BRD', det.nbSpcmnBrd ?? '', '            ');
   }
   // REM: CATCH note (last child of catch_type)
-  effort += tag('REM', rem.catch ?? '', '            ');
+  effort += tag('REM', catchNote, '            ');
   effort += `          </CATCH>\n`;
   effort += `        </EFFORT_DETAIL>\n`;
   });
   effort += `      </EFFORT_BY_GEAR>\n`;
   effort += `    </EFFORT>\n`;
+  });
 
   // TRIP data groups in XSD trip_type order:
   //   BAIT_USED, SAR, HLIN, HLOUT, PCONS, EFFORT, LANDING, TRANSFER
@@ -390,7 +396,10 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   // (d.sarGpsSrc, mirrors EFFORT_DETAIL). WT optional → omitted. DG_CLOSE_DT auto-stamps.
   // S124 Phase 6: SAR_IND lives in EFFORT, so SAR interactions only exist with a haul. When
   // no effort is declared, suppress the SAR detail nodes too — no orphan SAR without its SAR_IND.
-  if (d.effortYes !== 'false' && sarInc === 'Y') {
+  // S136: with per-effort indicators, the trip-level SAR pool emits when ANY effort answered
+  // Yes (the XML cannot attribute a SAR to an effort — RECON_S136 B4). Single-effort logs
+  // behave identically (effort 1's sarYes IS d.sarYes).
+  if (d.effortYes !== 'false' && efforts.some(e => e.sarYes === 'true')) {
     // S121 multi-SAR: block 1 = the legacy d.sar* fields; blocks 2+ = the additive
     // d.extraSars JSON array (XSD allows SAR 0..unbounded under TRIP). A single-SAR log
     // emits byte-identically to pre-S121.
@@ -445,9 +454,11 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   }
   body += pconsXml;
   // S124 Phase 6: EFFORT is optional (XSD minOccurs=0, Rule 1051). When the harvester declares
-  // no haul (effortYes==='false' — a setting day), the whole EFFORT node is omitted, taking its
-  // FMA_ID / SAR_IND / MM_INTER_IND / catch / haul times / GPS with it. Any other value (incl.
-  // absent, for pre-S124 logs) keeps EFFORT, so an ordinary hauling log emits byte-identically.
+  // no haul (effortYes==='false' — a setting day), EVERY effort node is omitted, taking its
+  // FMA_ID / SAR_IND / MM_INTER_IND / catch / haul times / GPS with it — a no-haul day has
+  // zero efforts even if a stale extraEffortNodes survived (ruling 6: the toggle is the one
+  // haul declaration). Any other value (incl. absent, for pre-S124 logs) keeps the efforts,
+  // so an ordinary hauling log emits byte-identically.
   if (d.effortYes !== 'false') body += effort;
   // LANDING — XSD landing_type: START_DT, PORT_ID, VRN?, DG_CLOSE_DT, REM?
   if (landDt) {
@@ -1096,20 +1107,36 @@ export function validateElogXml(xml: string, subformId: number): { valid: boolea
 }
 
 // Rule 33: the period covered by one fishing effort must not overlap the period of
-// another previously entered effort under the same licence. Cross-log check — call
-// before sending with every saved log. Returns the conflicting log id, or null.
+// another previously entered fishing effort UNDER THE SAME LICENCE. S136: per-effort —
+// every effort of the current log is checked against every other effort, both WITHIN the
+// current log and across every saved log. Windows use each effort's own dates (the S90
+// companion-date fallback, matching the emit — pre-S136 this read only dateFished, so a
+// midnight-crossing window was mis-measured; pre-send check only, no byte impact).
+// Licence: an effort's blank licNo means the profile licence, so blank compares equal to
+// blank (legacy logs all compare as one licence — unchanged behavior). Returns the
+// conflicting log's id (the current log's own id for a within-log overlap), or null.
 export function findEffortOverlap(current: DfoLog, all: DfoLog[]): string | null {
-  const window = (l: DfoLog): [number, number] | null => {
-    const s = Date.parse(localToUtcIso(l.dateFished, l.data?.timeStartedHauling ?? ''));
-    const e = Date.parse(localToUtcIso(l.dateFished, l.data?.timeStoppedHauling ?? ''));
-    return isNaN(s) || isNaN(e) || e <= s ? null : [s, e];
-  };
-  const cur = window(current);
-  if (!cur) return null;
+  const windows = (l: DfoLog): { s: number; e: number; lic: string }[] =>
+    effortsFromData(l.data ?? {}).flatMap(ef => {
+      const s = Date.parse(localToUtcIso(ef.haulStartDate || l.dateFished, ef.haulStartTime ?? ''));
+      const e = Date.parse(localToUtcIso(ef.haulEndDate || l.dateFished, ef.haulEndTime ?? ''));
+      return isNaN(s) || isNaN(e) || e <= s ? [] : [{ s, e, lic: ef.licNo || '' }];
+    });
+  const overlaps = (a: { s: number; e: number; lic: string }, b: { s: number; e: number; lic: string }) =>
+    a.lic === b.lic && a.s < b.e && b.s < a.e;
+  const cur = windows(current);
+  if (cur.length === 0) return null;
+  // Within-log: any two of the current log's own efforts overlapping (same licence)
+  for (let i = 0; i < cur.length; i++) {
+    for (let j = i + 1; j < cur.length; j++) {
+      if (overlaps(cur[i], cur[j])) return current.id;
+    }
+  }
   for (const other of all) {
     if (other.id === current.id) continue;
-    const w = window(other);
-    if (w && cur[0] < w[1] && w[0] < cur[1]) return other.id;
+    for (const w of windows(other)) {
+      if (cur.some(c => overlaps(c, w))) return other.id;
+    }
   }
   return null;
 }

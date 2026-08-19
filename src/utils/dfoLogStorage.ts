@@ -69,6 +69,32 @@ export interface ExtraEffortDetail {
   vNotchCount?: string; nbVntchYou?: string;     // QC FMA-gated v-notch counts
 }
 
+// S136 multi-effort: one ADDITIONAL fishing effort (EFFORT node 2..n — Rule 1050; XSD
+// trip_type EFFORT 0..unbounded). ⚠ NAMING: this is the EFFORT level — a separate haul
+// time window with its own licence, area, indicators and closure. It is NOT the trap-group
+// level: `ExtraEffortDetail` above (state `extraEfforts`, data key `extraEffortDetails`)
+// repeats EFFORT_DETAIL *within* one effort. The two levels never share a bare name —
+// everything at this level says "Node".
+// Effort 1 stays in the legacy flat data keys (fmaId, timeStartedHauling, sarYes, mmYes,
+// dgCloseEffort, extraEffortDetails, remarks.haul/catch…); efforts 2+ ride
+// data.extraEffortNodes as a JSON array of these, written only when a second effort exists
+// (the S121/S135 additive pattern, third use). All values are strings per the data-map
+// convention. Effort 1's note lives in log.remarks (haul/catch), so `note` here serves
+// efforts 2+ only; it fans out inside its effort exactly as effort 1's does (S136 §1.2
+// ruling: EFFORT.REM + EFFORT_BY_GEAR.REM + each EFFORT_DETAIL.REM + each CATCH.REM).
+export interface ExtraEffortNode {
+  haulStartDate?: string; haulStartTime?: string;  // → EFFORT.START_DT (own date + HH:MM)
+  haulEndDate?: string;   haulEndTime?: string;    // → EFFORT.END_DT
+  fmaId?: string;                                  // → EFFORT.FMA_ID (also gates the region fields)
+  licNo?: string;                                  // → EFFORT.LIC_NO; blank → profile licence
+  sarYes?: string;                                 // 'true'/'false' → SAR_IND Y/N
+  mmYes?: string;                                  // 'true'/'false' → MM_INTER_IND Y/N
+  gearSubtypeId?: string;                          // NL → EFFORT_BY_GEAR.GEAR_SBTYP_ID
+  note?: string;                                   // per-effort REM text (fans out, see above)
+  closeDt?: string;                                // per-effort DG_CLOSE_DT (ISO)
+  details?: ExtraEffortDetail[];                   // its OWN trap groups (EFFORT_DETAIL 1..n)
+}
+
 export interface DfoLog {
   id: string;                    // e.g. "LL-20260421-001"
   lgbkUid: string;               // Rule 181: 6 random uppercase letters, permanent per log
@@ -367,6 +393,78 @@ export function stampOpenSarBlocks(
   };
 }
 
+// S136 Phase 1: THE one reader that synthesizes the uniform effort list, mirroring
+// sarBlocksFromData. Effort 1 is synthesized first from the legacy flat keys — including
+// its trap groups (the legacy top-level detail fields as group 1, then extraEffortDetails),
+// which until S136 the generator synthesized locally — then efforts 2+ from
+// data.extraEffortNodes. The emit, the send guard and the close-all all read THIS list, so
+// they cannot disagree about what an "effort" is. Effort 1's note is NOT here (it lives in
+// log.remarks, which `d` cannot see) — the generator branches on index 0 for notes.
+export function effortsFromData(d: Record<string, string | undefined>): ExtraEffortNode[] {
+  let extraDetails: ExtraEffortDetail[] = [];
+  try {
+    const parsed = JSON.parse(d.extraEffortDetails || '[]');
+    if (Array.isArray(parsed)) extraDetails = parsed;
+  } catch { /* noop */ }
+  let extraNodes: ExtraEffortNode[] = [];
+  try {
+    const parsed = JSON.parse(d.extraEffortNodes || '[]');
+    if (Array.isArray(parsed)) extraNodes = parsed;
+  } catch { /* noop */ }
+  return [
+    {
+      haulStartDate: d.haulStartDate, haulStartTime: d.timeStartedHauling,
+      haulEndDate: d.haulEndDate, haulEndTime: d.timeStoppedHauling,
+      fmaId: d.fmaId,
+      licNo: undefined, // effort 1 always transmits the profile licence (legacy behavior)
+      sarYes: d.sarYes, mmYes: d.mmYes,
+      gearSubtypeId: d.gearSubtypeId,
+      closeDt: d.dgCloseEffort || undefined,
+      details: [
+        {
+          lgridCodeId: d.lgridCodeId, gridId: d.gridId, statSectId: d.statSectId,
+          catchWeight: d.catchWeight, trapHauls: d.trapHauls, soakDuration: d.soakDuration,
+          gpsLat: d.gpsLat, gpsLng: d.gpsLng, gpsSrc: d.gpsSrc, trapSize: d.trapSize,
+          nbSpcmnKept: d.nbSpcmnKept, nbSpcmnBrd: d.nbSpcmnBrd,
+          vNotchCount: d.vNotchCount, nbVntchYou: d.nbVntchYou,
+        },
+        ...extraDetails,
+      ],
+    },
+    ...extraNodes,
+  ];
+}
+
+// True when EVERY effort carries its own close stamp (effort 1's = the legacy
+// dgCloseEffort). Effort 1 is always in the reader's list, so this is never vacuously true.
+export function effortsAllClosed(d: Record<string, string | undefined>): boolean {
+  return effortsFromData(d).every(e => !!e.closeDt);
+}
+
+export function effortsAnyOpen(d: Record<string, string | undefined>): boolean {
+  return effortsFromData(d).some(e => !e.closeDt);
+}
+
+// Stamp every still-open effort with `stamp` — effort 1 via the flat dgCloseEffort (kept if
+// already set, never restamped), efforts 2+ via their own closeDt (same skip rule). ONE
+// definition for both writers (the per-card close-all and the form-level Close & Save All),
+// mirroring stampOpenSarBlocks.
+export function stampOpenEfforts(
+  dgCloseEffort: string | undefined,
+  extraEffortNodesJson: string | undefined,
+  stamp: string,
+): { dgCloseEffort: string; extraEffortNodes: string } {
+  let nodes: ExtraEffortNode[] = [];
+  try {
+    const parsed = JSON.parse(extraEffortNodesJson || '[]');
+    if (Array.isArray(parsed)) nodes = parsed;
+  } catch { /* noop */ }
+  return {
+    dgCloseEffort: dgCloseEffort || stamp,
+    extraEffortNodes: JSON.stringify(nodes.map(e => (e.closeDt ? e : { ...e, closeDt: stamp }))),
+  };
+}
+
 // The send-path guard's refusal list: used groups whose data map carries NO real close stamp.
 // Non-empty ⇒ the send must refuse and name these sections (loud, not lossy).
 // S134: the row-based groups (bait; bycatch since Phase 3) are also satisfied by
@@ -374,12 +472,19 @@ export function stampOpenSarBlocks(
 // whose rows were each closed individually must not be refused.
 // S135: SAR joins them — closed when the legacy card stamp exists OR every block from
 // sarBlocksFromData carries its own stamp.
+// S136: EFFORT closes PER OCCURRENCE — dgCloseEffort is effort 1's OWN stamp, not a
+// card-level one, so the effort key is judged on the whole list: unclosed whenever ANY
+// effort from effortsFromData lacks its stamp (a set dgCloseEffort no longer satisfies the
+// guard while an effort 2+ is open). Single-effort legacy logs behave identically (their
+// one effort's closeDt IS dgCloseEffort).
 export function unclosedUsedGroupKeys(log: Pick<DfoLog, 'subformId' | 'data'>): string[] {
-  return usedDataGroupKeys(dataGroupInputsFromLog(log)).filter(k =>
-    !log.data[k]
-    && !(k === 'dgCloseBaitUsed' && rowsAllClosed(log.data.baitEntries))
-    && !(k === 'dgClosePconsBycatch' && rowsAllClosed(log.data.bycatchEntries))
-    && !(k === 'dgCloseSar' && sarBlocksAllClosed(log.data)));
+  return usedDataGroupKeys(dataGroupInputsFromLog(log)).filter(k => {
+    if (k === 'dgCloseEffort') return !effortsAllClosed(log.data);
+    return !log.data[k]
+      && !(k === 'dgCloseBaitUsed' && rowsAllClosed(log.data.baitEntries))
+      && !(k === 'dgClosePconsBycatch' && rowsAllClosed(log.data.bycatchEntries))
+      && !(k === 'dgCloseSar' && sarBlocksAllClosed(log.data));
+  });
 }
 
 // --- S128 Phase 1: per-section REM note lock (§5.2.1 irreversibility) ---
