@@ -19,7 +19,6 @@ import { openAndroidDateTime, openAndroidDate } from '../utils/androidDateTimePi
 import * as Location from 'expo-location';
 import {
   Calendar,
-  MapPin,
   Anchor,
   Scale,
   Clock,
@@ -240,6 +239,15 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // S124 Phase 6: did the harvester haul gear? Yes (default) = EFFORT used — ordinary trip,
   // unchanged. No = a setting day: the Catch & Effort + GPS cards collapse, EFFORT is omitted.
   const [effortYes, setEffortYes] = useState(true);
+  // S136 Phase 3 (ruling 5): effort 1's licence line. licNo = the per-effort override
+  // (flat d.licNo, absent → the profile licence transmits, legacy behavior);
+  // profileLicence = the display fallback; licEditing = the small edit control's state.
+  const [licNo, setLicNo] = useState('');
+  const [licEditing, setLicEditing] = useState(false);
+  const [profileLicence, setProfileLicence] = useState('');
+  // S136 Phase 3 walk fix 2: Trap Group 1 collapses like groups 2+ (efforts never collapse
+  // — ruling 7 — but trap groups do). Loaded logs start collapsed, same as the extras.
+  const [block1Collapsed, setBlock1Collapsed] = useState(false);
   const [portLanded, setPortLanded] = useState('');
   const [tripId, setTripId] = useState('');
   const [lgbkUid, setLgbkUid] = useState('');
@@ -499,6 +507,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           setTrapHauls(d.trapHauls || '');
           // S124 Phase 6: default Yes for old logs (they always had a haul); only an explicit 'false' means no-haul.
           setEffortYes(d.effortYes === 'false' ? false : true);
+          // S136 Phase 3: effort 1's licence override (absent on pre-S136 logs → profile licence)
+          setLicNo(d.licNo || '');
           setPortLanded(d.portLanded || '');
           setPortLandedCodeId(d.portLandedCodeId ? Number(d.portLandedCodeId) : null);
           try {
@@ -550,6 +560,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             const coll: Record<number, boolean> = {};
             arr.forEach((_, i) => { coll[i] = true; });
             setExtraCollapsed(coll);
+            setBlock1Collapsed(true); // walk fix 2: group 1 loads collapsed, like groups 2+
           } catch { setExtraEfforts([]); }
           try {
             const bc = JSON.parse(d.baitEntries || '[]');
@@ -632,6 +643,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
 
   useEffect(() => {
     const loadExisting = async () => {
+      // S136 Phase 3: the licence line's display fallback — loaded on BOTH paths (the edit
+      // path never loaded the profile before; the line must show the profile licence when
+      // no per-effort override is stored).
+      const captainProfile = await loadCaptainProfile();
+      setProfileLicence(captainProfile.fishingNumber || '');
       if (editingLogId) {
         const log = await loadLogById(editingLogId);
         if (log) hydrateFromLog(log);
@@ -639,7 +655,6 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         // New log — today's date + fresh trip ID
         const today = formatDate(new Date());
         setDateFished(today);
-        const captainProfile = await loadCaptainProfile();
         const profileSubformId = captainProfile.subformId ?? 90;
         setSubformId(profileSubformId);
         setRegId(captainProfile.regId ?? 1004);
@@ -737,6 +752,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         gridDisplay,
         catchWeight, trapHauls,
     effortYes: String(effortYes), // S124 Phase 6: 'false' = no-haul → generator omits EFFORT
+    // S136 Phase 3: effort 1's licence override — written only when set, so an untouched
+    // legacy log keeps its exact stored shape (the extraEffortDetails rationale below)
+    ...(licNo ? { licNo } : {}),
 
     portLanded, portLandedCodeId: String(portLandedCodeId ?? ''),
     crewRegistry: JSON.stringify(crewMembers),
@@ -948,7 +966,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     !!(catchWeight.trim() || trapHauls.trim() || timeStartedHauling.trim() || timeStoppedHauling.trim() ||
        soakDuration.trim() || gpsLat.trim() || gpsLng.trim() || trapSize || gearSubtypeId ||
        nbSpcmnKept.trim() || nbSpcmnBrd.trim() || vNotchCount.trim() || nbVntchYou.trim() ||
-       extraEfforts.length > 0);
+       licNo.trim() || extraEfforts.length > 0);
 
   // Clear every Catch & Effort / GPS field (all EFFORT / EFFORT_DETAIL) so a later Yes re-opens
   // the card empty.
@@ -965,6 +983,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     setTrapSize(''); setGearSubtypeId('');
     setNbSpcmnKept(''); setNbSpcmnBrd('');
     setVNotchCount(''); setNbVntchYou('');
+    setLicNo(''); setLicEditing(false); // S136: the licence override is effort data too
+    setBlock1Collapsed(false);
     setExtraEfforts([]);
   };
 
@@ -1284,6 +1304,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
 
   const addExtraEffort = () => {
     // Collapse the filled blocks to their summaries, open the new one
+    setBlock1Collapsed(true); // walk fix 2: group 1 collapses with the rest
     setExtraCollapsed(prev => {
       const next = { ...prev };
       extraEfforts.forEach((_, i) => { next[i] = true; });
@@ -1306,6 +1327,64 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     });
     if (extraDropdown?.idx === idx) setExtraDropdown(null);
   };
+
+  // S136 Phase 3 walk fix 2: deleting Trap Group 1 slides the next group up into the legacy
+  // flat keys (the S135 removeSarBlock block-1 pattern) — the reader's list is identical
+  // minus the deleted group, so the bytes the remaining groups transmit are unchanged by
+  // construction. With no group 2, the delete wipes group 1's fields.
+  const removeTrapGroup = (uiIdx: number) => {
+    if (uiIdx === 0) {
+      if (extraEfforts.length > 0) {
+        const [first, ...rest] = extraEfforts;
+        setLgridCodeId(first.lgridCodeId ? Number(first.lgridCodeId) : null);
+        setLgridDisplay(first.lgridDisplay ?? '');
+        setGridId(first.gridId ? Number(first.gridId) : null);
+        setGridDisplay(first.gridDisplay ?? '');
+        setStatSectId(first.statSectId ? Number(first.statSectId) : null);
+        setStatSectDisplay(first.statSectDisplay ?? '');
+        setCatchWeight(first.catchWeight ?? '');
+        setTrapHauls(first.trapHauls ?? '');
+        setSoakDuration(first.soakDuration ?? '');
+        setGpsLat(first.gpsLat ?? ''); setGpsLng(first.gpsLng ?? '');
+        setGpsSrc(first.gpsSrc === 'gps' ? 'gps' : 'manual');
+        setTrapSize(first.trapSize ?? '');
+        setNbSpcmnKept(first.nbSpcmnKept ?? ''); setNbSpcmnBrd(first.nbSpcmnBrd ?? '');
+        setVNotchCount(first.vNotchCount ?? ''); setNbVntchYou(first.nbVntchYou ?? '');
+        setExtraEfforts(rest);
+        setExtraCollapsed(prev => {
+          const next: Record<number, boolean> = {};
+          Object.entries(prev).forEach(([k, v]) => {
+            const i = Number(k);
+            if (i > 0) next[i - 1] = v;
+          });
+          return next;
+        });
+        setBlock1Collapsed(false); // the promoted values are new to the eye — show them
+      } else {
+        setLgridCodeId(null); setLgridDisplay('');
+        setGridId(null); setGridDisplay('');
+        setStatSectId(null); setStatSectDisplay('');
+        setCatchWeight(''); setTrapHauls(''); setSoakDuration('');
+        setGpsLat(''); setGpsLng(''); setGpsSrc('manual');
+        setTrapSize(''); setNbSpcmnKept(''); setNbSpcmnBrd('');
+        setVNotchCount(''); setNbVntchYou('');
+      }
+      setLgridPickerOpen(false); setStatSectPickerOpen(false); setGridPickerOpen(false);
+      setExtraDropdown(null);
+    } else {
+      removeExtraEffort(uiIdx - 1);
+    }
+  };
+
+  // Trap Group 1's flat state as an ExtraEffortDetail — feeds the shared collapsed summary.
+  const block1Detail = (): ExtraEffortDetail => ({
+    lgridCodeId: lgridCodeId ? String(lgridCodeId) : '', lgridDisplay,
+    gridId: gridId ? String(gridId) : '', gridDisplay,
+    statSectId: statSectId ? String(statSectId) : '', statSectDisplay,
+    catchWeight, trapHauls, soakDuration,
+    gpsLat, gpsLng, gpsSrc, trapSize,
+    nbSpcmnKept, nbSpcmnBrd, vNotchCount, nbVntchYou,
+  });
 
   // Collapsed one-line summary — S121 STOP-1a ruled format: "Grid 1589 — 420 lbs — 225 hauls".
   // Regions without a grid drop that segment; NL leads with its Statistical Section.
@@ -1348,7 +1427,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     const showBlockCoords = subformId === 88 || subformId === 89 ||
       (subformId === 90 && fmaId === DFO_FMA_38B);
     return (
-      <View key={i} style={styles.effortBlock}>
+      <View key={i} style={styles.trapGroupBlock}>
         <View style={styles.effortBlockHeader}>
           <Text style={styles.effortBlockTitle}>{t('form234.catchEffortBlock', { n: i + 2 })}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -1859,9 +1938,38 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       ],
     );
   };
+  // S136 Phase 3 (§3.2 ruling): closing ONE fishing effort gets its own specific confirm
+  // (the S135 SAR-block shape) instead of the generic section confirm — with several effort
+  // blocks the generic title could not say which one is closing. Effort 1's stamp is the
+  // legacy dgCloseEffort; the persistence mirrors closeSection exactly.
+  const closeEffortNode = () => {
+    if (readOnly || isClosed('dgCloseEffort')) return;
+    Alert.alert(
+      t('form234.closeEffortConfirmTitle'),
+      t('form234.closeEffortConfirmBody'),
+      [
+        { text: t('form234.closeConfirmNotYet'), style: 'cancel' },
+        {
+          text: t('form234.closeConfirmYes'),
+          style: 'destructive',
+          onPress: () => {
+            const nowIso = new Date().toISOString();
+            setCloses(prev => ({ ...prev, dgCloseEffort: nowIso }));
+            if (isLoaded && !editingCompleted) {
+              void saveLog({ ...buildDraftLog(), data: { ...buildLogData(), dgCloseEffort: nowIso } });
+            }
+          },
+        },
+      ],
+    );
+  };
+
   // Foot control: nothing when the group is unused; a lock + timestamp banner when closed; the
   // Close & Save Section button otherwise (hidden in read-only view).
-  const renderCloseControl = (dataKey: string, sectionTitleKey: string, used: boolean, onClose?: () => void) => {
+  // S136 Phase 3 walk fix 4: per-occurrence closes label the button "Close & Save" (the
+  // bait/SAR twin) via buttonLabelKey — "Close & Save Section" is wrong for one occurrence
+  // and collided with Landing's. Every other call site keeps the default label.
+  const renderCloseControl = (dataKey: string, sectionTitleKey: string, used: boolean, onClose?: () => void, buttonLabelKey: string = 'form234.closeSectionButton') => {
     if (!used) return null;
     if (isClosed(dataKey)) {
       return (
@@ -1875,7 +1983,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     return (
       <TouchableOpacity style={styles.closeSectionBtn} onPress={onClose ?? (() => closeSection(dataKey, sectionTitleKey))} activeOpacity={0.8}>
         <Lock size={16} color="#B45309" />
-        <Text style={styles.closeSectionBtnText}>{t('form234.closeSectionButton')}</Text>
+        <Text style={styles.closeSectionBtnText}>{t(buttonLabelKey)}</Text>
       </TouchableOpacity>
     );
   };
@@ -2707,10 +2815,69 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             <Text style={styles.sectionTitle}>{t('form234.catchEffortSection')}</Text>
             {renderNoteButton('catch')}
           </View>
+          {/* S136 Phase 3 (ruling 5): the licence line — locked display, small edit control,
+              above "Did you haul gear?". Shows the per-effort override when stored (d.licNo),
+              else the profile licence. Editing swaps the line for a text input; blur saves.
+              No confirm — the effort's Close & Save is the freeze (edit control hidden once
+              closed, ruling 8). */}
+          <View style={styles.licenceLine}>
+            {licEditing ? (
+              <>
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  value={licNo}
+                  onChangeText={setLicNo}
+                  placeholder={profileLicence}
+                  placeholderTextColor="#94A3B8"
+                  autoFocus
+                  autoCapitalize="characters"
+                  onBlur={() => setLicEditing(false)}
+                />
+                {/* Walk fix 1: an explicit way to finish — Done ends the edit (blur still
+                    works too; both routes land on the same setLicEditing(false)). */}
+                <TouchableOpacity onPress={() => setLicEditing(false)} activeOpacity={0.8} style={{ marginLeft: 10 }}>
+                  <Text style={styles.licenceEditText}>{tc('nav.done')}</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={styles.licenceLineText}>
+                  {t('form234.effortLicenceLine', { no: licNo || profileLicence })}
+                </Text>
+                {!readOnly && !isClosed('dgCloseEffort') && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      // Walk fix 1: a short confirm before the field unlocks — the licence
+                      // is what this effort TRANSMITS, so an accidental tap must not open it.
+                      Alert.alert(
+                        t('form234.effortLicenceEditConfirmTitle'),
+                        t('form234.effortLicenceEditConfirmBody'),
+                        [
+                          { text: tc('nav.cancel'), style: 'cancel' },
+                          { text: t('form234.effortLicenceEdit'), onPress: () => setLicEditing(true) },
+                        ],
+                      );
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.licenceEditText}>{t('form234.effortLicenceEdit')}</Text>
+                  </TouchableOpacity>
+                )}
+              </>
+            )}
+          </View>
           {/* S124 Phase 6: "did you haul?" — Yes (default) shows the card; No collapses it (a
-              setting day) and omits EFFORT. Styled like the Interactions & Other toggles. */}
+              setting day) and omits EFFORT. Styled like the Interactions & Other toggles.
+              S136 ruling 6: the toggle stays ONCE, on effort 1 only (Rule 1052 mechanism). */}
           {renderYesNoToggle(t('form234.effortQuestion'), effortYes, handleEffortToggle, true)}
           {effortYes && (<>
+          {/* S136 Phase 3 (rulings 3/7): effort 1 renders as a titled block, ALWAYS expanded
+              (only trap groups collapse), with its trap groups beneath it and its own
+              Close & Save. Phase 4 repeats this block for efforts 2+. */}
+          <View style={styles.effortBlock}>
+            <View style={styles.effortBlockHeader}>
+              <Text style={styles.effortBlockTitle}>{t('form234.effortNodeTitle', { n: 1 })}</Text>
+            </View>
           <View {...closedBodyProps('dgCloseEffort')}>
           {renderNoteInput('catch', remarks.catch ?? '', (v) => { setNote('catch', v); setNote('haul', v); })}
           {/* LFA Selector */}
@@ -2757,6 +2924,63 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                       )}
                     </View>
 
+          {/* GEAR_SBTYP_ID: NL(91) only — EFFORT_BY_GEAR level, so it sits with the effort's
+              own fields ABOVE the trap groups (S136 walk fix 2 moved it up from between the
+              group fields). Values from DFO_GEAR_SUBTYPE_LIST; i18n display, .label fallback. */}
+          {isVisible('gearSubtypeId') && (
+            <View style={styles.fieldRow}>
+              <Text style={styles.label}>{t('form234.gearSubtypeLabel')}{isRequired('gearSubtypeId') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
+              <TouchableOpacity
+                style={styles.timeButton}
+                onPress={() => { if (readOnly) return; setGearSubtypePickerOpen(o => !o); }}
+              >
+                <Text style={[styles.timeButtonText, !gearSubtypeId && styles.timeButtonPlaceholder]}>
+                  {gearSubtypeId ? t(`form234.gearSubtypeOption_${gearSubtypeId}`, { defaultValue: DFO_GEAR_SUBTYPE_LIST.find(s => String(s.codeId) === gearSubtypeId)?.label ?? t('form234.selectGearSubtype') }) : t('form234.selectGearSubtype')}
+                </Text>
+                <ChevronDown size={16} color="#64748B" />
+              </TouchableOpacity>
+              {gearSubtypePickerOpen && (
+                <View style={styles.dropdownList}>
+                  {DFO_GEAR_SUBTYPE_LIST.map(s => (
+                    <TouchableOpacity
+                      key={s.codeId}
+                      style={[styles.dropdownItem, gearSubtypeId === String(s.codeId) && styles.dropdownItemActive]}
+                      onPress={() => {
+                        setGearSubtypeId(String(s.codeId));
+                        setGearSubtypePickerOpen(false);
+                      }}
+                    >
+                      <Text style={[styles.dropdownItemText, gearSubtypeId === String(s.codeId) && styles.dropdownItemTextActive]}>
+                        {t(`form234.gearSubtypeOption_${s.codeId}`, { defaultValue: s.label })}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
+          {/* S136 walk fix 2: Trap Group 1 renders EXACTLY like groups 2+ — titled, framed,
+              same trash/collapse controls (the S135 block-1 pattern). Its fields are the
+              legacy flat keys; delete slides group 2 up into them (removeTrapGroup). */}
+          <View style={styles.trapGroupBlock}>
+            <View style={styles.effortBlockHeader}>
+              <Text style={styles.effortBlockTitle}>{t('form234.catchEffortBlock', { n: 1 })}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                {!readOnly && !isClosed('dgCloseEffort') && (
+                  <TouchableOpacity style={styles.deleteBtn} onPress={() => removeTrapGroup(0)}>
+                    <Trash2 size={16} color="#EF4444" />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={styles.deleteBtn} onPress={() => setBlock1Collapsed(c => !c)}>
+                  {block1Collapsed ? <ChevronDown size={18} color="#64748B" /> : <ChevronUp size={18} color="#64748B" />}
+                </TouchableOpacity>
+              </View>
+            </View>
+            {block1Collapsed ? (
+              <TouchableOpacity onPress={() => setBlock1Collapsed(false)}>
+                <Text style={styles.effortBlockSummary} numberOfLines={1}>{extraSummary(block1Detail())}</Text>
+              </TouchableOpacity>
+            ) : (<>
                     {/* LGRID Selector — shown for any FMA that has a grid list */}
                     {fmaId !== null && (DFO_LGRID_BY_FMA[fmaId] ?? []).length > 0 && (
                       <View style={styles.fieldRow}>
@@ -2851,79 +3075,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                           </Text>
                           <ChevronDown size={16} color="#64748B" />
                         </TouchableOpacity>
-                        {/* Phase 2.7: list+search live in a Modal overlay (NOT in the form
-                            ScrollView) so the FlatList is no longer a nested VirtualizedList. */}
-                        <Modal
-                          visible={gridPickerOpen}
-                          transparent
-                          animationType="slide"
-                          onRequestClose={() => { setGridPickerOpen(false); setGridSearch(''); }}
-                        >
-                          <TouchableOpacity
-                            style={styles.modalOverlay}
-                            activeOpacity={1}
-                            onPress={() => { setGridPickerOpen(false); setGridSearch(''); }}
-                          >
-                            <TouchableOpacity activeOpacity={1} onPress={() => {}}>
-                              <View style={styles.sheetContent}>
-                                <Text style={styles.sheetTitle}>{t('form234.gridLabel')}</Text>
-                                <TextInput
-                                  style={[styles.input, { marginBottom: 12 }]}
-                                  value={gridSearch}
-                                  onChangeText={setGridSearch}
-                                  placeholder={t('form234.selectQcGrid')}
-                                  placeholderTextColor="#94A3B8"
-                                  autoCorrect={false}
-                                  autoCapitalize="characters"
-                                />
-                                <FlatList
-                                  data={gridOptionsFiltered}
-                                  keyExtractor={(g) => String(g.codeId)}
-                                  style={{ maxHeight: GRID_LIST_MAX_H }}
-                                  keyboardShouldPersistTaps="handled"
-                                  initialNumToRender={20}
-                                  windowSize={10}
-                                  maxToRenderPerBatch={20}
-                                  removeClippedSubviews={true}
-                                  renderItem={({ item: g }) => {
-                                    // S121: the Modal serves block 1 (target -1) AND the extra blocks
-                                    const active = gridPickerTarget === -1
-                                      ? gridId === g.codeId
-                                      : (extraEfforts[gridPickerTarget]?.gridId ?? '') === String(g.codeId);
-                                    return (
-                                    <TouchableOpacity
-                                      style={[styles.dropdownItem, active && styles.dropdownItemActive]}
-                                      onPress={() => {
-                                        if (gridPickerTarget === -1) {
-                                          setGridId(g.codeId);
-                                          setGridDisplay(g.descFr);
-                                        } else {
-                                          updateExtra(gridPickerTarget, { gridId: String(g.codeId), gridDisplay: g.descFr });
-                                        }
-                                        setGridPickerOpen(false);
-                                        setGridSearch('');
-                                      }}
-                                    >
-                                      <Text style={[styles.dropdownItemText, active && styles.dropdownItemTextActive]}>
-                                        {g.descFr}
-                                      </Text>
-                                    </TouchableOpacity>
-                                    );
-                                  }}
-                                />
-                                <TouchableOpacity style={styles.sheetCancelBtn} onPress={() => { setGridPickerOpen(false); setGridSearch(''); }}>
-                                  <Text style={styles.sheetCancelText}>{tc('nav.cancel')}</Text>
-                                </TouchableOpacity>
-                              </View>
-                            </TouchableOpacity>
-                          </TouchableOpacity>
-                        </Modal>
                       </View>
                     )}
           {renderField(t('form234.catchWeightLabel'), catchWeight, setCatchWeight, '0', false, false, 'numeric', isRequired('catchWeight'))}
           {renderField(t('form234.trapHaulsLabel'), trapHauls, setTrapHauls, '0', false, false, 'numeric', isRequired('trapHauls'))}
-          {/* S124: soak (block-1 EFFORT_DETAIL) stays here with block 1's fields. The two haul
-              times are EFFORT-level (one pair per node) and render AFTER the extra blocks, below. */}
+          {/* S124: soak (group-1 EFFORT_DETAIL) stays here with group 1's fields. The two haul
+              times are EFFORT-level (one pair per node) and render AFTER the trap groups, below. */}
           {isVisible('soakDuration') && renderField(t('form234.soakDurationLabel'), soakDuration, setSoakDuration, t('form234.soakDurationPlaceholder'), false, false, 'decimal-pad', isRequired('soakDuration'))}
           {/* NB_SPCMN_KEPT: NL(91) only — mandatory on the lobster catch (Rule 976), blocked
               for QC/GLF/MAR (Subforms row 93). isVisible-gated so 88/89/90 screens are
@@ -2972,44 +3129,110 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               )}
             </View>
           )}
-          {/* GEAR_SBTYP_ID: NL(91) only — mandatory (Subforms_requirements_234.xlsx row 75),
-              blocked for 88/89/90. Values from DFO_GEAR_SUBTYPE_LIST (39684 Wooden /
-              39685 Wire mesh / 39686 Both); display via i18n gearSubtypeOption_<codeId>
-              (FR per MV_GEAR_SUBTYPE_rel7 = the FS234 Rule-611 block), .label fallback. */}
-          {isVisible('gearSubtypeId') && (
-            <View style={styles.fieldRow}>
-              <Text style={styles.label}>{t('form234.gearSubtypeLabel')}{isRequired('gearSubtypeId') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
-              <TouchableOpacity
-                style={styles.timeButton}
-                onPress={() => { if (readOnly) return; setGearSubtypePickerOpen(o => !o); }}
-              >
-                <Text style={[styles.timeButtonText, !gearSubtypeId && styles.timeButtonPlaceholder]}>
-                  {gearSubtypeId ? t(`form234.gearSubtypeOption_${gearSubtypeId}`, { defaultValue: DFO_GEAR_SUBTYPE_LIST.find(s => String(s.codeId) === gearSubtypeId)?.label ?? t('form234.selectGearSubtype') }) : t('form234.selectGearSubtype')}
-                </Text>
-                <ChevronDown size={16} color="#64748B" />
-              </TouchableOpacity>
-              {gearSubtypePickerOpen && (
-                <View style={styles.dropdownList}>
-                  {DFO_GEAR_SUBTYPE_LIST.map(s => (
-                    <TouchableOpacity
-                      key={s.codeId}
-                      style={[styles.dropdownItem, gearSubtypeId === String(s.codeId) && styles.dropdownItemActive]}
-                      onPress={() => {
-                        setGearSubtypeId(String(s.codeId));
-                        setGearSubtypePickerOpen(false);
-                      }}
-                    >
-                      <Text style={[styles.dropdownItemText, gearSubtypeId === String(s.codeId) && styles.dropdownItemTextActive]}>
-                        {t(`form234.gearSubtypeOption_${s.codeId}`, { defaultValue: s.label })}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+          {/* S136 Phase 3: the standalone GPS Coordinates card is GONE — LAT/LONG are trap-group
+              data (EFFORT_DETAIL), so trap group 1's coordinates live here with its other
+              fields, exactly where the extra blocks already carry theirs. Same visibility as
+              the old card (isVisible('gpsCoords'): 88/89/90 visible, 91 hidden — rows 82/83),
+              preserving the S110 R2 parked state (non-38b MAR still sees, never emits). */}
+          {isVisible('gpsCoords') && (
+            <>
+              {!readOnly && !isClosed('dgCloseEffort') && (
+                <TouchableOpacity
+                  style={styles.captureGpsBtn}
+                  onPress={async () => {
+                    setGpsCapturing(true);
+                    await captureGps(setGpsLat, setGpsLng, { alertOnFail: true });
+                    setGpsSrc('gps'); // §11.3: GPS-read coordinates → MODE="G"
+                    setGpsCapturing(false);
+                  }}
+                  disabled={gpsCapturing}
+                  activeOpacity={0.8}
+                >
+                  <LocateFixed size={15} color="#4338CA" />
+                  <Text style={styles.captureGpsBtnText}>
+                    {gpsCapturing ? t('form234.capturingGps') : t('form234.captureGpsButton')}
+                  </Text>
+                </TouchableOpacity>
               )}
-            </View>
+              {renderField(t('form234.latitudeLabel'), gpsLat, (v: string) => { setGpsLat(v); setGpsSrc('manual'); }, '0.0000', false, false, 'numeric')}
+              {renderField(t('form234.longitudeLabel'), gpsLng, (v: string) => { setGpsLng(v); setGpsSrc('manual'); }, '0.0000', false, false, 'numeric')}
+            </>
           )}
-          {/* S121 multi-grid: additional catch-effort blocks (EFFORT_DETAIL 2..n), each with
-              its own grid, weight, hauls, and region fields. Block 1 = the fields above. */}
+            </>)}
+          </View>
+          {/* Phase 2.7: list+search live in a Modal overlay (NOT in the form ScrollView) so
+              the FlatList is no longer a nested VirtualizedList. S136 walk fix 2: HOISTED
+              out of the Trap Group 1 frame — the Modal serves every group's grid button
+              (gridPickerTarget), so a collapsed group 1 must not unmount it. */}
+          {subformId === 88 && (
+            <Modal
+              visible={gridPickerOpen}
+              transparent
+              animationType="slide"
+              onRequestClose={() => { setGridPickerOpen(false); setGridSearch(''); }}
+            >
+              <TouchableOpacity
+                style={styles.modalOverlay}
+                activeOpacity={1}
+                onPress={() => { setGridPickerOpen(false); setGridSearch(''); }}
+              >
+                <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+                  <View style={styles.sheetContent}>
+                    <Text style={styles.sheetTitle}>{t('form234.gridLabel')}</Text>
+                    <TextInput
+                      style={[styles.input, { marginBottom: 12 }]}
+                      value={gridSearch}
+                      onChangeText={setGridSearch}
+                      placeholder={t('form234.selectQcGrid')}
+                      placeholderTextColor="#94A3B8"
+                      autoCorrect={false}
+                      autoCapitalize="characters"
+                    />
+                    <FlatList
+                      data={gridOptionsFiltered}
+                      keyExtractor={(g) => String(g.codeId)}
+                      style={{ maxHeight: GRID_LIST_MAX_H }}
+                      keyboardShouldPersistTaps="handled"
+                      initialNumToRender={20}
+                      windowSize={10}
+                      maxToRenderPerBatch={20}
+                      removeClippedSubviews={true}
+                      renderItem={({ item: g }) => {
+                        // S121: the Modal serves group 1 (target -1) AND the extra groups
+                        const active = gridPickerTarget === -1
+                          ? gridId === g.codeId
+                          : (extraEfforts[gridPickerTarget]?.gridId ?? '') === String(g.codeId);
+                        return (
+                        <TouchableOpacity
+                          style={[styles.dropdownItem, active && styles.dropdownItemActive]}
+                          onPress={() => {
+                            if (gridPickerTarget === -1) {
+                              setGridId(g.codeId);
+                              setGridDisplay(g.descFr);
+                            } else {
+                              updateExtra(gridPickerTarget, { gridId: String(g.codeId), gridDisplay: g.descFr });
+                            }
+                            setGridPickerOpen(false);
+                            setGridSearch('');
+                          }}
+                        >
+                          <Text style={[styles.dropdownItemText, active && styles.dropdownItemTextActive]}>
+                            {g.descFr}
+                          </Text>
+                        </TouchableOpacity>
+                        );
+                      }}
+                    />
+                    <TouchableOpacity style={styles.sheetCancelBtn} onPress={() => { setGridPickerOpen(false); setGridSearch(''); }}>
+                      <Text style={styles.sheetCancelText}>{tc('nav.cancel')}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </TouchableOpacity>
+              </TouchableOpacity>
+            </Modal>
+          )}
+          {/* S121 multi-grid: additional trap groups (EFFORT_DETAIL 2..n), each with
+              its own grid, weight, hauls, and region fields. Group 1 = the framed block above. */}
           {extraEfforts.map((e, i) => renderExtraEffortBlock(e, i))}
           {!readOnly && !isClosed('dgCloseEffort') && (
             <TouchableOpacity style={[styles.addBtn, { marginTop: 4 }]} onPress={addExtraEffort}>
@@ -3018,14 +3241,22 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             </TouchableOpacity>
           )}
           {/* S124: the two haul times are EFFORT-level (START_DT / END_DT — one pair for the whole
-              node), so they render AFTER every EFFORT_DETAIL block, not inside block 1's fields. */}
+              node), so they render AFTER every trap group, not inside group 1's fields. */}
           <View style={{ height: 14 }} />
           {isVisible('haulStartTime') && renderTimestampField(t('form234.timeStartedHaulingLabel'), formatDateTimeDisplay(haulStartDate, timeStartedHauling), 'startHaul', false, isRequired('haulStartTime'))}
           {isVisible('haulEndTime') && renderTimestampField(t('form234.timeStoppedHaulingLabel'), formatDateTimeDisplay(haulEndDate, timeStoppedHauling), 'stopHaul', false, isRequired('haulEndTime'))}
+          {/* S136 Phase 3 (ruling 3): the two Y/N interaction questions are EFFORT elements
+              (SAR_IND / MM_INTER_IND, mandatory per occurrence) — asked ON the effort. The
+              labels are the Rule 603 / Rule 780 mandated texts, reused verbatim. Answering
+              Yes on species at risk opens the existing card in Interactions & Other; the
+              detail blocks and their per-block closes are untouched there. */}
+          {renderYesNoToggle(t('form234.sarIndLabel'), sarYes, handleSarYes)}
+          {renderYesNoToggle(t('form234.mmInterIndLabel'), mmYes, handleMmYes)}
           </View>
-          {/* EFFORT close — one closure regardless of grid-block count (EFFORT_DETAIL is a
-              child of EFFORT). Shown only when a haul is declared (Phase 6). */}
-          {renderCloseControl('dgCloseEffort', 'form234.catchEffortSection', true)}
+          {/* EFFORT close — one closure per effort (§5.2.1; ruling 5 confirm wording).
+              Shown only when a haul is declared (Phase 6). */}
+          {renderCloseControl('dgCloseEffort', 'form234.catchEffortSection', true, closeEffortNode, 'form234.closeEffortButton')}
+          </View>
           </>)}
         </View>
 
@@ -3107,46 +3338,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         </View>
         )}
 
-        {/* GPS section: isVisible-gated (S110 Phase 3) — 'gpsCoords' is in the 88/89/90
-            visible configs, ABSENT from 91 (rows 82/83: LAT/LONG Blocked for NL; the sheet
-            legend says Blocked = "the application must prevent the entry"). Stored
-            gpsLat/gpsLng on existing NL drafts is untouched — state still hydrates and
-            buildLogData still writes it; the generator never emits it for 91 (Phase 1). */}
-        {/* S124 Phase 6: GPS coords are block-1 EFFORT_DETAIL — the card collapses with EFFORT
-            when no haul is declared. */}
-        {effortYes && isVisible('gpsCoords') && (
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={[styles.sectionIcon, { backgroundColor: '#E0E7FF' }]}><MapPin size={16} color="#4338CA" /></View>
-            <Text style={styles.sectionTitle}>{t('form234.gpsCoordinatesSection')}</Text>
-          </View>
-          {/* S124: GPS coords are block-1 EFFORT_DETAIL LAT/LONG — part of EFFORT. This is a
-              separate card, so freeze its body + drop the capture button when EFFORT is closed
-              (lock-bypass audit fix). No own close control — it closes with Catch & Effort. */}
-          <View {...closedBodyProps('dgCloseEffort')}>
-          {!readOnly && !isClosed('dgCloseEffort') && (
-            <TouchableOpacity
-              style={styles.captureGpsBtn}
-              onPress={async () => {
-                setGpsCapturing(true);
-                await captureGps(setGpsLat, setGpsLng, { alertOnFail: true });
-                setGpsSrc('gps'); // §11.3: GPS-read coordinates → MODE="G"
-                setGpsCapturing(false);
-              }}
-              disabled={gpsCapturing}
-              activeOpacity={0.8}
-            >
-              <LocateFixed size={15} color="#4338CA" />
-              <Text style={styles.captureGpsBtnText}>
-                {gpsCapturing ? t('form234.capturingGps') : t('form234.captureGpsButton')}
-              </Text>
-            </TouchableOpacity>
-          )}
-          {renderField(t('form234.latitudeLabel'), gpsLat, (v: string) => { setGpsLat(v); setGpsSrc('manual'); }, '0.0000', false, false, 'numeric')}
-          {renderField(t('form234.longitudeLabel'), gpsLng, (v: string) => { setGpsLng(v); setGpsSrc('manual'); }, '0.0000', false, false, 'numeric')}
-          </View>
-        </View>
-        )}
+        {/* S136 Phase 3: the standalone GPS Coordinates card is REMOVED — trap group 1's
+            LAT/LONG and Capture GPS now live inside the Catch & Effort card with the group's
+            other fields (see above), where the extra trap groups already carry theirs. */}
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -3240,24 +3434,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             )}
           </View>
 
-          {/* S124 Phase 6: MM_INTER_IND / SAR_IND live in EFFORT — hide these two sub-cards on a
-              no-haul day. Bycatch + Personal Use are TRIP-level PCONS and stay. */}
-          {effortYes && (<>
-          <View style={styles.incidentSection}>
-            <View style={styles.sectionHeader}>
-              <View style={[styles.sectionIcon, { backgroundColor: '#EDE9FE' }]}>
-                <AlertTriangle size={16} color="#7C3AED" />
-              </View>
-              <Text style={[styles.sectionTitle, { fontSize: 13 }]}>{t('form234.mmSubsection')}</Text>
-            </View>
-            {/* S136 Phase 2 (ruling 4): the marine-mammal DETAIL fields (species / what
-                happened / date & time / GPS) are REMOVED from the 234 surface — the 234
-                emits only the Y/N MM_INTER_IND; the details belong to Form 222. The seven
-                mm* data keys stay written and hydrated (no stored log changes shape), they
-                just have no edit surface (the S135 rem.sar treatment). */}
-            {renderYesNoToggle(t('form234.mmInterIndLabel'), mmYes, handleMmYes)}
-          </View>
-
+          {/* S136 Phase 3 (ruling 3): the two Y/N questions moved ONTO the effort (they are
+              per-EFFORT elements) — asked in the Catch & Effort card. The marine-mammal
+              sub-card is gone entirely (its details left in Phase 2; its toggle moved).
+              The species-at-risk card below OPENS when an effort answers Yes; its detail
+              blocks and their per-block closes are untouched (S135). Bycatch + Personal Use
+              are TRIP-level PCONS and stay unconditional. */}
+          {effortYes && sarYes === true && (<>
           <View style={styles.incidentSection}>
             <View style={styles.sectionHeader}>
               <View style={[styles.sectionIcon, { backgroundColor: '#EDE9FE' }]}>
@@ -3269,11 +3452,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                   for blocks without their own note; it has no edit surface any more. */}
             </View>
             {/* S135 Phase 3: NO card-level freeze — only blocks carry close states (ruling
-                4). The toggle is LIVE; flipping to No while any block is closed is REFUSED
-                inside handleSarYes (ruling 5, the bycatch shape) — closed occurrences are
-                irreversible (§5.2.1). The Phase 2 temporary grey-out is gone. */}
-            {renderYesNoToggle(t('form234.sarIndLabel'), sarYes, handleSarYes)}
-            {sarYes === true && (
+                4). S136 Phase 3: the Yes/No toggle moved onto the effort (Catch & Effort
+                card); this card renders only while an effort answers Yes. Flipping that
+                toggle to No while any block is closed is still REFUSED inside handleSarYes
+                (S135 ruling 5) — closed occurrences are irreversible (§5.2.1). */}
+            {(
               <>
                 {/* Block 1 — the flat sar* keys, framed by the SAME chrome as blocks 2+
                     (ruling 2): titled "Species at Risk 1", own trash / note / Close & Save.
@@ -3789,12 +3972,30 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC', borderRadius: 10, padding: 12,
     marginBottom: 12, borderWidth: 1, borderColor: '#E2E8F0',
   },
+  // S136 walk fix 3: trap groups sit a shade DARKER than the effort block and the cards,
+  // so the nesting reads (effort #F8FAFC on white cards; groups #EEF2F6). Trap groups only.
+  trapGroupBlock: {
+    backgroundColor: '#EEF2F6', borderRadius: 10, padding: 12,
+    marginBottom: 12, borderWidth: 1, borderColor: '#CBD5E1',
+  },
   effortBlockHeader: {
     flexDirection: 'row', alignItems: 'center',
     justifyContent: 'space-between', marginBottom: 4,
   },
   effortBlockTitle: { fontSize: 13, fontWeight: '700', color: '#1E293B' },
   effortBlockSummary: { fontSize: 12, color: '#64748B', marginBottom: 4 },
+  // S136 Phase 3: the per-effort licence line (locked display + small edit control)
+  licenceLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+    marginBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  licenceLineText: { fontSize: 13, fontWeight: '600', color: '#334155' },
+  licenceEditText: { fontSize: 13, fontWeight: '700', color: '#1E3A8A' },
   yesNoRow: {
     flexDirection: 'row', alignItems: 'center',
     justifyContent: 'space-between', marginBottom: 12,

@@ -127,6 +127,16 @@ test("effort 2's note fans out to all four slots (S136 §1.2 ruling)", () => {
   expect(count(xml, '<REM>Second window note</REM>')).toBe(4);
 });
 
+test("LIC_NO: effort 1's d.licNo override transmits when set (S136 Phase 3, ruling 5)", () => {
+  const log = marLog();
+  log.data.licNo = '500111';
+  const xml = generateElogXml(log, profile);
+  expect(count(xml, '<LIC_NO>500111</LIC_NO>')).toBe(1);
+  expect(count(xml, '<LIC_NO>300123</LIC_NO>')).toBe(0);
+  // The reader carries it too — one definition
+  expect(effortsFromData(log.data)[0].licNo).toBe('500111');
+});
+
 test('LIC_NO: effort 2 uses its own licence when set, the profile licence otherwise', () => {
   const withOwn = generateElogXml(twoEffortLog({ licNo: '400999' }), profile);
   expect(count(withOwn, '<LIC_NO>300123</LIC_NO>')).toBe(1); // effort 1 = profile

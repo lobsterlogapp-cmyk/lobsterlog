@@ -270,20 +270,134 @@ doc); the last command prints **nothing**.
   beneath it and its own Close & Save.
 - Asterisks per region unchanged — the same set the card carries today, applied per effort.
 
-### 3.2 ⛔ STOP — the wording set
+### 3.2 ⛔ STOP — the wording set — **RULED 2026-08-19, one at a time**
 
-One ruling at a time, EN and FR, curly apostrophes, no space before `?` `!` `:` `;`:
-- the effort block title ("Fishing Effort {{n}}" / « … »)
-- "+ Add fishing effort"
-- "Close & Save All Efforts" — and whether the French keeps « tous » (bait-style) or drops
-  it (bycatch-style)
-- the per-effort close confirm title and body
-- the close-all confirm bodies (`_one` / `_other`)
-- the licence edit control's label and any confirm it needs
+⚠ A collision the scope missed, surfaced before ruling 1: the TRAP-GROUP strings already
+used the effort words — `catchEffortBlock` was "Catch Effort {{n}}" / « Effort de pêche
+{{n}} » and `addCatchEffort` was « Ajouter un effort de pêche ». Ruling 1's title would have
+put two different levels under one French name, so a retitle ruling was added.
+
+| # | Item | RULING (EN / FR) |
+|---|---|---|
+| 1 | Effort block title | **"Fishing Effort {{n}}" / « Effort de pêche {{n}} »** (DFO's own term; forces ruling 2) |
+| 2 | Trap-group retitle (new, forced by 1) | **"Trap Group {{n}}" / « Groupe de casiers {{n}} »**, add button **"Add trap group" / « Ajouter un groupe de casiers »** — DFO's own name for the level (Instructions: "group of traps"). Value-only change on the existing keys `catchEffortBlock` / `addCatchEffort`, no renames. ⚠ Re-opens the figure frames that show "Catch Effort 2" blocks, both languages |
+| 3 | Add-effort button (renders Phase 4) | **"Add fishing effort" / « Ajouter un effort de pêche »** — the French moves UP a level to where DFO means it |
+| 4 | Close-all button (renders Phase 4) | **"Close & Save All Efforts" / « Fermer et enregistrer tous les efforts de pêche »** — keeps « tous », the bait/SAR style |
+| 5 | Per-effort close confirm | title **"Close this fishing effort?" / « Fermer cet effort de pêche? »**; body **"Once you close this fishing effort you can't change it in this log. Check it over first." / « Après la fermeture, vous ne pourrez plus modifier cet effort dans ce journal. Vérifiez-le d’abord. »** (the S135 SAR-block shape) |
+| 6 | Close-all confirm bodies (render Phase 4) | `_one` **"This will lock {{count}} fishing effort. Once closed you can't change it in this log." / « Ceci verrouillera {{count}} effort de pêche. Une fois fermé, vous ne pourrez plus le modifier dans ce journal. »**; `_other` **"…{{count}} fishing efforts…change them…" / « …{{count}} efforts de pêche. Une fois fermés, vous ne pourrez plus les modifier… »** — masculine agreement (« effort »), unlike the feminine bait/SAR bodies (« entrée ») |
+| 7 | Licence line + edit control | line **"Licence {{no}}" / « Permis {{no}} »**, control **"Edit" / « Modifier »**, **no confirm** — the effort's Close & Save is the freeze; the control hides once closed (ruling 8) |
+
+Rulings 3, 4 and 6 are worded now but their keys are ADDED IN PHASE 4 when they first
+render (adding them now would create temporary orphans). The two per-effort Y/N toggle
+labels needed no ruling — they are the Rule 603 / Rule 780 mandated texts, reused verbatim.
 
 ### 3.3 Walk, gates, verify table, commit block
 
-Walk on the sandbox sim in **EN and FR** before the commit block is handed over.
+**Built (Phase 3, one effort only — no repetition yet):**
+- **Licence line** (ruling 5/7): top of the Catch & Effort card, under the header, above
+  "Did you haul gear?" — shows the per-effort override (`d.licNo`, new flat key) or the
+  profile licence; small Modifier/Edit control swaps it for a text input (blur saves); the
+  control hides when the effort is closed. The reader (`effortsFromData`) now carries
+  effort 1's `licNo` from `d.licNo` (absent on every pre-S136 log → profile licence →
+  byte-identical), and the edit-load path now loads the profile (it never had to before) so
+  the fallback displays. `licNo` joins `hasEffortData`/`wipeEffort` (it is effort data) and
+  is written additively — an untouched legacy log keeps its exact stored shape.
+- **Effort 1 as a titled block** (rulings 3/7): "Fishing Effort 1", always expanded, inside
+  the Catch & Effort card; trap groups beneath it; its own Close & Save using the ruled
+  per-effort confirm (`closeEffortNode` — mirrors `closeSection`'s persistence exactly,
+  same `dgCloseEffort` stamp).
+- **The two Y/N questions moved onto the effort** (ruling 3): SAR + MM toggles render after
+  the haul times inside the effort block (labels = the mandated Rule 603/780 texts,
+  handlers unchanged — the S135 closed-block refusal still lives in `handleSarYes`). In
+  Interactions & Other: the marine-mammal sub-card is gone entirely; the species-at-risk
+  card (detail blocks, per-block closes — untouched) now opens when an effort answers Yes.
+- **The standalone GPS Coordinates card is removed**: trap group 1's LAT/LONG + Capture GPS
+  moved inside the effort block with the group's other fields, same visibility as the old
+  card (`isVisible('gpsCoords')` — 88/89/90 visible, 91 hidden; the S110 R2 parked
+  non-38b-MAR state preserved), same `dgCloseEffort` freeze (the block body carries it).
+- **Trap-group retitle** (ruling 2): value-only on `catchEffortBlock`/`addCatchEffort`.
+- Asterisks: untouched — the same per-region set, now inside the block.
+
+**Verify table:**
+
+| # | Item | Command / evidence | Result |
+|---|---|---|---|
+| 1 | Licence line + override end-to-end | new `d.licNo` → reader → emit; new test "effort 1's d.licNo override transmits" (own 1× / profile 0×) | ✅ PASS |
+| 2 | Toggles moved, fence labels reused | grep: `sarIndLabel`/`mmInterIndLabel` render once each, inside the effort block; no new label strings | ✅ PASS |
+| 3 | GPS card removed, fields relocated | `gpsCoordinatesSection` render gone; capture button + lat/long inside the block, `isVisible('gpsCoords')` gate preserved | ✅ PASS |
+| 4 | SAR card opens on Yes, blocks untouched | Interactions & Other: `{effortYes && sarYes === true && …}`; `renderSarBlockChrome` and all S135 close machinery un-edited | ✅ PASS |
+| 5 | Byte identity — fixture A | `cmp` of the retained 21e3353 bytes vs a fresh generate | ✅ IDENTICAL — 2,287 bytes both sides (the only emit-path change is `d.licNo`, absent on the fixture) |
+| 6 | tsc predicted / measured | predicted 33 | ✅ 33 (0 new) |
+| 7 | jest predicted / measured | predicted 43 / 214 (one new licence-override test) | ✅ 43 suites / 214 tests |
+| 8 | i18n key-set symmetry | python set-diff over form234 | ✅ EN 232 / FR 232, diff = ∅ (5 new keys each + 2 value-only changes; FR curly apostrophes, no space before ?) |
+| 9 | Harness deleted | `git status --short` | ✅ tmpByteHarness3 deleted; tracked modifications = the 5 intended files |
+
+**Orphan report (report only):** `form234.gpsCoordinatesSection` (EN+FR) lost its render
+with the standalone card — joins `mmSpeciesLabels` and `mmInterInd` on the orphan-cleanup
+queue. Nothing deleted.
+
+**⛔ WALK — Jonathon runs this on the SANDBOX sim (iPhone 17 Pro Max, F9407C4A…), EN and
+FR, BEFORE running the commit block:**
+1. New log → Catch & Effort: licence line reads "Licence 300123"/« Permis 300123 » (your
+   profile licence) above "Did you haul gear?"; Edit/« Modifier » swaps it for an input;
+   type a different number, tap away — the line shows the new number.
+2. "Fishing Effort 1"/« Effort de pêche 1 » titled block, always expanded; trap-group
+   blocks inside it now say "Trap Group 2"/« Groupe de casiers 2 » and the add button
+   "Add trap group"/« Ajouter un groupe de casiers ».
+3. GPS: no standalone card below the bait card; Capture GPS + lat/long sit inside the
+   effort block after the gear fields (MAR: still visible off-38b, unchanged behavior).
+4. The SAR and MM questions render inside the effort block after the two haul times, exact
+   mandated wording; MM has no sub-card in Interactions & Other any more; answering SAR Yes
+   opens the Species at Risk card down in Interactions & Other with its blocks intact.
+5. Close & Save the effort → the NEW confirm ("Close this fishing effort?"/« Fermer cet
+   effort de pêche? ») → block greys, licence Edit control gone, capture button gone.
+6. Regression: bait rows, bycatch, personal use, transfers (QC log), landing close — all
+   unchanged.
+
+### 3.4 WALK ROUND 1 — four fixes found (2026-08-19), ALL BUILT before the commit
+
+| # | Finding | Fix built |
+|---|---|---|
+| 1 | Licence Edit opened a bare input — no Done, no confirm | A short confirm now guards the unlock (**"Change the licence for this fishing effort?" / « Modifier le permis de cet effort de pêche? »**, body **"This effort will transmit the licence number you enter here." / « Cet effort transmettra le numéro de permis saisi ici. »**, Cancel/`nav.cancel` + Edit/« Modifier »), and the input gained a **Done/« Terminé »** control (reuses `nav.done`; blur still ends the edit too). New keys `effortLicenceEditConfirmTitle`/`Body` — FR flagged for the proofreader pile |
+| 2 | Trap Group 1 rendered as loose inline fields | Group 1 now renders EXACTLY like groups 2+ (the S135 block-1 pattern): titled "Trap Group 1"/« Groupe de casiers 1 », framed, same trash + collapse controls, collapsed one-line summary (shared `extraSummary` over the flat state via `block1Detail()`), loads collapsed like the extras, collapses when a new group is added. **Delete slides group 2 up** into the legacy flat keys (`removeTrapGroup` — mirrors `removeSarBlock`; the reader's list is identical minus the deleted group, so the remaining groups' bytes are unchanged by construction); with no group 2 the delete wipes the fields. Two structural consequences, both deliberate: the **gear-subtype picker (NL) moved up** beside the LFA picker — it is EFFORT_BY_GEAR-level, not a trap-group field — and the **shared QC grid Modal was hoisted out of the frame** (it serves every group's grid button via `gridPickerTarget`; a collapsed group 1 must not unmount it) |
+| 3 | Nesting didn't read | New `trapGroupBlock` style — groups sit a shade darker (`#EEF2F6`, border `#CBD5E1`) than the effort block (`#F8FAFC`) and the white cards. Trap groups only; the effort block keeps `effortBlock` |
+| 4 | Effort close button said "Close & Save Section" | Now the bait/SAR twin **"Close & Save" / « Fermer et enregistrer »** via a new `buttonLabelKey` param on `renderCloseControl` defaulting to the old label. New key `closeEffortButton`. **Verified no other card's label moved:** `closeSectionButton` appears exactly once in the file — as the default parameter — and the other five call sites (Landing, Transfers, Personal Use, HLIN, HLOUT) pass nothing |
+
+**Fix-round gates:** tsc **33** (0 new) · jest **43 / 214** unchanged · byte identity
+re-proven (fixture A: 2,287 → 2,287, `cmp` silent) · harness deleted · i18n key-sets
+symmetric **235/235** · staged source stat now 5 files, 411+/181−.
+
+**⛔ RE-WALK — sandbox sim, EN and FR, before the commit block:**
+1. Licence Edit → confirm alert fires; Cancel leaves the line untouched; Edit opens the
+   input; Done (and blur) both end the edit and the line shows the typed number.
+2. Trap Group 1: titled, framed, darker grey than the card, chevron collapses it to the
+   one-line summary; groups 2+ look identical; QC log — open the grid picker from group 2
+   while group 1 is COLLAPSED (the hoisted Modal must still open).
+3. Delete group 1 with a group 2 present → group 2's values slide up into the (now sole)
+   group 1; delete with one group → fields wipe.
+4. NL log: Gear Subtype now sits beside the LFA picker, above the trap groups.
+5. The effort's close button reads "Close & Save"/« Fermer et enregistrer »; Landing still
+   reads "Close & Save Section"/« Fermer et enregistrer la section ».
+6. Round-1 checks that already passed stay green (licence line, toggles on the effort, no
+   standalone GPS card, SAR card opens on Yes, close confirm wording).
+
+### 3.5 Commit block — Jonathon runs it AFTER the re-walk passes, one line at a time
+
+```
+git add src/components/FullDfoForm.tsx
+git add src/i18n/locales/en/dfo.json
+git add src/i18n/locales/fr/dfo.json
+git add src/utils/dfoLogStorage.ts
+git add src/utils/__tests__/multiEffortNode.oneoff.test.ts
+git add docs/GATE_S136_MULTI_EFFORT.md
+git diff --cached --stat
+git commit -m "Reshape the Catch & Effort card as a titled fishing-effort block with a per-effort licence line, framed trap groups and the interaction questions"
+git push
+git log origin/main..HEAD --oneline
+```
+
+Expected: `git diff --cached --stat` shows 6 files (the five source files at 411+/181−,
+plus this gate doc); the last command prints **nothing**.
 
 ---
 

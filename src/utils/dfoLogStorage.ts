@@ -416,7 +416,10 @@ export function effortsFromData(d: Record<string, string | undefined>): ExtraEff
       haulStartDate: d.haulStartDate, haulStartTime: d.timeStartedHauling,
       haulEndDate: d.haulEndDate, haulEndTime: d.timeStoppedHauling,
       fmaId: d.fmaId,
-      licNo: undefined, // effort 1 always transmits the profile licence (legacy behavior)
+      // S136 Phase 3 (ruling 5): effort 1's licence can be edited on the card; the override
+      // rides the flat d.licNo key (absent on every pre-S136 log → profile licence, the
+      // legacy behavior, byte-identical).
+      licNo: d.licNo || undefined,
       sarYes: d.sarYes, mmYes: d.mmYes,
       gearSubtypeId: d.gearSubtypeId,
       closeDt: d.dgCloseEffort || undefined,
