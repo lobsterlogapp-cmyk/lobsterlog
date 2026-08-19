@@ -51,8 +51,15 @@ import {
   DfoLog,
   LogRemarks,
   ExtraEffortDetail,
+  ExtraEffortNode,
   ExtraSarDetail,
   usedDataGroupKeys,
+  stampOpenEfforts,
+  effortsFromData,
+  effortsAnyOpen,
+  effortsAnyClosed,
+  sarYesOnAnotherEffort,
+  sarNoToggleRefused,
   baitRowsAllClosed,
   stampOpenBaitRows,
   rowsAllClosed,
@@ -203,7 +210,7 @@ const parseDateTime = (dateStr: string, timeStr: string): Date => {
 // S135 Phase 4 (ruling 6): 'extraSarTime' is the combined Date & Time field on SAR blocks
 // 2+ — one PickerField for every extra block, disambiguated by the block index (passed
 // explicitly on Android, staged in extraSarPickerIdx for the iOS Done handler).
-type PickerField = 'sailed' | 'startHaul' | 'stopHaul' | 'landing' | 'sarTime' | 'extraSarTime';
+type PickerField = 'sailed' | 'startHaul' | 'stopHaul' | 'landing' | 'sarTime' | 'extraSarTime' | 'extraEffortStart' | 'extraEffortEnd';
 type SheetMode = 'bait' | 'bycatch' | null;
 
 const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLogId, onSaved, readOnly = false, onBack }, ref) => {
@@ -248,6 +255,21 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // S136 Phase 3 walk fix 2: Trap Group 1 collapses like groups 2+ (efforts never collapse
   // — ruling 7 — but trap groups do). Loaded logs start collapsed, same as the extras.
   const [block1Collapsed, setBlock1Collapsed] = useState(false);
+  // S136 Phase 4: fishing efforts 2..n (EFFORT nodes — Rule 1050). Effort 1 stays the
+  // legacy flat keys; these ride data.extraEffortNodes (written only when non-empty).
+  const [extraEffortNodes, setExtraEffortNodes] = useState<ExtraEffortNode[]>([]);
+  // Per-extra-effort UI state (all keyed by the extraEffortNodes index, i.e. UI effort n+2):
+  const [effortNoteOpen, setEffortNoteOpen] = useState<Record<number, boolean>>({});
+  const [extraLicEditingIdx, setExtraLicEditingIdx] = useState<number | null>(null);
+  // One dropdown open at a time across every extra effort's pickers: group -1 = the
+  // node-level pickers (fma / gearSubtype), 0+ = that trap group's picker.
+  const [nodeDropdown, setNodeDropdown] = useState<{ node: number; group: number; kind: 'fma' | 'gearSubtype' | 'lgrid' | 'statSect' | 'trapSize' } | null>(null);
+  const [nodeGroupCollapsed, setNodeGroupCollapsed] = useState<Record<string, boolean>>({});
+  // Which extra effort the open 'extraEffortStart'/'extraEffortEnd' picker belongs to (iOS).
+  const [extraEffortPickerIdx, setExtraEffortPickerIdx] = useState<number | null>(null);
+  // The shared QC grid Modal's target when opened from an EXTRA EFFORT's trap group
+  // (null = the legacy numeric gridPickerTarget routing: -1 effort 1's group 1, 0+ its extras).
+  const [gridPickerNodeTarget, setGridPickerNodeTarget] = useState<{ node: number; group: number } | null>(null);
   const [portLanded, setPortLanded] = useState('');
   const [tripId, setTripId] = useState('');
   const [lgbkUid, setLgbkUid] = useState('');
@@ -509,6 +531,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           setEffortYes(d.effortYes === 'false' ? false : true);
           // S136 Phase 3: effort 1's licence override (absent on pre-S136 logs → profile licence)
           setLicNo(d.licNo || '');
+          // S136 Phase 4: fishing efforts 2..n (absent on pre-S136 logs)
+          try {
+            const en = JSON.parse(d.extraEffortNodes || '[]');
+            setExtraEffortNodes(Array.isArray(en) ? en : []);
+          } catch { setExtraEffortNodes([]); }
+          setEffortNoteOpen({});
+          setNodeGroupCollapsed({});
           setPortLanded(d.portLanded || '');
           setPortLandedCodeId(d.portLandedCodeId ? Number(d.portLandedCodeId) : null);
           try {
@@ -755,6 +784,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     // S136 Phase 3: effort 1's licence override — written only when set, so an untouched
     // legacy log keeps its exact stored shape (the extraEffortDetails rationale below)
     ...(licNo ? { licNo } : {}),
+    // S136 Phase 4: fishing efforts 2..n — written only when a second effort exists
+    ...(extraEffortNodes.length > 0 ? { extraEffortNodes: JSON.stringify(extraEffortNodes) } : {}),
 
     portLanded, portLandedCodeId: String(portLandedCodeId ?? ''),
     crewRegistry: JSON.stringify(crewMembers),
@@ -966,7 +997,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     !!(catchWeight.trim() || trapHauls.trim() || timeStartedHauling.trim() || timeStoppedHauling.trim() ||
        soakDuration.trim() || gpsLat.trim() || gpsLng.trim() || trapSize || gearSubtypeId ||
        nbSpcmnKept.trim() || nbSpcmnBrd.trim() || vNotchCount.trim() || nbVntchYou.trim() ||
-       licNo.trim() || extraEfforts.length > 0);
+       licNo.trim() || extraEfforts.length > 0 || extraEffortNodes.length > 0);
 
   // Clear every Catch & Effort / GPS field (all EFFORT / EFFORT_DETAIL) so a later Yes re-opens
   // the card empty.
@@ -986,13 +1017,25 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     setLicNo(''); setLicEditing(false); // S136: the licence override is effort data too
     setBlock1Collapsed(false);
     setExtraEfforts([]);
+    // S136 Phase 4: a no-haul day has ZERO efforts — the wipe is only reachable when no
+    // effort is closed (handleEffortToggle refuses otherwise, §4.2 ruling).
+    setExtraEffortNodes([]);
+    setEffortNoteOpen({}); setNodeGroupCollapsed({}); setNodeDropdown(null);
+    setExtraLicEditingIdx(null);
   };
 
   // The "did you haul?" toggle. Yes re-opens the (already-wiped) card. No wipes the effort data,
   // confirming first only when there is data to lose (an empty card just collapses).
+  // S136 Phase 4 (§4.2 ruling): No is REFUSED while ANY effort is closed — closed
+  // occurrences are irreversible (§5.2.1) and the wipe would destroy them (the S134/S135
+  // toggle-guard shape). Nothing changes on refusal.
   const handleEffortToggle = (val: boolean) => {
     if (readOnly) return;
     if (val) { setEffortYes(true); return; }
+    if (effortAnyClosed()) {
+      Alert.alert(t('form234.catchEffortSection'), t('form234.effortClosedNoToggle'));
+      return;
+    }
     if (hasEffortData()) {
       Alert.alert(
         t('form234.effortNoConfirmTitle'),
@@ -1026,7 +1069,14 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     // REFUSED while any block is closed (its own stamp or the legacy card stamp), because
     // closed occurrences are irreversible (§5.2.1). Nothing changes on refusal; with only
     // OPEN blocks the wipe below behaves exactly as before.
-    if (!val && sarAnyBlockClosed()) {
+    // S136 Phase 4: the SAR pool is TRIP-level and survives while ANY effort answers Yes —
+    // effort 1's No neither wipes it nor needs the refusal when another effort is Yes.
+    // Both conditions are single-sourced in dfoLogStorage (tested there).
+    if (!val && sarYesOnAnotherEffort(liveEffortData(), 0)) {
+      setSarYes(false);
+      return;
+    }
+    if (!val && sarNoToggleRefused(liveEffortData(), 0)) {
       Alert.alert(t('form234.sarSubsection'), t('form234.sarClosedNoToggle'));
       return;
     }
@@ -1063,6 +1113,14 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       case 'extraSarTime':
         current = parseDateTime(extraSars[extraIdx ?? -1]?.date ?? '', extraSars[extraIdx ?? -1]?.time ?? '');
         break;
+      // S136 Phase 4: efforts 2+ — each node's own haul window, seeded from its stored
+      // strings (dateFished fallback matches the emit's).
+      case 'extraEffortStart':
+        current = parseDateTime(extraEffortNodes[extraIdx ?? -1]?.haulStartDate || dateFished, extraEffortNodes[extraIdx ?? -1]?.haulStartTime ?? '');
+        break;
+      case 'extraEffortEnd':
+        current = parseDateTime(extraEffortNodes[extraIdx ?? -1]?.haulEndDate || dateFished, extraEffortNodes[extraIdx ?? -1]?.haulEndTime ?? '');
+        break;
     }
     if (Platform.OS === 'android') {
       // Imperative date→time flow — avoids the mode="datetime" unmount-dismiss crash (S95).
@@ -1075,6 +1133,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     setTempDate(current);
     setPickerField(field);
     setExtraSarPickerIdx(extraIdx ?? null);
+    setExtraEffortPickerIdx(extraIdx ?? null); // S136 P4: which extra effort owns the iOS spinner
     setPickerVisible(true);
   };
 
@@ -1103,6 +1162,16 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           // stored slots and the SAR_DT emit are byte-unchanged; only the entry changed.
           const i = extraIdx ?? extraSarPickerIdx;
           if (i != null && i >= 0) updateExtraSar(i, { date: formatDate(d), time: formatTime(d) });
+          break;
+        }
+        case 'extraEffortStart': {
+          const i = extraIdx ?? extraEffortPickerIdx;
+          if (i != null && i >= 0) updateEffortNode(i, { haulStartDate: formatDate(d), haulStartTime: formatTime(d) });
+          break;
+        }
+        case 'extraEffortEnd': {
+          const i = extraIdx ?? extraEffortPickerIdx;
+          if (i != null && i >= 0) updateEffortNode(i, { haulEndDate: formatDate(d), haulEndTime: formatTime(d) });
           break;
         }
       }
@@ -1386,6 +1455,601 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     nbSpcmnKept, nbSpcmnBrd, vNotchCount, nbVntchYou,
   });
 
+  // ── S136 Phase 4: fishing efforts 2..n ───────────────────────────────────────────────
+  // Effort 1 is the flat keys; efforts 2+ ride extraEffortNodes. UI index 0 = effort 1.
+
+  // Thin adapter over the single-sourced dfoLogStorage predicate (tested there) — the
+  // §4.2 refusal condition. The component owns no refusal logic (S136 extraction ruling).
+  const effortAnyClosed = (): boolean => effortsAnyClosed(liveEffortData());
+
+  const updateEffortNode = (idx: number, patch: Partial<ExtraEffortNode>) => {
+    setExtraEffortNodes(prev => prev.map((e, i) => (i === idx ? { ...e, ...patch } : e)));
+  };
+
+  // A new effort starts always-expanded (ruling 7) with one open trap group — the XSD
+  // demands ≥1 EFFORT_DETAIL per effort, so the empty group is the form to fill, not chrome.
+  // S136 P4 (founder-added): the new effort's LFA arrives PRE-FILLED from the previous
+  // effort's — a default copied at ADD TIME only, visible and freely changeable through the
+  // ordinary picker (no lock, no confirm), never a live link: changing the earlier effort's
+  // LFA afterwards touches nothing here. (The same shape as the new-log LFA pre-fill from
+  // the last log.) Grid/section picks are NOT copied — they stay FMA-scoped per effort and
+  // the picker's change-reset behaves exactly as today.
+  const addEffortNode = () => {
+    const prevFma = extraEffortNodes.length > 0
+      ? extraEffortNodes[extraEffortNodes.length - 1].fmaId
+      : (fmaId != null ? String(fmaId) : undefined);
+    setExtraEffortNodes(prev => [...prev, { ...(prevFma ? { fmaId: prevFma } : {}), details: [{}] }]);
+  };
+
+  const updateNodeGroup = (nodeIdx: number, gIdx: number, patch: Partial<ExtraEffortDetail>) => {
+    setExtraEffortNodes(prev => prev.map((e, i) => i === nodeIdx
+      ? { ...e, details: (e.details ?? []).map((g, j) => (j === gIdx ? { ...g, ...patch } : g)) }
+      : e));
+  };
+
+  const addNodeGroup = (nodeIdx: number) => {
+    // Collapse the node's filled groups, open the new one (the addExtraEffort shape)
+    setNodeGroupCollapsed(prev => {
+      const next = { ...prev };
+      (extraEffortNodes[nodeIdx]?.details ?? []).forEach((_, j) => { next[`${nodeIdx}:${j}`] = true; });
+      next[`${nodeIdx}:${(extraEffortNodes[nodeIdx]?.details ?? []).length}`] = false;
+      return next;
+    });
+    setExtraEffortNodes(prev => prev.map((e, i) => i === nodeIdx
+      ? { ...e, details: [...(e.details ?? []), {}] } : e));
+  };
+
+  const removeNodeGroup = (nodeIdx: number, gIdx: number) => {
+    // Extras' groups are uniform (no flat block) — remove is a plain filter; keep ≥1 group
+    // by wiping the last one instead of deleting it (an effort must hold a trap group).
+    setExtraEffortNodes(prev => prev.map((e, i) => {
+      if (i !== nodeIdx) return e;
+      const details = e.details ?? [];
+      return details.length > 1
+        ? { ...e, details: details.filter((_, j) => j !== gIdx) }
+        : { ...e, details: [{}] };
+    }));
+    setNodeGroupCollapsed(prev => {
+      const next: Record<string, boolean> = {};
+      Object.entries(prev).forEach(([k, v]) => {
+        const [n, g] = k.split(':').map(Number);
+        if (n !== nodeIdx) { next[k] = v; return; }
+        if (g < gIdx) next[k] = v;
+        else if (g > gIdx) next[`${n}:${g - 1}`] = v;
+      });
+      return next;
+    });
+    if (nodeDropdown?.node === nodeIdx) setNodeDropdown(null);
+  };
+
+  // Delete an effort (ruling 8) — OPEN efforts only (the trash is hidden on closed ones).
+  // Deleting effort 1 promotes effort 2 into the legacy flat keys CARRYING its stamp, its
+  // note and its trap groups: the reader's list is identical minus the deleted effort, so
+  // the bytes every surviving effort transmits are unchanged by construction (the S135
+  // slide-up argument, one level up). With no effort 2, the delete wipes effort 1's fields
+  // (same end state as the toggle-No wipe, without flipping the toggle).
+  const removeEffortNode = (uiIdx: number) => {
+    setEffortNoteOpen({});
+    if (uiIdx === 0) {
+      if (extraEffortNodes.length > 0) {
+        const [first, ...rest] = extraEffortNodes;
+        // Effort scalars → the flat keys
+        setHaulStartDate(first.haulStartDate ?? ''); setTimeStartedHauling(first.haulStartTime ?? '');
+        setHaulEndDate(first.haulEndDate ?? ''); setTimeStoppedHauling(first.haulEndTime ?? '');
+        setFmaId(first.fmaId ? Number(first.fmaId) : null);
+        setLicNo(first.licNo ?? '');
+        setSarYes(first.sarYes === 'true' ? true : (first.sarYes === 'false' ? false : null));
+        setMmYes(first.mmYes === 'true' ? true : (first.mmYes === 'false' ? false : null));
+        setGearSubtypeId(first.gearSubtypeId ?? '');
+        // Its stamp rides up (ruling 8); an unstamped promotion CLEARS the flat stamp
+        setCloses(prev => {
+          const next = { ...prev };
+          if (first.closeDt) next['dgCloseEffort'] = first.closeDt;
+          else delete next['dgCloseEffort'];
+          return next;
+        });
+        // Its note rides up into the legacy remarks pair (catch mirrors haul, as the UI writes)
+        setNote('catch', first.note ?? ''); setNote('haul', first.note ?? '');
+        // Its trap groups: group 1 → the flat block, groups 2+ → extraEffortDetails
+        const [g1, ...gRest] = first.details ?? [];
+        setLgridCodeId(g1?.lgridCodeId ? Number(g1.lgridCodeId) : null);
+        setLgridDisplay(g1?.lgridDisplay ?? '');
+        setGridId(g1?.gridId ? Number(g1.gridId) : null);
+        setGridDisplay(g1?.gridDisplay ?? '');
+        setStatSectId(g1?.statSectId ? Number(g1.statSectId) : null);
+        setStatSectDisplay(g1?.statSectDisplay ?? '');
+        setCatchWeight(g1?.catchWeight ?? ''); setTrapHauls(g1?.trapHauls ?? '');
+        setSoakDuration(g1?.soakDuration ?? '');
+        setGpsLat(g1?.gpsLat ?? ''); setGpsLng(g1?.gpsLng ?? '');
+        setGpsSrc(g1?.gpsSrc === 'gps' ? 'gps' : 'manual');
+        setTrapSize(g1?.trapSize ?? '');
+        setNbSpcmnKept(g1?.nbSpcmnKept ?? ''); setNbSpcmnBrd(g1?.nbSpcmnBrd ?? '');
+        setVNotchCount(g1?.vNotchCount ?? ''); setNbVntchYou(g1?.nbVntchYou ?? '');
+        setExtraEfforts(gRest);
+        setBlock1Collapsed(false);
+        setExtraEffortNodes(rest);
+      } else {
+        wipeEffort();
+      }
+      setNodeDropdown(null); setExtraLicEditingIdx(null); setNodeGroupCollapsed({});
+    } else {
+      setExtraEffortNodes(prev => prev.filter((_, i) => i !== uiIdx - 1));
+      setNodeDropdown(null); setExtraLicEditingIdx(null);
+      setNodeGroupCollapsed(prev => {
+        const next: Record<string, boolean> = {};
+        Object.entries(prev).forEach(([k, v]) => {
+          const [n, g] = k.split(':').map(Number);
+          if (n < uiIdx - 1) next[k] = v;
+          else if (n > uiIdx - 1) next[`${n - 1}:${g}`] = v;
+        });
+        return next;
+      });
+    }
+  };
+
+  // Close ONE extra effort (ruling 8): stamps that effort only and persists immediately —
+  // closure is irreversible and must survive without a later Save (the closeBaitRow shape).
+  // Effort 1's close is closeEffortNode (the flat dgCloseEffort), defined below.
+  const closeEffortNodeAt = (idx: number) => {
+    if (readOnly) return;
+    const e = extraEffortNodes[idx];
+    if (!e || e.closeDt) return;
+    Alert.alert(
+      t('form234.closeEffortConfirmTitle'),
+      t('form234.closeEffortConfirmBody'),
+      [
+        { text: t('form234.closeConfirmNotYet'), style: 'cancel' },
+        {
+          text: t('form234.closeConfirmYes'),
+          style: 'destructive',
+          onPress: () => {
+            const nowIso = new Date().toISOString();
+            const next = extraEffortNodes.map((en, i) => (i === idx ? { ...en, closeDt: nowIso } : en));
+            setExtraEffortNodes(next);
+            if (isLoaded && !editingCompleted) {
+              void saveLog({ ...buildDraftLog(), data: { ...buildLogData(), extraEffortNodes: JSON.stringify(next) } });
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  // "Close & Save All Efforts" (ruling 9, the bait shape): closes every open effort with
+  // ONE stamp via the single-sourced stampOpenEfforts (skip-never-restamp), writes no
+  // card-level key beyond effort 1's own dgCloseEffort, confirms with a count, persists
+  // immediately. The button is hidden when nothing is open.
+  const closeAllOpenEfforts = () => {
+    if (readOnly) return;
+    // Counted through the ONE reader so the confirm's count and the stamping can't drift.
+    const openCount = effortsFromData(liveEffortData()).filter(e => !e.closeDt).length;
+    if (openCount === 0) return;
+    Alert.alert(
+      t('form234.closeConfirmTitle', { section: t('form234.catchEffortSection') }),
+      t('form234.closeEffortAllConfirmBody', { count: openCount }),
+      [
+        { text: t('form234.closeConfirmNotYet'), style: 'cancel' },
+        {
+          text: t('form234.closeConfirmYes'),
+          style: 'destructive',
+          onPress: () => {
+            const nowIso = new Date().toISOString();
+            const stamped = stampOpenEfforts(closes['dgCloseEffort'], JSON.stringify(extraEffortNodes), nowIso);
+            const nodesNext = JSON.parse(stamped.extraEffortNodes) as ExtraEffortNode[];
+            setCloses(prev => ({ ...prev, dgCloseEffort: stamped.dgCloseEffort }));
+            setExtraEffortNodes(nodesNext);
+            if (isLoaded && !editingCompleted) {
+              void saveLog({ ...buildDraftLog(), data: {
+                ...buildLogData(), dgCloseEffort: stamped.dgCloseEffort,
+                ...(nodesNext.length > 0 ? { extraEffortNodes: JSON.stringify(nodesNext) } : {}),
+              } });
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  // SAR/MM Yes-No on an EXTRA effort. Yes fires the same mandated prompts as effort 1
+  // (Rules 781 / 604 follow-ups). The refusal logic is single-sourced in dfoLogStorage
+  // (sarNoToggleRefused, tested there): refused only when this is the LAST effort
+  // answering Yes AND any SAR block is closed; with another effort still Yes the flag
+  // flips freely and the trip-level pool stands.
+  const handleNodeSarYes = (idx: number, val: boolean) => {
+    if (!val && sarNoToggleRefused(liveEffortData(), idx + 1)) {
+      Alert.alert(t('form234.sarSubsection'), t('form234.sarClosedNoToggle'));
+      return;
+    }
+    updateEffortNode(idx, { sarYes: String(val) });
+    if (val) Alert.alert('', t('form234.sarIndPrompt'), [{ text: tc('nav.ok') }]);
+  };
+  const handleNodeMmYes = (idx: number, val: boolean) => {
+    updateEffortNode(idx, { mmYes: String(val) });
+    if (val) Alert.alert('', t('form234.mmInterIndPrompt'), [{ text: tc('nav.ok') }]);
+  };
+
+  // One numeric/text field of an extra effort's trap group (the extraField shape).
+  const nodeGroupField = (
+    nodeIdx: number, gIdx: number, label: string, key: keyof ExtraEffortDetail,
+    keyboardType: any = 'numeric', isReq: boolean = false,
+    onChange?: (v: string) => void
+  ) => (
+    <View style={styles.fieldRow}>
+      <View style={styles.labelRow}>
+        <Text style={styles.label}>{label}{isReq && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
+      </View>
+      <TextInput
+        style={[styles.input, readOnly && styles.inputReadOnly]}
+        value={(extraEffortNodes[nodeIdx]?.details?.[gIdx]?.[key] as string) ?? ''}
+        onChangeText={onChange ?? ((v: string) => updateNodeGroup(nodeIdx, gIdx, { [key]: v }))}
+        placeholder="0"
+        placeholderTextColor="#94A3B8"
+        editable={!readOnly}
+        keyboardType={keyboardType}
+      />
+    </View>
+  );
+
+  // One trap group of an EXTRA effort — the renderExtraEffortBlock field set, addressed by
+  // (node, group) instead of the effort-1 extras index, gated by the NODE's own FMA.
+  const renderNodeGroup = (nodeIdx: number, g: ExtraEffortDetail, gIdx: number, nodeFma: number | null, nodeClosed: boolean) => {
+    const collapsed = !!nodeGroupCollapsed[`${nodeIdx}:${gIdx}`];
+    const showCoords = subformId === 88 || subformId === 89 ||
+      (subformId === 90 && nodeFma === DFO_FMA_38B);
+    const dd = (kind: 'lgrid' | 'statSect' | 'trapSize') =>
+      nodeDropdown?.node === nodeIdx && nodeDropdown.group === gIdx && nodeDropdown.kind === kind;
+    const toggleDd = (kind: 'lgrid' | 'statSect' | 'trapSize') => {
+      if (readOnly) return;
+      setNodeDropdown(cur => (cur?.node === nodeIdx && cur.group === gIdx && cur.kind === kind) ? null : { node: nodeIdx, group: gIdx, kind });
+    };
+    return (
+      <View key={`n${nodeIdx}g${gIdx}`} style={styles.trapGroupBlock}>
+        <View style={styles.effortBlockHeader}>
+          <Text style={styles.effortBlockTitle}>{t('form234.catchEffortBlock', { n: gIdx + 1 })}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            {!readOnly && !nodeClosed && (
+              <TouchableOpacity style={styles.deleteBtn} onPress={() => removeNodeGroup(nodeIdx, gIdx)}>
+                <Trash2 size={16} color="#EF4444" />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={styles.deleteBtn} onPress={() => setNodeGroupCollapsed(prev => ({ ...prev, [`${nodeIdx}:${gIdx}`]: !collapsed }))}>
+              {collapsed ? <ChevronDown size={18} color="#64748B" /> : <ChevronUp size={18} color="#64748B" />}
+            </TouchableOpacity>
+          </View>
+        </View>
+        {collapsed ? (
+          <TouchableOpacity onPress={() => setNodeGroupCollapsed(prev => ({ ...prev, [`${nodeIdx}:${gIdx}`]: false }))}>
+            <Text style={styles.effortBlockSummary} numberOfLines={1}>{extraSummary(g)}</Text>
+          </TouchableOpacity>
+        ) : (
+          <>
+            {subformId === 90 && nodeFma !== null && (DFO_LGRID_BY_FMA[nodeFma] ?? []).length > 0 && (
+              <View style={styles.fieldRow}>
+                <Text style={styles.label}>{t('form234.lgridLabel')}</Text>
+                <TouchableOpacity style={styles.timeButton} onPress={() => toggleDd('lgrid')}>
+                  <Text style={[styles.timeButtonText, !g.lgridDisplay && styles.timeButtonPlaceholder]}>
+                    {g.lgridDisplay || t('form234.selectGrid')}
+                  </Text>
+                  <ChevronDown size={16} color="#64748B" />
+                </TouchableOpacity>
+                {dd('lgrid') && (
+                  <View style={[styles.dropdownList, { maxHeight: 200 }]}>
+                    <ScrollView nestedScrollEnabled>
+                      {(DFO_LGRID_BY_FMA[nodeFma] ?? []).map(gr => (
+                        <TouchableOpacity
+                          key={gr.codeId}
+                          style={[styles.dropdownItem, g.lgridCodeId === String(gr.codeId) && styles.dropdownItemActive]}
+                          onPress={() => { updateNodeGroup(nodeIdx, gIdx, { lgridCodeId: String(gr.codeId), lgridDisplay: String(gr.display) }); setNodeDropdown(null); }}
+                        >
+                          <Text style={[styles.dropdownItemText, g.lgridCodeId === String(gr.codeId) && styles.dropdownItemTextActive]}>
+                            {gr.display}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+              </View>
+            )}
+            {subformId === 88 && nodeFma !== null && nodeFma in DFO_FMA_GRID_MAP && (
+              <View style={styles.fieldRow}>
+                <Text style={styles.label}>{t('form234.gridLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+                <TouchableOpacity
+                  style={styles.timeButton}
+                  onPress={() => { if (readOnly) return; setGridSearch(''); setGridPickerNodeTarget({ node: nodeIdx, group: gIdx }); setGridPickerOpen(true); }}
+                >
+                  <Text style={[styles.timeButtonText, !g.gridDisplay && styles.timeButtonPlaceholder]}>
+                    {g.gridDisplay || t('form234.selectQcGrid')}
+                  </Text>
+                  <ChevronDown size={16} color="#64748B" />
+                </TouchableOpacity>
+              </View>
+            )}
+            {subformId === 91 && nodeFma !== null && DFO_FMA_STAT_SECT_REQUIRED.has(nodeFma) && (
+              <View style={styles.fieldRow}>
+                <Text style={styles.label}>{t('form234.statSectLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+                <TouchableOpacity style={styles.timeButton} onPress={() => toggleDd('statSect')}>
+                  <Text style={[styles.timeButtonText, !g.statSectDisplay && styles.timeButtonPlaceholder]}>
+                    {g.statSectDisplay || t('form234.selectStatSect')}
+                  </Text>
+                  <ChevronDown size={16} color="#64748B" />
+                </TouchableOpacity>
+                {dd('statSect') && (
+                  <View style={[styles.dropdownList, { maxHeight: 200 }]}>
+                    <ScrollView nestedScrollEnabled>
+                      {(DFO_STAT_SECT_BY_FMA[nodeFma] ?? []).map(r => {
+                        const label = i18n.language.startsWith('fr') ? r.statSectDescFr : r.statSectDescEn;
+                        return (
+                          <TouchableOpacity
+                            key={r.statSectCodeId}
+                            style={[styles.dropdownItem, g.statSectId === String(r.statSectCodeId) && styles.dropdownItemActive]}
+                            onPress={() => { updateNodeGroup(nodeIdx, gIdx, { statSectId: String(r.statSectCodeId), statSectDisplay: label }); setNodeDropdown(null); }}
+                          >
+                            <Text style={[styles.dropdownItemText, g.statSectId === String(r.statSectCodeId) && styles.dropdownItemTextActive]}>
+                              {label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                )}
+              </View>
+            )}
+            {nodeGroupField(nodeIdx, gIdx, t('form234.catchWeightLabel'), 'catchWeight', 'numeric', isRequired('catchWeight'))}
+            {nodeGroupField(nodeIdx, gIdx, t('form234.trapHaulsLabel'), 'trapHauls', 'numeric', isRequired('trapHauls'))}
+            {subformId !== 90 &&
+              nodeGroupField(nodeIdx, gIdx, t('form234.soakDurationLabel'), 'soakDuration', 'decimal-pad', isRequired('soakDuration'))}
+            {subformId === 88 && nodeFma != null && DFO_FMA_NB_VNTCH.has(nodeFma) &&
+              nodeGroupField(nodeIdx, gIdx, t('form234.nbVntchLabel'), 'vNotchCount', 'numeric', true)}
+            {subformId === 88 && nodeFma != null && DFO_FMA_NB_VNTCH_YOU.has(nodeFma) &&
+              nodeGroupField(nodeIdx, gIdx, t('form234.nbVntchYouLabel'), 'nbVntchYou', 'numeric', true)}
+            {subformId === 91 &&
+              nodeGroupField(nodeIdx, gIdx, t('form234.nbSpcmnKeptLabel'), 'nbSpcmnKept', 'numeric', true)}
+            {subformId === 91 && (
+              <View style={styles.fieldRow}>
+                <Text style={styles.label}>{t('form234.trapSizeLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+                <TouchableOpacity style={styles.timeButton} onPress={() => toggleDd('trapSize')}>
+                  <Text style={[styles.timeButtonText, !g.trapSize && styles.timeButtonPlaceholder]}>
+                    {g.trapSize ? t(`form234.trapSizeOption_${g.trapSize}`, { defaultValue: DFO_TRAP_SIZE_LIST.find(s => String(s.codeId) === g.trapSize)?.label ?? t('form234.selectTrapSize') }) : t('form234.selectTrapSize')}
+                  </Text>
+                  <ChevronDown size={16} color="#64748B" />
+                </TouchableOpacity>
+                {dd('trapSize') && (
+                  <View style={styles.dropdownList}>
+                    {DFO_TRAP_SIZE_LIST.map(s => (
+                      <TouchableOpacity
+                        key={s.codeId}
+                        style={[styles.dropdownItem, g.trapSize === String(s.codeId) && styles.dropdownItemActive]}
+                        onPress={() => { updateNodeGroup(nodeIdx, gIdx, { trapSize: String(s.codeId) }); setNodeDropdown(null); }}
+                      >
+                        <Text style={[styles.dropdownItemText, g.trapSize === String(s.codeId) && styles.dropdownItemTextActive]}>
+                          {t(`form234.trapSizeOption_${s.codeId}`, { defaultValue: s.label })}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
+            {subformId === 90 && nodeFma === DFO_FMA_38B &&
+              nodeGroupField(nodeIdx, gIdx, t('form234.nbSpcmnBrdLabel'), 'nbSpcmnBrd', 'numeric', true)}
+            {showCoords && (
+              <>
+                {!readOnly && !nodeClosed && (
+                  <TouchableOpacity
+                    style={styles.captureGpsBtn}
+                    onPress={async () => {
+                      setGpsCapturing(true);
+                      await captureGps(
+                        (v: string) => updateNodeGroup(nodeIdx, gIdx, { gpsLat: v }),
+                        (v: string) => updateNodeGroup(nodeIdx, gIdx, { gpsLng: v }),
+                        { alertOnFail: true }
+                      );
+                      updateNodeGroup(nodeIdx, gIdx, { gpsSrc: 'gps' }); // §11.3: GPS read → MODE="G"
+                      setGpsCapturing(false);
+                    }}
+                    disabled={gpsCapturing}
+                    activeOpacity={0.8}
+                  >
+                    <LocateFixed size={15} color="#4338CA" />
+                    <Text style={styles.captureGpsBtnText}>
+                      {gpsCapturing ? t('form234.capturingGps') : t('form234.captureGpsButton')}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                {nodeGroupField(nodeIdx, gIdx, t('form234.latitudeLabel'), 'gpsLat', 'numeric', subformId !== 90,
+                  (v: string) => updateNodeGroup(nodeIdx, gIdx, { gpsLat: v, gpsSrc: 'manual' }))}
+                {nodeGroupField(nodeIdx, gIdx, t('form234.longitudeLabel'), 'gpsLng', 'numeric', subformId !== 90,
+                  (v: string) => updateNodeGroup(nodeIdx, gIdx, { gpsLng: v, gpsSrc: 'manual' }))}
+              </>
+            )}
+          </>
+        )}
+      </View>
+    );
+  };
+
+  // One EXTRA fishing effort (UI effort i+2) — the effort-1 block's structure, addressed
+  // to extraEffortNodes[i]: licence line, own note, own LFA, gear subtype (NL), its OWN
+  // trap groups, its own haul window, the two mandated Y/N questions, its own Close & Save.
+  // Always expanded (ruling 7). Closed (ruling 8): greyed, values readable, trash /
+  // licence-edit / close gone, "Closed <date time>" banner.
+  const renderExtraEffortNode = (e: ExtraEffortNode, i: number) => {
+    const nodeClosed = !!e.closeDt;
+    const nodeFma = e.fmaId ? Number(e.fmaId) : null;
+    const note = e.note ?? '';
+    const showNote = nodeClosed ? !!note.trim() : (effortNoteOpen[i] || !!note.trim());
+    const ddFma = nodeDropdown?.node === i && nodeDropdown.group === -1 && nodeDropdown.kind === 'fma';
+    const ddGear = nodeDropdown?.node === i && nodeDropdown.group === -1 && nodeDropdown.kind === 'gearSubtype';
+    return (
+      <View key={`effort-${i}`} style={styles.effortBlock}>
+        <View style={styles.effortBlockHeader}>
+          <Text style={styles.effortBlockTitle}>{t('form234.effortNodeTitle', { n: i + 2 })}</Text>
+          {!readOnly && !nodeClosed && (
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <TouchableOpacity
+                style={styles.addNoteBtn}
+                onPress={() => setEffortNoteOpen(prev => ({ ...prev, [i]: !prev[i] }))}
+                activeOpacity={0.7}
+              >
+                <StickyNote size={13} color="#1E3A8A" />
+                <Text style={styles.addNoteBtnText}>{t('form234.addNote')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.deleteBtn} onPress={() => removeEffortNode(i + 1)}>
+                <Trash2 size={16} color="#EF4444" />
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+        <View style={styles.licenceLine}>
+          {extraLicEditingIdx === i && !nodeClosed ? (
+            <>
+              <TextInput
+                style={[styles.input, { flex: 1 }]}
+                value={e.licNo ?? ''}
+                onChangeText={(v: string) => updateEffortNode(i, { licNo: v })}
+                placeholder={profileLicence}
+                placeholderTextColor="#94A3B8"
+                autoFocus
+                autoCapitalize="characters"
+                onBlur={() => setExtraLicEditingIdx(null)}
+              />
+              <TouchableOpacity onPress={() => setExtraLicEditingIdx(null)} activeOpacity={0.8} style={{ marginLeft: 10 }}>
+                <Text style={styles.licenceEditText}>{tc('nav.done')}</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <Text style={styles.licenceLineText}>
+                {t('form234.effortLicenceLine', { no: e.licNo || profileLicence })}
+              </Text>
+              {!readOnly && !nodeClosed && (
+                <TouchableOpacity
+                  onPress={() => {
+                    Alert.alert(
+                      t('form234.effortLicenceEditConfirmTitle'),
+                      t('form234.effortLicenceEditConfirmBody'),
+                      [
+                        { text: tc('nav.cancel'), style: 'cancel' },
+                        { text: t('form234.effortLicenceEdit'), onPress: () => setExtraLicEditingIdx(i) },
+                      ],
+                    );
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.licenceEditText}>{t('form234.effortLicenceEdit')}</Text>
+                </TouchableOpacity>
+              )}
+            </>
+          )}
+        </View>
+        <View pointerEvents={nodeClosed ? 'none' : 'auto'} style={nodeClosed ? styles.closedBody : undefined}>
+          <View style={styles.fieldRow}>
+            <Text style={styles.label}>{t('form234.fishingAreaLabel')}{isRequired('fmaId') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
+            <TouchableOpacity
+              style={styles.timeButton}
+              onPress={() => { if (readOnly) return; setNodeDropdown(cur => (cur?.node === i && cur.group === -1 && cur.kind === 'fma') ? null : { node: i, group: -1, kind: 'fma' }); }}
+            >
+              <Text style={[styles.timeButtonText, !nodeFma && styles.timeButtonPlaceholder]}>
+                {nodeFma ? t(`form234.fmaOption_${nodeFma}`, { defaultValue: getDfoFmaList(subformId).find(f => f.codeId === nodeFma)?.label ?? t('form234.selectLfa') }) : t('form234.selectLfa')}
+              </Text>
+              <ChevronDown size={16} color="#64748B" />
+            </TouchableOpacity>
+            {ddFma && (
+              <View style={styles.dropdownList}>
+                {fmaOptions.map(f => (
+                  <TouchableOpacity
+                    key={f.codeId}
+                    style={[styles.dropdownItem, nodeFma === f.codeId && styles.dropdownItemActive]}
+                    onPress={() => {
+                      // The FMA scopes this effort's grid/section picks — clear them on change
+                      setExtraEffortNodes(prev => prev.map((en, j) => j === i
+                        ? { ...en, fmaId: String(f.codeId), details: (en.details ?? []).map(gr => ({
+                            ...gr, lgridCodeId: '', lgridDisplay: '', gridId: '', gridDisplay: '',
+                            statSectId: '', statSectDisplay: '',
+                          })) }
+                        : en));
+                      setNodeDropdown(null);
+                    }}
+                  >
+                    <Text style={[styles.dropdownItemText, nodeFma === f.codeId && styles.dropdownItemTextActive]}>
+                      {t(`form234.fmaOption_${f.codeId}`, { defaultValue: f.label })}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+          {isVisible('gearSubtypeId') && (
+            <View style={styles.fieldRow}>
+              <Text style={styles.label}>{t('form234.gearSubtypeLabel')}{isRequired('gearSubtypeId') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
+              <TouchableOpacity
+                style={styles.timeButton}
+                onPress={() => { if (readOnly) return; setNodeDropdown(cur => (cur?.node === i && cur.group === -1 && cur.kind === 'gearSubtype') ? null : { node: i, group: -1, kind: 'gearSubtype' }); }}
+              >
+                <Text style={[styles.timeButtonText, !e.gearSubtypeId && styles.timeButtonPlaceholder]}>
+                  {e.gearSubtypeId ? t(`form234.gearSubtypeOption_${e.gearSubtypeId}`, { defaultValue: DFO_GEAR_SUBTYPE_LIST.find(s => String(s.codeId) === e.gearSubtypeId)?.label ?? t('form234.selectGearSubtype') }) : t('form234.selectGearSubtype')}
+                </Text>
+                <ChevronDown size={16} color="#64748B" />
+              </TouchableOpacity>
+              {ddGear && (
+                <View style={styles.dropdownList}>
+                  {DFO_GEAR_SUBTYPE_LIST.map(s => (
+                    <TouchableOpacity
+                      key={s.codeId}
+                      style={[styles.dropdownItem, e.gearSubtypeId === String(s.codeId) && styles.dropdownItemActive]}
+                      onPress={() => { updateEffortNode(i, { gearSubtypeId: String(s.codeId) }); setNodeDropdown(null); }}
+                    >
+                      <Text style={[styles.dropdownItemText, e.gearSubtypeId === String(s.codeId) && styles.dropdownItemTextActive]}>
+                        {t(`form234.gearSubtypeOption_${s.codeId}`, { defaultValue: s.label })}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
+          {(e.details ?? []).map((g, j) => renderNodeGroup(i, g, j, nodeFma, nodeClosed))}
+          {!readOnly && !nodeClosed && (
+            <TouchableOpacity style={[styles.addBtn, { marginTop: 4 }]} onPress={() => addNodeGroup(i)}>
+              <Plus size={16} color="#1E3A8A" />
+              <Text style={styles.addBtnText}>{t('form234.addCatchEffort')}</Text>
+            </TouchableOpacity>
+          )}
+          <View style={{ height: 14 }} />
+          {isVisible('haulStartTime') && renderTimestampField(t('form234.timeStartedHaulingLabel'), formatDateTimeDisplay(e.haulStartDate ?? '', e.haulStartTime ?? ''), 'extraEffortStart', false, isRequired('haulStartTime'), i)}
+          {isVisible('haulEndTime') && renderTimestampField(t('form234.timeStoppedHaulingLabel'), formatDateTimeDisplay(e.haulEndDate ?? '', e.haulEndTime ?? ''), 'extraEffortEnd', false, isRequired('haulEndTime'), i)}
+          {renderYesNoToggle(t('form234.sarIndLabel'), e.sarYes === 'true' ? true : (e.sarYes === 'false' ? false : null), (v: boolean) => handleNodeSarYes(i, v))}
+          {renderYesNoToggle(t('form234.mmInterIndLabel'), e.mmYes === 'true' ? true : (e.mmYes === 'false' ? false : null), (v: boolean) => handleNodeMmYes(i, v))}
+        </View>
+        {showNote && (
+          <TextInput
+            style={styles.noteInput}
+            value={note}
+            onChangeText={(v: string) => updateEffortNode(i, { note: v })}
+            placeholder={t('form234.notePlaceholder')}
+            placeholderTextColor="#94A3B8"
+            multiline
+            maxLength={2000}
+            editable={!readOnly && !nodeClosed}
+          />
+        )}
+        {nodeClosed ? (
+          <View style={styles.closedBanner}>
+            <Lock size={14} color="#64748B" />
+            <Text style={styles.closedBannerText}>{t('form234.closedAtLabel', { time: formatClose(e.closeDt) })}</Text>
+          </View>
+        ) : !readOnly && (
+          <TouchableOpacity style={styles.closeSectionBtn} onPress={() => closeEffortNodeAt(i)} activeOpacity={0.8}>
+            <Lock size={16} color="#B45309" />
+            <Text style={styles.closeSectionBtnText}>{t('form234.closeEffortButton')}</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
+
   // Collapsed one-line summary — S121 STOP-1a ruled format: "Grid 1589 — 420 lbs — 225 hauls".
   // Regions without a grid drop that segment; NL leads with its Statistical Section.
   const extraSummary = (e: ExtraEffortDetail): string => {
@@ -1485,7 +2149,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 <Text style={styles.label}>{t('form234.gridLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
                 <TouchableOpacity
                   style={styles.timeButton}
-                  onPress={() => { if (readOnly) return; setGridSearch(''); setGridPickerTarget(i); setGridPickerOpen(true); }}
+                  onPress={() => { if (readOnly) return; setGridSearch(''); setGridPickerNodeTarget(null); setGridPickerTarget(i); setGridPickerOpen(true); }}
                 >
                   <Text style={[styles.timeButtonText, !e.gridDisplay && styles.timeButtonPlaceholder]}>
                     {e.gridDisplay || t('form234.selectQcGrid')}
@@ -1904,9 +2568,19 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     ...(closes['dgCloseSar'] ? { dgCloseSar: closes['dgCloseSar'] } : {}),
     ...(extraSars.length > 0 ? { extraSars: JSON.stringify(extraSars) } : {}),
   });
-  // Thin sarYes gates over the single-sourced dfoLogStorage predicates (tested there).
+  // Thin sarYes gate over the single-sourced dfoLogStorage predicate (tested there).
+  // (sarAnyBlockClosed removed S136 P4 extraction — the toggle refusals now call
+  // sarNoToggleRefused, which reads sarBlocksAnyClosed itself.)
   const sarAnyBlockOpen = (): boolean => sarYes === true && sarBlocksAnyOpen(liveSarData());
-  const sarAnyBlockClosed = (): boolean => sarYes === true && sarBlocksAnyClosed(liveSarData());
+  // S136 P4 extraction: the live data-map view the EFFORT-level predicates read — the SAR
+  // keys (they feed sarNoToggleRefused via sarBlocksAnyClosed) plus effort 1's flags and
+  // the extra effort nodes, matching what buildLogData would write.
+  const liveEffortData = (): Record<string, string | undefined> => ({
+    ...liveSarData(),
+    ...(sarYes !== null ? { sarYes: String(sarYes) } : {}),
+    ...(closes['dgCloseEffort'] ? { dgCloseEffort: closes['dgCloseEffort'] } : {}),
+    ...(extraEffortNodes.length > 0 ? { extraEffortNodes: JSON.stringify(extraEffortNodes) } : {}),
+  });
   // Local "YYYY-MM-DD HH:MM" — §2: the app's existing timestamp display format.
   const formatClose = (iso?: string): string => {
     if (!iso) return '';
@@ -2369,9 +3043,16 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       effortYes, // S128 Phase 5: a no-haul day omits EFFORT — don't count it as an open section
       baitCount: baitEntries.length,
       bycatchYes: bycatchYes === true, bycatchCount: bycatchEntries.length,
-      personalUse, sarYes: sarYes === true, transferYes: transferYes === true,
+      personalUse,
+      // S136 Phase 4: the SAR pool is used when ANY effort answers Yes (per-effort SAR_IND)
+      sarYes: sarYes === true || extraEffortNodes.some(e => e.sarYes === 'true'),
+      transferYes: transferYes === true,
       hlinCompany, hlinConfirmNo, hloutCompany, hloutConfirmNo,
-    }).filter(k => !isClosed(k)
+    }).filter(k => !(k === 'dgCloseEffort'
+      // S136 Phase 4: the effort key stays OPEN while ANY effort lacks its stamp — mirrors
+      // the send guard's effortsAllClosed, so Close & Save All stamps efforts 2+ too.
+      ? (!!closes['dgCloseEffort'] && extraEffortNodes.every(e => !!e.closeDt))
+      : isClosed(k))
       // S134: the row-based groups (bait; bycatch since Phase 3) also count as closed when
       // every row carries its own closeDt — mirrors the send guard (unclosedUsedGroupKeys)
       // via the same shared helper, so Close & Save All neither restamps nor counts them.
@@ -2441,20 +3122,25 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     // (LOST_GEAR_IND dropped from this gate — Blocked in 234.12, no longer answered.)
     // S124 Phase 6: SAR_IND / MM_INTER_IND live in EFFORT — a no-haul log omits them, so this
     // gate (and the SAR-detail gates below) only apply when a haul is declared.
-    if (effortYes && (mmYes === null || sarYes === null)) {
+    // S136 Phase 4: the indicators are per-EFFORT — every effort (1 and 2+) must answer both.
+    if (effortYes && (mmYes === null || sarYes === null ||
+        extraEffortNodes.some(e => (e.sarYes !== 'true' && e.sarYes !== 'false') ||
+                                   (e.mmYes !== 'true' && e.mmYes !== 'false')))) {
       Alert.alert(t('form234.missingFieldsTitle'), t('form234.missingIndicatorsAnswer'), [{ text: tc('nav.ok') }]);
       return;
     }
     // SAR detail (S66b): when SAR_IND='Y' the sar_type children SAR_DT/LAT/LONG/SPECIE_ID/
     // NB_SPCMN/SPCMN_COND_ID are all mandatory (XSD sar_type, minOccurs=1). Block early with a
     // clear message; validateElogXml is the send-time backstop once the node is emitted.
-    if (effortYes && sarYes === true && (!sarSpecies || !sarNbSpcmn.trim() || !sarCondId ||
+    // S136 P4: the SAR pool exists when ANY effort answered Yes.
+    const anySarYes = sarYes === true || extraEffortNodes.some(e => e.sarYes === 'true');
+    if (effortYes && anySarYes && (!sarSpecies || !sarNbSpcmn.trim() || !sarCondId ||
         !sarLat.trim() || !sarLng.trim() || !sarDate || !sarTime)) {
       Alert.alert(t('form234.missingFieldsTitle'), t('form234.missingSarFields'), [{ text: tc('nav.ok') }]);
       return;
     }
     // S121 multi-SAR: every additional encounter must satisfy the same mandatory set
-    if (effortYes && sarYes === true && extraSars.some(s => !s.species || !s.nbSpcmn?.trim() || !s.condId ||
+    if (effortYes && anySarYes && extraSars.some(s => !s.species || !s.nbSpcmn?.trim() || !s.condId ||
         !s.lat?.trim() || !s.lng?.trim() || !s.date || !s.time)) {
       Alert.alert(t('form234.missingFieldsTitle'), t('form234.missingSarFields'), [{ text: tc('nav.ok') }]);
       return;
@@ -2539,6 +3225,35 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       blockMissing.forEach(lbl => missing.push(`${t('form234.catchEffortBlock', { n: i + 2 })} — ${lbl}`));
     });
 
+    // S136 Phase 4: every EXTRA effort must satisfy the same per-effort mandatory set as
+    // effort 1 — its own area, haul window, and per-group fields (the node's OWN FMA gates
+    // the region fields). Errors are labelled "Fishing Effort N — field" (ruling: per-effort
+    // save gate).
+    extraEffortNodes.forEach((e, i) => {
+      const nodeMissing: string[] = [];
+      const nFma = e.fmaId ? Number(e.fmaId) : null;
+      if (!nFma) nodeMissing.push(fieldLabels.fmaId);
+      if (!e.haulStartTime?.trim()) nodeMissing.push(fieldLabels.haulStartTime);
+      if (!e.haulEndTime?.trim()) nodeMissing.push(fieldLabels.haulEndTime);
+      if (subformId === 91 && !e.gearSubtypeId) nodeMissing.push(fieldLabels.gearSubtypeId);
+      (e.details ?? []).forEach((g, j) => {
+        const gm: string[] = [];
+        if (!g.catchWeight?.trim()) gm.push(fieldLabels.catchWeight);
+        if (!g.trapHauls?.trim()) gm.push(fieldLabels.trapHauls);
+        if (subformId !== 90 && !g.soakDuration?.trim()) gm.push(t('form234.soakDurationLabel'));
+        if ((subformId === 88 || subformId === 89) && !(g.gpsLat?.trim() && g.gpsLng?.trim())) gm.push(fieldLabels.gpsCoords);
+        if (subformId === 90 && DFO_FMA_LGRID_REQUIRED.has(nFma ?? 0) && !g.lgridDisplay) gm.push(fieldLabels.lgridCodeId);
+        if (subformId === 88 && nFma != null && nFma in DFO_FMA_GRID_MAP && !g.gridDisplay) gm.push(fieldLabels.gridId);
+        if (subformId === 91) {
+          if (DFO_FMA_STAT_SECT_REQUIRED.has(nFma ?? 0) && !g.statSectDisplay) gm.push(fieldLabels.statSectId);
+          if (!g.trapSize) gm.push(fieldLabels.trapSize);
+          if (!g.nbSpcmnKept?.trim()) gm.push(fieldLabels.nbSpcmnKept);
+        }
+        gm.forEach(lbl => nodeMissing.push(`${t('form234.catchEffortBlock', { n: j + 1 })} — ${lbl}`));
+      });
+      nodeMissing.forEach(lbl => missing.push(`${t('form234.effortNodeTitle', { n: i + 2 })} — ${lbl}`));
+    });
+
     if (missing.length > 0) {
       Alert.alert(
         t('form234.missingFieldsTitle'),
@@ -2572,12 +3287,14 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       bycatchNext: BycatchEntry[] | null = null,
       sarCloseNext: string | null = null,
       extraSarsNext: ExtraSarDetail[] | null = null,
+      effortNodesNext: ExtraEffortNode[] | null = null,
     ) => {
       if (Object.keys(extraCloses).length) setCloses(prev => ({ ...prev, ...extraCloses }));
       if (baitNext) setBaitEntries(baitNext);
       if (bycatchNext) setBycatchEntries(bycatchNext);
       if (sarCloseNext) setSarCloseDt(sarCloseNext);
       if (extraSarsNext) setExtraSars(extraSarsNext);
+      if (effortNodesNext) setExtraEffortNodes(effortNodesNext);
       const log: DfoLog = {
         id: tripId,
         lgbkUid,
@@ -2595,6 +3312,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           // S135: the close-all's SAR member stamps BLOCKS, never the card (ruling 4).
           ...(sarCloseNext ? { sarCloseDt: sarCloseNext } : {}),
           ...(extraSarsNext && extraSarsNext.length > 0 ? { extraSars: JSON.stringify(extraSarsNext) } : {}),
+          // S136 P4: the close-all's effort member stamps EACH open effort (effort 1 via its
+          // own dgCloseEffort in extraCloses; efforts 2+ via their own closeDt here).
+          ...(effortNodesNext && effortNodesNext.length > 0 ? { extraEffortNodes: JSON.stringify(effortNodesNext) } : {}),
         },
         remarks: buildRemarks(),
         subformId,
@@ -2620,9 +3340,18 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         // S134: the row-based groups have NO card-level close state — when the close-all
         // covers bait or bycatch, it stamps each still-open ROW's own closeDt instead of
         // writing the card key. S135: SAR is per-BLOCK the same way (block 1 = sarCloseDt).
+        // S136 P4: dgCloseEffort is effort 1's OWN stamp — never blanket-restamped. When the
+        // effort group is open, stampOpenEfforts fills effort 1's stamp (only if missing)
+        // and every open effort 2+'s own closeDt (skip-never-restamp).
         const extra = Object.fromEntries(openUsed
-          .filter(k => k !== 'dgCloseBaitUsed' && k !== 'dgClosePconsBycatch' && k !== 'dgCloseSar')
+          .filter(k => k !== 'dgCloseBaitUsed' && k !== 'dgClosePconsBycatch' && k !== 'dgCloseSar' && k !== 'dgCloseEffort')
           .map(k => [k, stamp]));
+        let effortNodesNext: ExtraEffortNode[] | null = null;
+        if (openUsed.includes('dgCloseEffort')) {
+          const effortStamped = stampOpenEfforts(closes['dgCloseEffort'], JSON.stringify(extraEffortNodes), stamp);
+          extra['dgCloseEffort'] = effortStamped.dgCloseEffort;
+          effortNodesNext = JSON.parse(effortStamped.extraEffortNodes) as ExtraEffortNode[];
+        }
         const baitNext = openUsed.includes('dgCloseBaitUsed')
           ? (JSON.parse(stampOpenBaitRows(JSON.stringify(baitEntries), stamp)) as BaitEntry[])
           : null;
@@ -2639,7 +3368,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           t('form234.closeAllConfirmBody', { count: openUsed.length }),
           [
             { text: t('form234.closeConfirmNotYet'), style: 'cancel' },
-            { text: t('form234.closeAllConfirmYes'), style: 'destructive', onPress: () => persist(extra, baitNext, bycatchNext, sarCloseNext, extraSarsNext) },
+            { text: t('form234.closeAllConfirmYes'), style: 'destructive', onPress: () => persist(extra, baitNext, bycatchNext, sarCloseNext, extraSarsNext, effortNodesNext) },
           ],
         );
       } else {
@@ -2813,7 +3542,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           <View style={styles.sectionHeader}>
             <View style={[styles.sectionIcon, { backgroundColor: '#DCFCE7' }]}><Scale size={16} color="#15803D" /></View>
             <Text style={styles.sectionTitle}>{t('form234.catchEffortSection')}</Text>
-            {renderNoteButton('catch')}
+            {/* S136 Phase 4: the card-header note is GONE — each effort owns its note (a
+                shared note that stays editable while another effort is closed is the S128
+                hole again). Effort 1's note button lives on ITS block header below. */}
           </View>
           {/* S136 Phase 3 (ruling 5): the licence line — locked display, small edit control,
               above "Did you haul gear?". Shows the per-effort override when stored (d.licNo),
@@ -2877,6 +3608,17 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           <View style={styles.effortBlock}>
             <View style={styles.effortBlockHeader}>
               <Text style={styles.effortBlockTitle}>{t('form234.effortNodeTitle', { n: 1 })}</Text>
+              {/* S136 Phase 4: effort 1's OWN note button (renderNoteButton hides itself once
+                  dgCloseEffort is stamped — the note freezes with the effort) and its delete
+                  (ruling 8: open efforts only; deleting slides effort 2 up into the flat keys). */}
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                {renderNoteButton('catch')}
+                {!readOnly && !isClosed('dgCloseEffort') && (
+                  <TouchableOpacity style={styles.deleteBtn} onPress={() => removeEffortNode(0)}>
+                    <Trash2 size={16} color="#EF4444" />
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
           <View {...closedBodyProps('dgCloseEffort')}>
           {renderNoteInput('catch', remarks.catch ?? '', (v) => { setNote('catch', v); setNote('haul', v); })}
@@ -3068,7 +3810,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                         <Text style={styles.label}>{t('form234.gridLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
                         <TouchableOpacity
                           style={styles.timeButton}
-                          onPress={() => { if (readOnly) return; setGridSearch(''); setGridPickerTarget(-1); setGridPickerOpen(true); setFmaPickerOpen(false); }}
+                          onPress={() => { if (readOnly) return; setGridSearch(''); setGridPickerNodeTarget(null); setGridPickerTarget(-1); setGridPickerOpen(true); setFmaPickerOpen(false); }}
                         >
                           <Text style={[styles.timeButtonText, !gridDisplay && styles.timeButtonPlaceholder]}>
                             {gridDisplay || t('form234.selectQcGrid')}
@@ -3198,15 +3940,20 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                       maxToRenderPerBatch={20}
                       removeClippedSubviews={true}
                       renderItem={({ item: g }) => {
-                        // S121: the Modal serves group 1 (target -1) AND the extra groups
-                        const active = gridPickerTarget === -1
-                          ? gridId === g.codeId
-                          : (extraEfforts[gridPickerTarget]?.gridId ?? '') === String(g.codeId);
+                        // S121: the Modal serves group 1 (target -1) AND the extra groups.
+                        // S136 P4: a set gridPickerNodeTarget routes to an EXTRA EFFORT's group.
+                        const active = gridPickerNodeTarget
+                          ? (extraEffortNodes[gridPickerNodeTarget.node]?.details?.[gridPickerNodeTarget.group]?.gridId ?? '') === String(g.codeId)
+                          : gridPickerTarget === -1
+                            ? gridId === g.codeId
+                            : (extraEfforts[gridPickerTarget]?.gridId ?? '') === String(g.codeId);
                         return (
                         <TouchableOpacity
                           style={[styles.dropdownItem, active && styles.dropdownItemActive]}
                           onPress={() => {
-                            if (gridPickerTarget === -1) {
+                            if (gridPickerNodeTarget) {
+                              updateNodeGroup(gridPickerNodeTarget.node, gridPickerNodeTarget.group, { gridId: String(g.codeId), gridDisplay: g.descFr });
+                            } else if (gridPickerTarget === -1) {
                               setGridId(g.codeId);
                               setGridDisplay(g.descFr);
                             } else {
@@ -3257,6 +4004,24 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               Shown only when a haul is declared (Phase 6). */}
           {renderCloseControl('dgCloseEffort', 'form234.catchEffortSection', true, closeEffortNode, 'form234.closeEffortButton')}
           </View>
+          {/* S136 Phase 4: fishing efforts 2..n — each a complete titled block (always
+              expanded, ruling 7) with its own licence, note, area, trap groups, haul window,
+              indicators and Close & Save. */}
+          {extraEffortNodes.map((e, i) => renderExtraEffortNode(e, i))}
+          {!readOnly && (
+            <TouchableOpacity style={[styles.addBtn, { marginTop: 4 }]} onPress={addEffortNode}>
+              <Plus size={16} color="#1E3A8A" />
+              <Text style={styles.addBtnText}>{t('form234.addEffortNode')}</Text>
+            </TouchableOpacity>
+          )}
+          {/* Close & Save All Efforts (ruling 9, the bait shape): every open effort, one
+              stamp, count-confirmed, hidden when nothing is open. */}
+          {!readOnly && effortsAnyOpen(liveEffortData()) && (
+            <TouchableOpacity style={[styles.closeSectionBtn, { marginTop: 8 }]} onPress={closeAllOpenEfforts} activeOpacity={0.8}>
+              <Lock size={16} color="#B45309" />
+              <Text style={styles.closeSectionBtnText}>{t('form234.closeAllEffortsButton')}</Text>
+            </TouchableOpacity>
+          )}
           </>)}
         </View>
 
@@ -3440,7 +4205,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               The species-at-risk card below OPENS when an effort answers Yes; its detail
               blocks and their per-block closes are untouched (S135). Bycatch + Personal Use
               are TRIP-level PCONS and stay unconditional. */}
-          {effortYes && sarYes === true && (<>
+          {effortYes && (sarYes === true || extraEffortNodes.some(e => e.sarYes === 'true')) && (<>
           <View style={styles.incidentSection}>
             <View style={styles.sectionHeader}>
               <View style={[styles.sectionIcon, { backgroundColor: '#EDE9FE' }]}>

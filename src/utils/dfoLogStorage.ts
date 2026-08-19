@@ -304,7 +304,10 @@ export function dataGroupInputsFromLog(log: Pick<DfoLog, 'subformId' | 'data'>):
     bycatchYes: d.bycatchYes === 'true',
     bycatchCount: len(d.bycatchEntries),
     personalUse: d.personalUse ?? '',
-    sarYes: d.sarYes === 'true',
+    // S136 Phase 4: SAR_IND is per-effort — the trip-level SAR pool is "used" (and emitted)
+    // when ANY effort answered Yes, matching the generator's gate exactly. Single-effort
+    // logs behave identically (effort 1's sarYes IS d.sarYes).
+    sarYes: effortsFromData(d).some(e => e.sarYes === 'true'),
     transferYes: d.transferYes === 'true',
     hlinCompany: d.hlinCompany ?? '', hlinConfirmNo: d.hlinConfirmNo ?? '',
     hloutCompany: d.hloutCompany ?? '', hloutConfirmNo: d.hloutConfirmNo ?? '',
@@ -446,6 +449,35 @@ export function effortsAllClosed(d: Record<string, string | undefined>): boolean
 
 export function effortsAnyOpen(d: Record<string, string | undefined>): boolean {
   return effortsFromData(d).some(e => !e.closeDt);
+}
+
+// S136 Phase 4 extraction (ruled): the toggle-refusal predicates live HERE, single-sourced
+// the way sarBlocksAnyClosed was in S135 — the component calls them, it does not own the
+// logic. All three read the ONE effort reader, so the refusals and the emit can never
+// disagree about what an "effort" is.
+
+// True when ANY effort carries a close stamp (effort 1's = the flat dgCloseEffort, via the
+// reader). This is the "Did you haul gear?" No-refusal condition (§4.2 ruling): a closed
+// effort is irreversible (§5.2.1), so the wipe must be refused. NOTE: anyClosed is NOT
+// !effortsAnyOpen — with two efforts one closed and one open, both are true.
+export function effortsAnyClosed(d: Record<string, string | undefined>): boolean {
+  return effortsFromData(d).some(e => !!e.closeDt);
+}
+
+// True when an effort OTHER than reader-index exceptIdx (0 = effort 1) answers SAR = Yes.
+// While another effort says Yes, the trip-level SAR pool stays emitted, so this effort's
+// flag may flip to No freely — no wipe, no refusal.
+export function sarYesOnAnotherEffort(d: Record<string, string | undefined>, exceptIdx: number): boolean {
+  return effortsFromData(d).some((e, i) => i !== exceptIdx && e.sarYes === 'true');
+}
+
+// The SAR flip-to-No refusal for the effort at reader-index exceptIdx: refused when this
+// is the LAST effort answering Yes AND any SAR block is closed (own stamp or the legacy
+// card stamp) — dropping the last Yes would take the closed, irreversible blocks out of
+// the emit (the S128 hole). With another effort still Yes the pool stands and the flip is
+// free; with only open blocks the wipe behaves as before.
+export function sarNoToggleRefused(d: Record<string, string | undefined>, exceptIdx: number): boolean {
+  return !sarYesOnAnotherEffort(d, exceptIdx) && sarBlocksAnyClosed(d);
 }
 
 // Stamp every still-open effort with `stamp` — effort 1 via the flat dgCloseEffort (kept if

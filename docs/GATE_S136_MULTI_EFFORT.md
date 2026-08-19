@@ -416,18 +416,196 @@ plus this gate doc); the last command prints **nothing**.
 - Save gate applied **per effort**, with errors labelled "Fishing Effort N — field".
 - Form-level "Close & Save All" stamps each open effort, never a card-level key.
 
-### 4.2 ⛔ STOP — the "Did you haul gear?" refusal
+### 4.2 ⛔ STOP — the "Did you haul gear?" refusal — **RULED 2026-08-19: REFUSE.**
 
-With repeatable, closeable efforts, answering **No** would wipe closed efforts — the exact
-hole the bycatch and SAR toggles needed a guard for (S134/S135). Put the refusal to
-Jonathon: **refuse the No toggle with an alert whenever any effort is closed**, in the
-`sarClosedNoToggle` shape, both languages. Recommendation plus the honest case against; do
-not build until he rules. **Do not ship a phase that leaves the wipe reachable.**
+Answering No while ANY effort carries a close stamp is refused with an alert, the
+S134/S135 shape — EN **"Fishing efforts that are already closed can't be removed, so this
+can't be switched to No."** / FR **« Les efforts de pêche déjà fermés ne peuvent pas être
+retirés, donc ce choix ne peut pas passer à Non. »** (`effortClosedNoToggle`). Nothing
+changes on refusal; with only open efforts the confirm-then-wipe behaves as before (the
+wipe now clears efforts 2+ too). Honest case against, noted at the STOP: a harvester who
+closed an effort by mistake on a true no-haul day is stuck — but that is §5.2.1
+irreversibility itself, the same everywhere in the app.
 
-### 4.3 Walk, gates, verify table, commit block
+**Phase 3 REGION WALK: PASSED** (founder, 2026-08-19) — EN and FR, across MAR, QC and NL,
+before this phase built. Recorded per the Phase 4 hand-off.
 
-Two efforts, one closed and one open, walked in EN and FR: close-all visible then gone;
-delete-slides-up with the stamp intact; the closed block's controls all absent.
+### 4.3 What Phase 4 built
+
+**Scope §4.1 plus one founder-added item:** each effort owns its note and the Catch &
+Effort card-header note is GONE — a shared note that stays editable while another effort
+is closed is the S128 hole again. Effort 1's note button moved onto ITS block header
+(same `remarks.catch/haul` storage, same `NOTE_CLOSE_KEYS` lock — `renderNoteButton`
+already hides itself once `dgCloseEffort` stamps); efforts 2+ carry `note` on their record
+(emits Phase 1's four-slot fan-out; freezes with their own `closeDt`).
+
+- **"+ Add fishing effort"** appends a new always-expanded titled block seeded with one
+  open trap group (the XSD demands ≥1 EFFORT_DETAIL — the empty group is the form to fill).
+- **Efforts 2+ are complete blocks**: licence line (own confirm-guarded Edit + Done, own
+  `licNo`), own note, own LFA picker (changing it clears that effort's grid/section picks,
+  the effort-1 pattern), gear subtype (NL), **their own trap groups** (`details[]` —
+  titled/framed/collapsible, add/delete per group; delete keeps ≥1 group by wiping the
+  last; the shared QC grid Modal gained a node target so any effort's group can drive it),
+  own haul-window pickers (`extraEffortStart`/`extraEffortEnd` PickerFields, dateFished
+  fallback matching the emit), and the two mandated Y/N questions.
+- **Per-effort Close & Save** (ruling 8): the ruled confirm, stamps that effort's own
+  `closeDt`, persists immediately (the closeBaitRow shape); closed block greys, keeps
+  values readable, loses trash / licence-edit / note-edit / close, shows "Closed ‹date›".
+- **Delete slides up** (ruling 8): trash on OPEN efforts only. Deleting effort 1 promotes
+  effort 2 into the legacy flat keys carrying its stamp (an unstamped promotion CLEARS the
+  flat stamp), its note (into remarks catch+haul, as the UI writes them) and its trap
+  groups (group 1 → the flat block, groups 2+ → `extraEffortDetails`). **Bytes unchanged by
+  construction**: the reader's uniform list is identical minus the deleted effort, so
+  every surviving effort emits exactly what it did — the S135 slide-up argument one level
+  up. Deleting the only effort wipes it (the toggle-No end state without flipping).
+- **"Close & Save All Efforts"** (ruling 9, bait shape): hidden when nothing open,
+  count-confirmed (`closeEffortAllConfirmBody_one/_other`, the ruled §3.2 wording), stamps
+  via the single-sourced `stampOpenEfforts` (skip-never-restamp), persists immediately.
+- **Form-level "Close & Save All"**: the effort member now stamps EACH open effort —
+  effort 1 via its own `dgCloseEffort` (never restamped), efforts 2+ via their own
+  `closeDt` — through the same `stampOpenEfforts`; `openUsedGroups` keeps the effort key
+  open while ANY effort lacks its stamp, mirroring the send guard.
+- **Save gate per effort**: every extra effort checked like effort 1 (own FMA gating its
+  region fields), errors labelled **"Fishing Effort N — field"** (trap-group lines read
+  "Fishing Effort N — Trap Group M — field"); the indicator gate now demands both Y/N
+  answers on EVERY effort.
+- **SAR pool plumbing** (trip-level, per-effort indicators): the SAR card in Interactions &
+  Other opens when ANY effort answers Yes; the send guard counts the pool as used when any
+  effort answers Yes (`dataGroupInputsFromLog` — test-pinned); flipping the LAST remaining
+  Yes to No is refused while any SAR block is closed (both on effort 1's toggle and on
+  extras'), while a No with another effort still Yes flips freely and the pool stands.
+  Extras' Yes fires the same mandated Rule 781/604 prompts.
+
+### 4.3b EXTRACTION ROUND (ruled 2026-08-19, before the walk) + the LFA pre-fill
+
+**Why:** the pin audit found the three refusal conditions living as component closures —
+untested and not single-sourced, breaking the S135 pattern (`sarBlocksAnyClosed` lived in
+dfoLogStorage and got its own suite). Ruled: extract now.
+
+1. **Three predicates moved into `dfoLogStorage`, the component only calls them:**
+   - `effortsAnyClosed(d)` — the §4.2 "Did you haul gear?" refusal condition (any effort
+     carries a stamp; effort 1's = the flat `dgCloseEffort`, via the ONE reader). Noted in
+     code: anyClosed is NOT `!effortsAnyOpen` — one closed + one open effort is both.
+   - `sarYesOnAnotherEffort(d, exceptIdx)` — another effort still answers SAR = Yes, so
+     this effort's flag flips freely and the trip-level pool stands.
+   - `sarNoToggleRefused(d, exceptIdx)` — the SAR flip-to-No refusal: last remaining Yes
+     AND any SAR block closed (own stamp or legacy card stamp).
+   The component gained `liveEffortData()` (the liveSarData shape plus effort 1's flags and
+   the extra nodes) and thin adapters; the inline any-open checks (close-all visibility,
+   the close-all count) now go through `effortsAnyOpen` / the reader instead of second
+   definitions; the now-unused component `sarAnyBlockClosed` adapter was removed.
+   ⚠ **One corner-case delta, deliberate and recorded:** the old component predicate gated
+   "any SAR block closed" on *effort 1's* `sarYes === true`. In the state ‹effort 1 = No,
+   effort 2 = Yes, a SAR block closed›, effort 2's flip-to-No was therefore NOT refused —
+   the closed block would silently leave the emit (exactly the S128 hole the refusal
+   exists for). The single-sourced `sarNoToggleRefused` reads `sarBlocksAnyClosed(d)`
+   directly and closes that corner. Test-pinned.
+2. **New suite `effortToggleRefusal.oneoff.test.ts`** (115 lines, 7 tests — the
+   sarToggleRefusal shape): every closed shape refuses the No toggle; all-open allows it;
+   anyClosed ≠ !anyOpen pinned; sarYesOnAnotherEffort from both sides incl.
+   never-counts-itself; the last-remaining-Yes refusal (own stamp AND legacy card stamp);
+   the other-effort-Yes free flip; the alert strings byte-pinned in BOTH languages.
+3. **The stale-stamp clear branch STAYS** (`removeEffortNode(0)`'s
+   `delete next['dgCloseEffort']` when the promoted effort is unstamped): **defensive,
+   unpinned, and probably unreachable** — effort 1's trash is hidden once the flat stamp
+   exists (`!isClosed('dgCloseEffort')`), so at delete time the flat stamp should already
+   be absent and the delete is a no-op on a missing key. Kept by ruling as a guard against
+   any future path that deletes an effort programmatically.
+4. **Founder-added in the same round:** a newly added effort's **LFA arrives pre-filled
+   from the previous effort's LFA** — copied at ADD TIME only (`addEffortNode` seeds from
+   the last effort in the list, else effort 1's), visible and freely changeable through the
+   ordinary picker, no lock, no confirm, and NOT a live link (changing effort 1's LFA later
+   touches nothing). Grid/section picks are not copied; the picker's change-reset behaves
+   exactly as today. Walk-only (component handler), same precedent as the new-log LFA
+   pre-fill.
+
+**Extraction-round gates, re-run in full:** tsc **33** (0 new) · jest **44 suites / 222
+tests** (the new 7-test suite) · byte identity re-proven (fixture A: 2,287 → 2,287 bytes,
+`cmp` silent; harness deleted) · i18n key-sets symmetric **240/240** (no key change this
+round) · staged source stat now **5 modified files, 839+/22−, plus the NEW untracked
+115-line suite** (⚠ absent from `git diff --stat`).
+
+### 4.4 Gates and verify table
+
+*(Table updated after the §4.3b extraction round — the measured values below supersede the
+pre-extraction numbers this section first carried.)*
+
+| # | Item | Command / evidence | Result |
+|---|---|---|---|
+| 1 | §4.2 refusal built | `handleEffortToggle`: `effortAnyClosed()` → alert, return; wording keys EN+FR added | ✅ PASS — wipe unreachable while anything is closed |
+| 2 | Card-header note gone, per-effort notes in | grep: `renderNoteButton('catch')` renders once, on effort 1's block header; extras use `effortNoteOpen` + `e.note` | ✅ PASS |
+| 3 | Slide-up delete carries stamp/note/groups | `removeEffortNode(0)` promotes closeDt→`closes.dgCloseEffort` (or clears it — the defensive branch, §4.3b item 3), note→remarks, details→flat+extras | ✅ PASS — by-construction byte argument recorded above; walked (step 3) |
+| 4 | Close & Save All Efforts + form-level member | both route through `stampOpenEfforts`; button hidden when nothing open (via `effortsAnyOpen`) | ✅ PASS |
+| 5 | `effortsAnyClosed` extracted + pinned | dfoLogStorage export; effortToggleRefusal tests: effort-1 stamp, extra-effort stamp, all-open, anyClosed ≠ !anyOpen | ✅ PASS |
+| 6 | `sarYesOnAnotherEffort` extracted + pinned | dfoLogStorage export; tests from both sides, never counts itself | ✅ PASS |
+| 7 | `sarNoToggleRefused` extracted + pinned | dfoLogStorage export; tests: last-Yes + own stamp, last-Yes + legacy card stamp, other-effort-Yes free flip, all-open free flip | ✅ PASS |
+| 8 | Corner-case hole closed by the extraction | old predicate gated on effort 1's sarYes — ‹effort 1 No, effort 2 Yes, closed block› left the wipe reachable; `sarNoToggleRefused` refuses it | ✅ PASS — test-pinned ("flipping the LAST remaining SAR Yes to No is refused…", effort-2 case) |
+| 9 | effortToggleRefusal suite | new `src/utils/__tests__/effortToggleRefusal.oneoff.test.ts`, 115 lines / 7 tests, the sarToggleRefusal shape incl. both languages' alert strings byte-pinned | ✅ PASS |
+| 10 | LFA pre-fill on add (founder item 5) | `addEffortNode` seeds `fmaId` from the last effort (else effort 1) at add time only; no live link, no lock, no confirm | ✅ BUILT — walk-only (component handler), walked (step 8) |
+| 11 | Byte identity — fixture A | `cmp` retained bytes vs fresh generate on the extracted tree | ✅ IDENTICAL — 2,287 bytes both sides (no emit change in this phase) |
+| 12 | tsc predicted / measured | predicted 33 | ✅ 33 (0 new; the one grep hit near dfoLogStorage is the pre-existing baseline LobsterLogProposalForm error) |
+| 13 | jest predicted / measured | predicted 44 / 222 (the send-guard SAR test + the 7-test refusal suite) | ✅ **44 suites / 222 tests** |
+| 14 | i18n key-set symmetry | python set-diff over form234 | ✅ EN 240 / FR 240, diff = ∅ (5 new keys each; FR curly apostrophes, no space before ?) |
+| 15 | Harness deleted | `git status --short` | ✅ tmpByteHarness5 + tmpByteHarness6 deleted; tracked modifications = the 5 intended source files + this gate doc; the only new file is the refusal suite |
+
+Staged source stat: **5 modified files, 839 insertions / 22 deletions** (FullDfoForm
+carries nearly all of it — the extra-effort renderer family), **plus the NEW untracked
+115-line effortToggleRefusal suite** (⚠ absent from `git diff --stat`) — **7 files staged**
+with this gate doc.
+
+**Report only (founder question, 2026-08-19): deleting a fishing effort raises NO confirm.**
+Both trash buttons call `removeEffortNode` directly (effort 1's header at
+FullDfoForm.tsx:3617, extras' at :1899) — no Alert wraps either call site. This is the
+existing house pattern, not an omission: SAR-block delete (`removeSarBlock`, S135) and
+trap-group delete (`removeExtraEffort`, S121) are also confirm-free; only closes and the
+toggle-No wipe confirm. Deliberately NOT changed in this round.
+
+**WALK — PASSED (founder, 2026-08-19, EN and FR, sandbox sim): all nine stops below,
+including the extraction-round steps 8–9.** The §4.3 script plus:
+1. Two efforts, one closed one open: close-all button visible; close the open one → button
+   gone; the closed block's trash / licence-edit / note button / close all absent, values
+   readable, "Closed ‹date time›" shown.
+2. "Did you haul gear?" → No while an effort is closed → the refusal alert, nothing
+   changes; with only open efforts → the existing confirm, and Yes-after-wipe shows one
+   empty effort.
+3. Delete effort 1 while effort 2 is CLOSED → effort 2 slides up as "Fishing Effort 1"
+   with its stamp, note and trap groups intact (and stays frozen).
+4. Effort 2 end-to-end on ONE region (MAR): licence edit confirm + Done; own LFA; two trap
+   groups (add/collapse/delete keeps ≥1); QC log — open effort 2's grid picker (the shared
+   Modal must serve it); own haul times via the pickers; both Y/N questions (Yes fires the
+   prompts; SAR Yes opens the SAR card below; flipping the last Yes to No with a closed
+   SAR block → refusal).
+5. Save gate: leave effort 2's trap hauls empty → the alert names "Fishing Effort 2 —
+   Trap Hauls"; answer neither indicator on effort 2 → the indicators alert.
+6. Complete-save "Close & Save All" with effort 2 open → its count includes the effort
+   group and effort 2 comes back closed after save.
+7. Note: effort 1's note button sits on its block header (card header has none); a note
+   typed on effort 2, effort 2 closed → note visible read-only.
+8. (Extraction round) Add a fishing effort → its LFA arrives pre-filled from the previous
+   effort's, freely changeable, no confirm; change effort 1's LFA afterwards → effort 2's
+   is untouched; changing effort 2's own LFA still clears ITS grid picks only.
+9. (Extraction round) The refusal behaviors themselves are unchanged on screen — same
+   alerts, same conditions (now storage-backed): re-tap the §4.4 steps 2 and 4 refusals.
+
+### 4.5 Commit block — the walk has PASSED (EN + FR, 2026-08-19); Jonathon runs it one line at a time
+
+```
+git add src/components/FullDfoForm.tsx
+git add src/i18n/locales/en/dfo.json
+git add src/i18n/locales/fr/dfo.json
+git add src/utils/dfoLogStorage.ts
+git add src/utils/__tests__/multiEffortNode.oneoff.test.ts
+git add src/utils/__tests__/effortToggleRefusal.oneoff.test.ts
+git add docs/GATE_S136_MULTI_EFFORT.md
+git diff --cached --stat
+git commit -m "Make fishing efforts repeatable with per-effort notes, closes, slide-up delete, a close-all and single-sourced toggle refusals, and refuse the no-haul toggle while any effort is closed"
+git push
+git log origin/main..HEAD --oneline
+```
+
+Expected: `git diff --cached --stat` shows 7 files (the five modified source files at
+839+/22−, the new 115-line effortToggleRefusal suite, plus this gate doc); the last
+command prints **nothing**.
 
 ---
 

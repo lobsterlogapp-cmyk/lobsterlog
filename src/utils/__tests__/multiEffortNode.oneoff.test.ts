@@ -195,6 +195,16 @@ test('the send guard refuses while any effort is open, even with dgCloseEffort s
   expect(unclosedUsedGroupKeys(allClosed)).not.toContain('dgCloseEffort');
 });
 
+test("the SAR pool is 'used' when ANY effort answers Yes (S136 Phase 4)", () => {
+  // Effort 1 answers No, effort 2 answers Yes with no SAR close anywhere → the send guard
+  // must list dgCloseSar (the pool emits, so it must close before the send).
+  const log = twoEffortLog({ sarYes: 'true', closeDt: undefined });
+  expect(unclosedUsedGroupKeys(log)).toContain('dgCloseSar');
+  // No effort answers Yes → the pool is not used at all.
+  const noSar = twoEffortLog({ sarYes: 'false', closeDt: undefined });
+  expect(unclosedUsedGroupKeys(noSar)).not.toContain('dgCloseSar');
+});
+
 // ── Rule 33 overlap: per-effort, within-log, licence-aware ─────────────────────────────
 
 test('findEffortOverlap flags two overlapping efforts in the SAME log', () => {
