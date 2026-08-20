@@ -86,6 +86,7 @@ import {
   getDfoCatchSpeciesList,
   DFO_SUBFORM_FIELD_CONFIG,
   DFO_FMA_38B,
+  effortCoordsEntryAllowed,
   DFO_FMA_NB_VNTCH,
   DFO_FMA_NB_VNTCH_YOU,
   DFO_TRAP_SIZE_LIST,
@@ -259,7 +260,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // legacy flat keys; these ride data.extraEffortNodes (written only when non-empty).
   const [extraEffortNodes, setExtraEffortNodes] = useState<ExtraEffortNode[]>([]);
   // Per-extra-effort UI state (all keyed by the extraEffortNodes index, i.e. UI effort n+2):
-  const [effortNoteOpen, setEffortNoteOpen] = useState<Record<number, boolean>>({});
+  // (effortNoteOpen removed — S136 UI round item 6: the note is an always-visible field.)
   const [extraLicEditingIdx, setExtraLicEditingIdx] = useState<number | null>(null);
   // One dropdown open at a time across every extra effort's pickers: group -1 = the
   // node-level pickers (fma / gearSubtype), 0+ = that trap group's picker.
@@ -536,7 +537,6 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             const en = JSON.parse(d.extraEffortNodes || '[]');
             setExtraEffortNodes(Array.isArray(en) ? en : []);
           } catch { setExtraEffortNodes([]); }
-          setEffortNoteOpen({});
           setNodeGroupCollapsed({});
           setPortLanded(d.portLanded || '');
           setPortLandedCodeId(d.portLandedCodeId ? Number(d.portLandedCodeId) : null);
@@ -1020,7 +1020,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     // S136 Phase 4: a no-haul day has ZERO efforts — the wipe is only reachable when no
     // effort is closed (handleEffortToggle refuses otherwise, §4.2 ruling).
     setExtraEffortNodes([]);
-    setEffortNoteOpen({}); setNodeGroupCollapsed({}); setNodeDropdown(null);
+    setNodeGroupCollapsed({}); setNodeDropdown(null);
     setExtraLicEditingIdx(null);
   };
 
@@ -1529,7 +1529,6 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // slide-up argument, one level up). With no effort 2, the delete wipes effort 1's fields
   // (same end state as the toggle-No wipe, without flipping the toggle).
   const removeEffortNode = (uiIdx: number) => {
-    setEffortNoteOpen({});
     if (uiIdx === 0) {
       if (extraEffortNodes.length > 0) {
         const [first, ...rest] = extraEffortNodes;
@@ -1585,6 +1584,21 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         return next;
       });
     }
+  };
+
+  // S136 UI round item 4 (ruled): deleting a FISHING EFFORT confirms first — the effort
+  // and everything in it (trap groups, haul times, answers, note) goes, and effort 1's
+  // delete promotes effort 2 into the flat keys. Trap groups, bait/bycatch rows and SAR
+  // blocks keep their existing confirm-free delete (deliberately untouched).
+  const confirmRemoveEffortNode = (uiIdx: number) => {
+    Alert.alert(
+      t('form234.deleteEffortConfirmTitle'),
+      t('form234.deleteEffortConfirmBody'),
+      [
+        { text: tc('nav.cancel'), style: 'cancel' },
+        { text: tc('nav.delete'), style: 'destructive', onPress: () => removeEffortNode(uiIdx) },
+      ],
+    );
   };
 
   // Close ONE extra effort (ruling 8): stamps that effort only and persists immediately —
@@ -1694,8 +1708,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // (node, group) instead of the effort-1 extras index, gated by the NODE's own FMA.
   const renderNodeGroup = (nodeIdx: number, g: ExtraEffortDetail, gIdx: number, nodeFma: number | null, nodeClosed: boolean) => {
     const collapsed = !!nodeGroupCollapsed[`${nodeIdx}:${gIdx}`];
-    const showCoords = subformId === 88 || subformId === 89 ||
-      (subformId === 90 && nodeFma === DFO_FMA_38B);
+    // S136 UI round item 1 (Rule 3059 conformance): the ONE single-sourced entry gate.
+    const showCoords = effortCoordsEntryAllowed(subformId, nodeFma);
     const dd = (kind: 'lgrid' | 'statSect' | 'trapSize') =>
       nodeDropdown?.node === nodeIdx && nodeDropdown.group === gIdx && nodeDropdown.kind === kind;
     const toggleDd = (kind: 'lgrid' | 'statSect' | 'trapSize') => {
@@ -1879,27 +1893,18 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     const nodeClosed = !!e.closeDt;
     const nodeFma = e.fmaId ? Number(e.fmaId) : null;
     const note = e.note ?? '';
-    const showNote = nodeClosed ? !!note.trim() : (effortNoteOpen[i] || !!note.trim());
     const ddFma = nodeDropdown?.node === i && nodeDropdown.group === -1 && nodeDropdown.kind === 'fma';
     const ddGear = nodeDropdown?.node === i && nodeDropdown.group === -1 && nodeDropdown.kind === 'gearSubtype';
     return (
       <View key={`effort-${i}`} style={styles.effortBlock}>
         <View style={styles.effortBlockHeader}>
           <Text style={styles.effortBlockTitle}>{t('form234.effortNodeTitle', { n: i + 2 })}</Text>
+          {/* S136 UI round item 6 (RULED): title + delete only — the note affordance moved
+              to the always-visible NOTE field below the questions. */}
           {!readOnly && !nodeClosed && (
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <TouchableOpacity
-                style={styles.addNoteBtn}
-                onPress={() => setEffortNoteOpen(prev => ({ ...prev, [i]: !prev[i] }))}
-                activeOpacity={0.7}
-              >
-                <StickyNote size={13} color="#1E3A8A" />
-                <Text style={styles.addNoteBtnText}>{t('form234.addNote')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.deleteBtn} onPress={() => removeEffortNode(i + 1)}>
-                <Trash2 size={16} color="#EF4444" />
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity style={[styles.deleteBtn, { marginLeft: 18 }]} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} onPress={() => confirmRemoveEffortNode(i + 1)}>
+              <Trash2 size={16} color="#EF4444" />
+            </TouchableOpacity>
           )}
         </View>
         <View style={styles.licenceLine}>
@@ -1915,7 +1920,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 autoCapitalize="characters"
                 onBlur={() => setExtraLicEditingIdx(null)}
               />
-              <TouchableOpacity onPress={() => setExtraLicEditingIdx(null)} activeOpacity={0.8} style={{ marginLeft: 10 }}>
+              <TouchableOpacity onPress={() => setExtraLicEditingIdx(null)} activeOpacity={0.8} style={{ marginLeft: 14, paddingVertical: 6 }} hitSlop={{ top: 10, bottom: 10, left: 12, right: 12 }}>
                 <Text style={styles.licenceEditText}>{tc('nav.done')}</Text>
               </TouchableOpacity>
             </>
@@ -1937,6 +1942,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                     );
                   }}
                   activeOpacity={0.8}
+                  hitSlop={{ top: 10, bottom: 10, left: 12, right: 12 }}
+                  style={{ paddingVertical: 6 }}
                 >
                   <Text style={styles.licenceEditText}>{t('form234.effortLicenceEdit')}</Text>
                 </TouchableOpacity>
@@ -1981,6 +1988,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               </View>
             )}
           </View>
+          {/* S136 UI round item 2 (RULED): the effort's haul times sit directly under its
+              LFA picker, above the trap groups — same shape as effort 1. */}
+          {isVisible('haulStartTime') && renderTimestampField(t('form234.timeStartedHaulingLabel'), formatDateTimeDisplay(e.haulStartDate ?? '', e.haulStartTime ?? ''), 'extraEffortStart', false, isRequired('haulStartTime'), i)}
+          {isVisible('haulEndTime') && renderTimestampField(t('form234.timeStoppedHaulingLabel'), formatDateTimeDisplay(e.haulEndDate ?? '', e.haulEndTime ?? ''), 'extraEffortEnd', false, isRequired('haulEndTime'), i)}
           {isVisible('gearSubtypeId') && (
             <View style={styles.fieldRow}>
               <Text style={styles.label}>{t('form234.gearSubtypeLabel')}{isRequired('gearSubtypeId') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
@@ -2018,23 +2029,25 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             </TouchableOpacity>
           )}
           <View style={{ height: 14 }} />
-          {isVisible('haulStartTime') && renderTimestampField(t('form234.timeStartedHaulingLabel'), formatDateTimeDisplay(e.haulStartDate ?? '', e.haulStartTime ?? ''), 'extraEffortStart', false, isRequired('haulStartTime'), i)}
-          {isVisible('haulEndTime') && renderTimestampField(t('form234.timeStoppedHaulingLabel'), formatDateTimeDisplay(e.haulEndDate ?? '', e.haulEndTime ?? ''), 'extraEffortEnd', false, isRequired('haulEndTime'), i)}
           {renderYesNoToggle(t('form234.sarIndLabel'), e.sarYes === 'true' ? true : (e.sarYes === 'false' ? false : null), (v: boolean) => handleNodeSarYes(i, v))}
           {renderYesNoToggle(t('form234.mmInterIndLabel'), e.mmYes === 'true' ? true : (e.mmYes === 'false' ? false : null), (v: boolean) => handleNodeMmYes(i, v))}
+          {/* S136 UI round item 6 (RULED): the always-visible one-line NOTE field below the
+              questions (the bycatch-sheet shape); hidden only when closed AND empty. */}
+          {!(nodeClosed && !note.trim()) && (
+            <View style={styles.fieldRow}>
+              <Text style={styles.label}>{t('form234.effortNoteLabel')}</Text>
+              <TextInput
+                style={[styles.input, readOnly && styles.inputReadOnly]}
+                value={note}
+                onChangeText={(v: string) => updateEffortNode(i, { note: v })}
+                placeholder={t('form234.effortNotePlaceholder')}
+                placeholderTextColor="#94A3B8"
+                maxLength={2000}
+                editable={!readOnly && !nodeClosed}
+              />
+            </View>
+          )}
         </View>
-        {showNote && (
-          <TextInput
-            style={styles.noteInput}
-            value={note}
-            onChangeText={(v: string) => updateEffortNode(i, { note: v })}
-            placeholder={t('form234.notePlaceholder')}
-            placeholderTextColor="#94A3B8"
-            multiline
-            maxLength={2000}
-            editable={!readOnly && !nodeClosed}
-          />
-        )}
         {nodeClosed ? (
           <View style={styles.closedBanner}>
             <Lock size={14} color="#64748B" />
@@ -2088,8 +2101,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // + GPS + v-notch, GLF soak + GPS, NL soak + trap size + specimens kept + stat section.
   const renderExtraEffortBlock = (e: ExtraEffortDetail, i: number) => {
     const collapsed = !!extraCollapsed[i];
-    const showBlockCoords = subformId === 88 || subformId === 89 ||
-      (subformId === 90 && fmaId === DFO_FMA_38B);
+    // S136 UI round item 1 (Rule 3059 conformance): the ONE single-sourced entry gate.
+    const showBlockCoords = effortCoordsEntryAllowed(subformId, fmaId);
     return (
       <View key={i} style={styles.trapGroupBlock}>
         <View style={styles.effortBlockHeader}>
@@ -3566,7 +3579,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 />
                 {/* Walk fix 1: an explicit way to finish — Done ends the edit (blur still
                     works too; both routes land on the same setLicEditing(false)). */}
-                <TouchableOpacity onPress={() => setLicEditing(false)} activeOpacity={0.8} style={{ marginLeft: 10 }}>
+                <TouchableOpacity onPress={() => setLicEditing(false)} activeOpacity={0.8} style={{ marginLeft: 14, paddingVertical: 6 }} hitSlop={{ top: 10, bottom: 10, left: 12, right: 12 }}>
                   <Text style={styles.licenceEditText}>{tc('nav.done')}</Text>
                 </TouchableOpacity>
               </>
@@ -3590,6 +3603,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                       );
                     }}
                     activeOpacity={0.8}
+                    hitSlop={{ top: 10, bottom: 10, left: 12, right: 12 }}
+                    style={{ paddingVertical: 6 }}
                   >
                     <Text style={styles.licenceEditText}>{t('form234.effortLicenceEdit')}</Text>
                   </TouchableOpacity>
@@ -3608,20 +3623,19 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           <View style={styles.effortBlock}>
             <View style={styles.effortBlockHeader}>
               <Text style={styles.effortBlockTitle}>{t('form234.effortNodeTitle', { n: 1 })}</Text>
-              {/* S136 Phase 4: effort 1's OWN note button (renderNoteButton hides itself once
-                  dgCloseEffort is stamped — the note freezes with the effort) and its delete
-                  (ruling 8: open efforts only; deleting slides effort 2 up into the flat keys). */}
+              {/* S136 UI round item 6 (RULED): the header holds ONLY the title and the delete —
+                  the note affordance moved to the always-visible NOTE field below the
+                  questions. Delete (ruling 8): open efforts only, confirms first (item 4);
+                  deleting slides effort 2 up into the flat keys. */}
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                {renderNoteButton('catch')}
                 {!readOnly && !isClosed('dgCloseEffort') && (
-                  <TouchableOpacity style={styles.deleteBtn} onPress={() => removeEffortNode(0)}>
+                  <TouchableOpacity style={[styles.deleteBtn, { marginLeft: 18 }]} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} onPress={() => confirmRemoveEffortNode(0)}>
                     <Trash2 size={16} color="#EF4444" />
                   </TouchableOpacity>
                 )}
               </View>
             </View>
           <View {...closedBodyProps('dgCloseEffort')}>
-          {renderNoteInput('catch', remarks.catch ?? '', (v) => { setNote('catch', v); setNote('haul', v); })}
           {/* LFA Selector */}
                     <View style={styles.fieldRow}>
                       <Text style={styles.label}>{t('form234.fishingAreaLabel')}{isRequired('fmaId') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
@@ -3666,6 +3680,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                       )}
                     </View>
 
+          {/* S136 UI round item 2 (RULED): the two haul times sit in the effort header area —
+              directly under the LFA picker, above the trap groups. EFFORT-level pair
+              (START_DT / END_DT), one per effort. */}
+          {isVisible('haulStartTime') && renderTimestampField(t('form234.timeStartedHaulingLabel'), formatDateTimeDisplay(haulStartDate, timeStartedHauling), 'startHaul', false, isRequired('haulStartTime'))}
+          {isVisible('haulEndTime') && renderTimestampField(t('form234.timeStoppedHaulingLabel'), formatDateTimeDisplay(haulEndDate, timeStoppedHauling), 'stopHaul', false, isRequired('haulEndTime'))}
           {/* GEAR_SBTYP_ID: NL(91) only — EFFORT_BY_GEAR level, so it sits with the effort's
               own fields ABOVE the trap groups (S136 walk fix 2 moved it up from between the
               group fields). Values from DFO_GEAR_SUBTYPE_LIST; i18n display, .label fallback. */}
@@ -3873,10 +3892,14 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           )}
           {/* S136 Phase 3: the standalone GPS Coordinates card is GONE — LAT/LONG are trap-group
               data (EFFORT_DETAIL), so trap group 1's coordinates live here with its other
-              fields, exactly where the extra blocks already carry theirs. Same visibility as
-              the old card (isVisible('gpsCoords'): 88/89/90 visible, 91 hidden — rows 82/83),
-              preserving the S110 R2 parked state (non-38b MAR still sees, never emits). */}
-          {isVisible('gpsCoords') && (
+              fields, exactly where the extra blocks already carry theirs.
+              S136 UI round item 1 (RULED — conformance fix): group 1 joins groups 2+ on the
+              single-sourced entry gate. Rule 3059: « la saisie … doivent être bloquées » —
+              on MAR the ENTRY itself is blocked outside 38b, so the old isVisible gate
+              (90 visible on every FMA) was an entry breach and the S110 R2 over-collection;
+              both closed here. Stored non-38b MAR coords on old drafts stay untouched
+              (hydrate + write back verbatim, never rendered or emitted — the NL precedent). */}
+          {effortCoordsEntryAllowed(subformId, fmaId) && (
             <>
               {!readOnly && !isClosed('dgCloseEffort') && (
                 <TouchableOpacity
@@ -3987,18 +4010,35 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               <Text style={styles.addBtnText}>{t('form234.addCatchEffort')}</Text>
             </TouchableOpacity>
           )}
-          {/* S124: the two haul times are EFFORT-level (START_DT / END_DT — one pair for the whole
-              node), so they render AFTER every trap group, not inside group 1's fields. */}
+          {/* S136 Phase 3 (ruling 3) + UI round item 3 (RULED: they stay at the bottom): the
+              two Y/N interaction questions are EFFORT elements (SAR_IND / MM_INTER_IND,
+              mandatory per occurrence) — asked ON the effort, after its trap groups, as a
+              closing attestation. The labels are the Rule 603 / Rule 780 mandated texts,
+              reused verbatim. Answering Yes on species at risk opens the existing card in
+              Interactions & Other; the detail blocks and their per-block closes are
+              untouched there. */}
           <View style={{ height: 14 }} />
-          {isVisible('haulStartTime') && renderTimestampField(t('form234.timeStartedHaulingLabel'), formatDateTimeDisplay(haulStartDate, timeStartedHauling), 'startHaul', false, isRequired('haulStartTime'))}
-          {isVisible('haulEndTime') && renderTimestampField(t('form234.timeStoppedHaulingLabel'), formatDateTimeDisplay(haulEndDate, timeStoppedHauling), 'stopHaul', false, isRequired('haulEndTime'))}
-          {/* S136 Phase 3 (ruling 3): the two Y/N interaction questions are EFFORT elements
-              (SAR_IND / MM_INTER_IND, mandatory per occurrence) — asked ON the effort. The
-              labels are the Rule 603 / Rule 780 mandated texts, reused verbatim. Answering
-              Yes on species at risk opens the existing card in Interactions & Other; the
-              detail blocks and their per-block closes are untouched there. */}
           {renderYesNoToggle(t('form234.sarIndLabel'), sarYes, handleSarYes)}
           {renderYesNoToggle(t('form234.mmInterIndLabel'), mmYes, handleMmYes)}
+          {/* S136 UI round item 6 (RULED): the effort note is an always-visible ONE-LINE
+              labelled field below the questions (the bycatch-sheet NOTE shape) — the header
+              "Add a note" affordance is gone. Same storage as ever (remarks catch+haul,
+              same text); freezes with the effort (inside the closedBody wrapper); hidden
+              only when closed AND empty. */}
+          {!(isClosed('dgCloseEffort') && !(remarks.catch ?? '').trim()) && (
+            <View style={styles.fieldRow}>
+              <Text style={styles.label}>{t('form234.effortNoteLabel')}</Text>
+              <TextInput
+                style={[styles.input, readOnly && styles.inputReadOnly]}
+                value={remarks.catch ?? ''}
+                onChangeText={(v: string) => { setNote('catch', v); setNote('haul', v); }}
+                placeholder={t('form234.effortNotePlaceholder')}
+                placeholderTextColor="#94A3B8"
+                maxLength={2000}
+                editable={!readOnly && !isClosed('dgCloseEffort')}
+              />
+            </View>
+          )}
           </View>
           {/* EFFORT close — one closure per effort (§5.2.1; ruling 5 confirm wording).
               Shown only when a haul is declared (Phase 6). */}

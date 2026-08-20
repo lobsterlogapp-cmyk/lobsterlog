@@ -7,7 +7,7 @@
 import forge from 'node-forge';
 import { DfoLog, ExtraSarDetail, ExtraEffortNode, sarBlocksFromData, effortsFromData } from './dfoLogStorage';
 import { CaptainProfile } from './captainStorage';
-import { getDfoBaitTypeList, baitConditionState, getDfoPconsSpeciesList, DFO_SPECIE_FRM_ID, DFO_PCONS_OTHER_SIZE_ID, DFO_GEAR_ID, DFO_SOFT_VER, DFO_CIE_ID, DFO_FORM_VER_ID, DFO_HLIN_COMPANY_LIST, DFO_HLOUT_COMPANY_LIST, DFO_SUBFORM_REGISTRY, DFO_FMA_38B, DFO_FMA_NB_VNTCH, DFO_FMA_NB_VNTCH_YOU, DFO_FMA_STAT_SECT_REQUIRED, DFO_STAT_SECT_BY_FMA, DFO_FMA_GRID_MAP, DFO_GRID_BLOCKED_FMA, clampCoord4 } from './dfoConstants';
+import { getDfoBaitTypeList, baitConditionState, getDfoPconsSpeciesList, DFO_SPECIE_FRM_ID, DFO_PCONS_OTHER_SIZE_ID, DFO_GEAR_ID, DFO_SOFT_VER, DFO_CIE_ID, DFO_FORM_VER_ID, DFO_HLIN_COMPANY_LIST, DFO_HLOUT_COMPANY_LIST, DFO_SUBFORM_REGISTRY, DFO_FMA_38B, DFO_FMA_NB_VNTCH, DFO_FMA_NB_VNTCH_YOU, DFO_FMA_STAT_SECT_REQUIRED, DFO_STAT_SECT_BY_FMA, DFO_FMA_GRID_MAP, DFO_GRID_BLOCKED_FMA, clampCoord4, effortCoordsEntryAllowed } from './dfoConstants';
 import { MV_PARTNERSHIP_TYPE, MV_GRID } from '../data/reftables';
 
 export function generateReportUid(): string {
@@ -339,8 +339,9 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   //   NL(91): Blocked (rows 82/83) — never emitted, even if coords exist on an old draft.
   // MODE attribute per Standard v6.1 §11.3: G = GPS-captured, M = manual
   // entry/edit (open question 3 resolution; gpsSrc tracked per block by FullDfoForm).
-  const emitEffortCoords = subformId === 88 || subformId === 89 ||
-    (subformId === 90 && efFma === DFO_FMA_38B);
+  // S136 UI round: the SAME single-sourced gate the entry fields use (dfoConstants) —
+  // identical logic to the previous inline expression, so the emitted bytes cannot move.
+  const emitEffortCoords = effortCoordsEntryAllowed(subformId, efFma);
   if (emitEffortCoords && det.gpsLat && det.gpsLng) {
     const coordMode = det.gpsSrc === 'gps' ? 'G' : 'M';
     // Clamp to the XSD's ≤4-decimal LAT/LONG limit at emit (shared clampCoord4), matching

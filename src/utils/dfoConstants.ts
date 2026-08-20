@@ -1467,6 +1467,17 @@ export const DFO_SUBFORM_REGISTRY: Record<number, {
 // FMA 38b — gates Rules 3059 (LAT/LONG), 654/655 (NB_SPCMN_BRD), 660/661 (HLIN)
 export const DFO_FMA_38B = 28599;
 
+// S136 UI round (Rule 3059 conformance): may EFFORT_DETAIL LAT/LONG be ENTERED for this
+// subform + fishing area? ONE definition for the entry gates on every trap group AND the
+// generator's emit gate, so entry and emission can never disagree. QC(88)/GLF(89):
+// Mandatory (Subforms rows 82/83) — always enterable. MAR(90): Rule 3059 — mandatory on
+// 38b, « la saisie … doivent être bloquées » (entry itself blocked) in every other MAR
+// FMA. NL(91): Blocked (rows 82/83) — never enterable.
+export function effortCoordsEntryAllowed(subformId: number, fmaId: number | null | undefined): boolean {
+  return subformId === 88 || subformId === 89 ||
+    (subformId === 90 && fmaId === DFO_FMA_38B);
+}
+
 // Rules 623/624: QC LFAs 19a*/19b/19c*/20*/21* where NB_VNTCH is MANDATORY;
 // blocked in every other FMA.
 export const DFO_FMA_NB_VNTCH = new Set<number>([

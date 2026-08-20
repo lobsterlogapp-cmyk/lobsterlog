@@ -609,6 +609,128 @@ command prints **nothing**.
 
 ---
 
+### 4.6 UI ROUND (built after Phase 4, tip cfd8740 — six founder items, three ruled at STOPs)
+
+**Item 1 — THE MAR GPS GATE (ruled; ⚠ CONFORMANCE FIX).** Trap group 1 left
+`isVisible('gpsCoords')` and joined groups 2+ on the single-sourced entry gate — a new
+`effortCoordsEntryAllowed(subformId, fmaId)` in **dfoConstants** (88 ‖ 89 ‖ (90 ∧ 38b)),
+now used in ALL FOUR places: group 1, effort 1's groups 2+, the extra efforts' groups, AND
+the generator's emit gate (`emitEffortCoords` repointed — identical logic, byte-proven).
+Result: a MAR harvester sees Capture GPS / LATITUDE / LONGITUDE only on 38b, and then on
+every trap group; nowhere else in MAR. QC-88 / GLF-89 unchanged (Mandatory, rows 82/83);
+NL-91 unchanged (Blocked). **Authority: Rule 3059** (FS-NAT-234-12-FR.txt :1108–1130,
+quoted verbatim in this session's recon exchange): « la saisie … doivent être bloquées » —
+the ENTRY itself is blocked outside 38b. This closes the S110 R2 over-collection AND a
+real MAR non-38b entry breach that had shipped since the standalone GPS card.
+⚠ **For the §10 requalification list:** conformance fix on the 234 entry surface (no emit
+change — the generator already gated MAR coords to 38b). ⚠ **For the figure re-shoot
+list:** any MAR non-38b frame showing the GPS fields no longer matches. Stored non-38b MAR
+coords on old drafts stay untouched (hydrate + write back verbatim, never rendered or
+emitted — the NL precedent).
+
+**Item 2 — HAUL TIMES MOVED UP (ruled).** TIME STARTED/STOPPED HAULING now sit directly
+under the LFA picker, above the trap groups — on effort 1 and on every extra effort.
+
+**Item 3 — ⛔ RULED: the two Y/N interaction questions STAY AT THE BOTTOM** of each
+effort, after the trap groups, just above Close & Save — a closing attestation, nearest
+the SAR card a Yes opens below. (Case against, noted at the STOP: effort-level fields now
+sandwich the trap groups.)
+
+**Item 4 — DELETE CONFIRM ON EFFORTS (ruled).** Both trash sites route through a new
+`confirmRemoveEffortNode` before anything is removed. Trap groups, bait rows, bycatch rows
+and SAR blocks keep their confirm-free deletes — untouched.
+
+**Item 5 — ⛔ RULED wording** (`deleteEffortConfirmTitle`/`Body`, buttons reuse
+nav.cancel/nav.delete): EN **"Delete this fishing effort?" / "This will remove the effort
+and everything in it — its trap groups, haul times, answers and note. You can't undo
+this."** · FR **« Supprimer cet effort de pêche? » / « L’effort et tout ce qu’il contient —
+ses groupes de casiers, ses heures de levée, ses réponses et sa note — sera supprimé. Vous
+ne pourrez pas annuler. »**
+
+**Item 6b — the NOTE placeholder names the effort (founder string fix, pre-commit).** The
+effort NOTE fields were showing the shared `notePlaceholder` ("Optional note for this
+section" / « Note facultative pour cette section ») — wrong name for the concept. Checked
+first: **the key IS shared** — its other consumers are the generic per-card note inputs
+(Trip, Landing, Transfers, Personal Use, HLIN, HLOUT — FullDfoForm :3466/:3531/:4358/
+:4416/:4431/:4449), the SAR block notes (renderSarBlockChrome :2438), and the Form 233
+Reporting Period note (Form233Screen :195, the S112 key-reuse ruling). So the shared key
+was NOT edited: a new `effortNotePlaceholder` (**"Optional note for this fishing effort" /
+« Note facultative pour cet effort de pêche »**) was added and ONLY the two effort NOTE
+fields point at it. Every other card keeps its exact wording.
+
+**Item 6 — ⛔ RULED (clarified on the bycatch-sheet screenshot): the header de-crowds by
+moving the note DOWN, not the trash.** The "Add a note" affordance is gone from every
+effort header; the note is an **always-visible ONE-LINE labelled NOTE field** (the bycatch
+sheet's shape, single line) below the two Y/N questions, just above Close & Save. Effort 1's
+writes the same remarks catch+haul pair as ever; extras write their own `note`. It freezes
+with its effort (inside the frozen body; hidden only when closed AND empty). The header
+now holds title + trash only, the trash gained spacing (marginLeft 18) and a 10-pt hit
+slop, and the licence Edit/Done controls gained hit padding. New key `effortNoteLabel`
+("NOTE"/« NOTE », the bait/bycatch twin).
+
+**Verify table (UI round):**
+
+| # | Item | Command / evidence | Result |
+|---|---|---|---|
+| 1 | One GPS gate, four call sites | grep: `effortCoordsEntryAllowed` in dfoConstants + 3 UI sites + the generator; `isVisible('gpsCoords')` = 0 hits in FullDfoForm | ✅ PASS |
+| 2 | Emit unchanged by the repoint | byte harness `cmp` (MAR-90 38b two-grid fixture) + latLongPerRegion suite unmodified | ✅ IDENTICAL — 2,287 → 2,287 bytes, `cmp` silent |
+| 3 | Times under the LFA picker, both renderers | effort 1 + renderExtraEffortNode: timestamp fields render between the LFA picker and the gear/groups | ✅ PASS |
+| 4 | Toggles stayed at the bottom (item 3 ruling) | both renderers: toggles after the groups, before the NOTE field and Close & Save | ✅ PASS |
+| 5 | Delete confirm on efforts only | both trash sites → `confirmRemoveEffortNode`; bait/bycatch/SAR/trap-group deletes grep-verified untouched | ✅ PASS |
+| 6 | Note field down, header de-crowded | header note buttons gone (`effortNoteOpen` state removed); one-line NOTE field below the questions in both renderers; hitSlop on trash + licence Edit/Done | ✅ PASS |
+| 7 | The conformance gate is PINNED | new `effortCoordsEntryGate.oneoff.test.ts` (40 lines, 6 tests): QC-88 true (incl. LFA 22) · GLF-89 true · MAR-90 on 38b true (+ the 28599 constant pinned) · MAR-90 off 38b FALSE (LFA 34 — the shipped breach case — and LFA 41) · NL-91 false (incl. 38b-under-NL) · null/undefined/NaN FMA never unlocks MAR/NL while QC/GLF stay true | ✅ PASS — added after the pin audit flagged the round shipping a conformance fix with zero test edits |
+| 8 | tsc predicted / measured | predicted 33 | ✅ 33 (0 new) |
+| 9 | jest predicted / measured | predicted 45 / 228 (the 6-test gate suite) | ✅ **45 suites / 228 tests** |
+| 10 | i18n key-set symmetry | python set-diff over form234 | ✅ EN **244 / FR 244**, diff = ∅ (4 new keys each incl. `effortNotePlaceholder`; FR curly apostrophes, no space before ?) |
+| 11 | Harness deleted | `git status --short` | ✅ tmpByteHarness7 deleted; tracked modifications = the 5 intended source files; the only new file is the gate suite. Byte identity was proven with the emit path in its final state — the later additions (the test file and the item-6b placeholder repoint) touch no emit-path source (dfoConstants/dfoXmlGenerator unchanged since the proof), so it stands |
+| 12 | Item 6b: shared placeholder untouched | grep: `form234.notePlaceholder` still serves the generic note inputs, the SAR blocks and Form 233; only the two effort NOTE fields read `effortNotePlaceholder` | ✅ PASS |
+
+**Predicted staged stat:** 5 modified source files, **120 insertions / 60 deletions**
+(FullDfoForm.tsx the bulk; dfoConstants.ts +11; dfoXmlGenerator.ts 4+/3−; the two dfo.json
++4 keys each), **plus the NEW untracked 40-line effortCoordsEntryGate suite** (⚠ absent
+from `git diff --stat`) — **7 files staged** with this gate doc.
+
+**⛔ WALK — sandbox sim, EN and FR, before the commit block:**
+1. MAR log, LFA 34 (non-38b): NO GPS fields on any trap group; switch the effort's LFA to
+   38b → Capture GPS + lat/long appear on EVERY trap group (group 1 included); QC and NL
+   logs unchanged (QC always shows, NL never).
+2. Both haul times sit directly under the LFA picker on effort 1 AND on an added effort 2.
+3. The two Y/N questions still sit at the bottom, above the new NOTE line.
+4. The NOTE field: one line, always visible while open, typed text survives save/reopen;
+   close the effort → note read-only (and absent entirely when it was empty); the header
+   shows title + trash only.
+5. Delete an effort → the new confirm (both languages); Cancel keeps it; Delete removes
+   it; deleting a trap group / bait row / bycatch row / SAR block still deletes WITHOUT a
+   confirm.
+6. Wet-thumb check: trash and licence Edit comfortably separated and hittable.
+
+### 4.7 Commit block (UI round) — Jonathon runs it AFTER the walk passes, one line at a time
+
+```
+git add src/components/FullDfoForm.tsx
+git add src/i18n/locales/en/dfo.json
+git add src/i18n/locales/fr/dfo.json
+git add src/utils/dfoConstants.ts
+git add src/utils/dfoXmlGenerator.ts
+git add src/utils/__tests__/effortCoordsEntryGate.oneoff.test.ts
+git add docs/GATE_S136_MULTI_EFFORT.md
+git diff --cached --stat
+git commit -m "Gate trap-group GPS entry to Rule 3059, move the haul times up, confirm effort deletes and replace the header note with an inline note line"
+git push
+git log origin/main..HEAD --oneline
+```
+
+Expected: `git diff --cached --stat` shows 7 files (the five modified source files at
+120+/60−, the new 40-line gate suite, plus this gate doc); the last command prints
+**nothing**.
+
+Walk addendum for item 6b: step 4's NOTE field shows "Optional note for this fishing
+effort" / « Note facultative pour cet effort de pêche » on BOTH effort 1 and effort 2,
+while the Trip / Landing / Transfers / Personal Use / HLIN / HLOUT notes, the SAR block
+notes and the Form 233 note still read "for this section" / « pour cette section ».
+
+---
+
 ## PHASE 5 — QUICK CAPTURE (rulings 10 and 11)
 
 ### 5.1 Scope
