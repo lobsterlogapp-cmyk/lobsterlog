@@ -165,6 +165,7 @@
     "deleteEffortConfirmBody": "L’effort et tout ce qu’il contient — ses groupes de casiers, ses heures de levée, ses réponses et sa note — sera supprimé. Vous ne pourrez pas annuler.",
     "effortNoteLabel": "NOTE",
     "effortNotePlaceholder": "Note facultative pour cet effort de pêche",
+    "newHaulConfirmTitle": "Commencer une nouvelle levée?",
     "effortLicenceEditConfirmTitle": "Modifier le permis de cet effort de pêche?",
     "effortLicenceEditConfirmBody": "Cet effort transmettra le numéro de permis saisi ici.",
     "closeEffortConfirmTitle": "Fermer cet effort de pêche?",

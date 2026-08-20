@@ -751,8 +751,18 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     if (sailStartTime && sailLogId === tripId) setTimeSailed(sailStartTime);
   }, [sailStartTime, sailLogId, tripId]);
 
+  // S136 Phase 5: the TimerContext sync effects write EFFORT 1's flat keys — they must only
+  // do so while effort 1 is the effort the haul timer serves. When an EXTRA effort is
+  // running (its start/stop are stamped at press time in handleHaulPress), or effort 1's
+  // window is already complete, the effects stand down — the pre-S136 unconditional write
+  // is exactly how the shipped silent-restart defect overwrote a finished window.
+  const effort1OwnsHaulTimer = (): boolean =>
+    !extraEffortNodes.some(e => (e.haulStartTime ?? '').trim() !== '' && !(e.haulEndTime ?? '').trim())
+    && !(timeStartedHauling.trim() !== '' && timeStoppedHauling.trim() !== '');
+
   useEffect(() => {
-    if (haulStartTime && haulLogId === tripId) setTimeStartedHauling(haulStartTime);
+    if (haulStartTime && haulLogId === tripId && effort1OwnsHaulTimer()) setTimeStartedHauling(haulStartTime);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [haulStartTime, haulLogId, tripId]);
 
   // Adopt a haul-end time only when it arrives AFTER this form mounts (normal Quick
@@ -766,9 +776,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       haulEndAtMountRef.current = haulEndTime; // baseline: ignore whatever was present at mount
       return;
     }
-    if (haulEndTime && haulEndTime !== haulEndAtMountRef.current) {
+    if (haulEndTime && haulEndTime !== haulEndAtMountRef.current && effort1OwnsHaulTimer()) {
       setTimeStoppedHauling(haulEndTime);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [haulEndTime]);
 
   const buildLogData = (): Record<string, string> => ({
@@ -971,22 +982,98 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     }
   };
 
+  // ── S136 Phase 5: Quick Capture serves EVERY effort (rulings 10 + 11) ──────────────────
+  // Which effort does the haul button act on right now, derived from data alone:
+  //   • the RUNNING effort (start stamped, no stop) — the button stops IT;
+  //   • else effort 1 while it is open with no start yet — the fresh first haul;
+  //   • else 'new' — every effort's window is complete, so the next tap is "tap 3" and
+  //     must CONFIRM before creating the next effort (the guard that fixes the shipped
+  //     silent-restart defect: a finished window can never be overwritten from here again).
+  const quickHaulTarget = (): number | 'new' => {
+    if (timeStartedHauling.trim() && !timeStoppedHauling.trim()) return 0;
+    const running = extraEffortNodes.findIndex(e => (e.haulStartTime ?? '').trim() !== '' && !(e.haulEndTime ?? '').trim());
+    if (running >= 0) return running + 1;
+    if (!timeStartedHauling.trim() && !isClosed('dgCloseEffort')) return 0;
+    return 'new';
+  };
+
+  // Ruling 11: Yes on the tap-3 confirm CREATES the next effort card, already stamped with
+  // its start time, and the timer runs for it. LFA pre-fills from the previous effort (the
+  // add-button default); one open trap group, per the XSD's ≥1 EFFORT_DETAIL.
+  const startNewEffortFromCapture = async () => {
+    const now = new Date();
+    const prevFma = extraEffortNodes.length > 0
+      ? extraEffortNodes[extraEffortNodes.length - 1].fmaId
+      : (fmaId != null ? String(fmaId) : undefined);
+    setExtraEffortNodes(prev => [...prev, {
+      ...(prevFma ? { fmaId: prevFma } : {}),
+      haulStartDate: formatDate(now), haulStartTime: formatTime(now),
+      details: [{}],
+    }]);
+    await startHaul(tripId);
+  };
+
+  // The most recent effort with a stamped haul window — feeds the idle button label.
+  const latestHaulRange = (): { start: string; end: string } | null => {
+    for (let i = extraEffortNodes.length - 1; i >= 0; i--) {
+      const e = extraEffortNodes[i];
+      if ((e.haulStartTime ?? '').trim()) return { start: e.haulStartTime ?? '', end: e.haulEndTime ?? '' };
+    }
+    return timeStartedHauling ? { start: timeStartedHauling, end: timeStoppedHauling } : null;
+  };
+
   const handleHaulPress = async () => {
-      // S124: EFFORT is closeable. Once Catch & Effort is closed, Quick Capture must not write
-      // haul times / GPS into the frozen group — this closes the bypass (button also disabled).
-      if (isClosed('dgCloseEffort')) return;
-      if (!haulActiveHere) {
-        const now = new Date();
-        await startHaul(tripId);
-        // timeStartedHauling synced via useEffect on haulStartTime; stamp companion date now.
-        setHaulStartDate(formatDate(now));
-      } else {
-        const now = new Date();
-        stopHaul();
-        // timeStoppedHauling synced via useEffect on haulEndTime; stamp companion date now.
-        setHaulEndDate(formatDate(now));
-        await captureGps(setGpsLat, setGpsLng);
-        setGpsSrc('gps'); // §11.3: GPS-read coordinates → MODE="G"
+      const target = quickHaulTarget();
+      if (target === 'new') {
+        // Tap 3 (ruling 10, §5.2 ruled wording: bare title, Yes/No). No does NOTHING AT
+        // ALL — no state change of any kind. The pre-S136 behavior here was the shipped
+        // defect: a silent restart overwrote a real haul window with a zero-length one.
+        Alert.alert(
+          t('form234.newHaulConfirmTitle'),
+          undefined,
+          [
+            { text: tc('common.no'), style: 'cancel' },
+            { text: tc('common.yes'), onPress: () => { void startNewEffortFromCapture(); } },
+          ],
+        );
+        return;
+      }
+      if (target === 0) {
+        // Effort 1 — the pre-S136 flow. S124: once effort 1 is closed, Quick Capture must
+        // not write into the frozen group (tap 3 handles the closed-and-complete case above).
+        if (isClosed('dgCloseEffort')) return;
+        if (!haulActiveHere) {
+          const now = new Date();
+          await startHaul(tripId);
+          // timeStartedHauling synced via useEffect on haulStartTime; stamp companion date now.
+          setHaulStartDate(formatDate(now));
+        } else {
+          const now = new Date();
+          stopHaul();
+          // timeStoppedHauling synced via useEffect on haulEndTime; stamp companion date now.
+          setHaulEndDate(formatDate(now));
+          // S136 UI-round conformance follow-through: the silent stop-tap capture only
+          // where coordinate ENTRY is allowed (Rule 3059) — it must not fill fields the
+          // harvester can no longer see (MAR non-38b, NL).
+          if (effortCoordsEntryAllowed(subformId, fmaId)) {
+            await captureGps(setGpsLat, setGpsLng);
+            setGpsSrc('gps'); // §11.3: GPS-read coordinates → MODE="G"
+          }
+        }
+        return;
+      }
+      // An EXTRA effort is running — stop IT. Its start was stamped when it was created,
+      // so the stop stamps its own end (+ trap group 1's coordinates where entry is allowed).
+      const idx = target - 1;
+      const { date, time } = stopHaul();
+      updateEffortNode(idx, { haulEndDate: date, haulEndTime: time });
+      const nodeFmaNum = extraEffortNodes[idx]?.fmaId ? Number(extraEffortNodes[idx].fmaId) : null;
+      if (effortCoordsEntryAllowed(subformId, nodeFmaNum)) {
+        await captureGps(
+          (v: string) => updateNodeGroup(idx, 0, { gpsLat: v }),
+          (v: string) => updateNodeGroup(idx, 0, { gpsLng: v }),
+        );
+        updateNodeGroup(idx, 0, { gpsSrc: 'gps' }); // §11.3
       }
     };
 
@@ -3435,23 +3522,31 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.captureBtn, haulActiveHere && styles.captureBtnActive, isClosed('dgCloseEffort') && styles.captureBtnDisabled]}
+              /* S136 Phase 5: no longer disabled when effort 1 is closed — the button now
+                 serves EVERY effort (tap 3 creates the next one behind its confirm), so a
+                 closed effort 1 must not dead-end Quick Capture. Writes into a closed
+                 effort stay impossible (the target derivation + branch guards). */
+              style={[styles.captureBtn, haulActiveHere && styles.captureBtnActive]}
               onPress={handleHaulPress}
-              disabled={isClosed('dgCloseEffort')}
             >
               {haulActiveHere
                 ? <Square size={18} color="#FFFFFF" />
-                : <Play size={18} color={timeStartedHauling ? '#15803D' : '#1E3A8A'} />}
+                : <Play size={18} color={latestHaulRange() ? '#15803D' : '#1E3A8A'} />}
               <Text style={[
                 styles.captureBtnText,
                 haulActiveHere && styles.captureBtnTextActive,
-                !haulActiveHere && !!timeStartedHauling && styles.captureBtnTextDone,
+                !haulActiveHere && !!latestHaulRange() && styles.captureBtnTextDone,
               ]}>
                 {haulActiveHere
                   ? `${t('form234.stopHaul')}  ${haulElapsed}`
-                  : timeStartedHauling
-                    ? t('form234.hauledRange', { start: timeStartedHauling, end: timeStoppedHauling || '?' })
-                    : t('form234.startHaul')}
+                  : (() => {
+                      // Idle: show the LATEST effort's window (pre-S136 this always showed
+                      // effort 1's, which reads stale once effort 2 exists).
+                      const r = latestHaulRange();
+                      return r
+                        ? t('form234.hauledRange', { start: r.start, end: r.end || '?' })
+                        : t('form234.startHaul');
+                    })()}
               </Text>
             </TouchableOpacity>
           </View>

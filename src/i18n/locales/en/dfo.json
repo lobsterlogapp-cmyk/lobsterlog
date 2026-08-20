@@ -164,6 +164,7 @@
     "deleteEffortConfirmBody": "This will remove the effort and everything in it — its trap groups, haul times, answers and note. You can't undo this.",
     "effortNoteLabel": "NOTE",
     "effortNotePlaceholder": "Optional note for this fishing effort",
+    "newHaulConfirmTitle": "Start a new haul time?",
     "effortLicenceEditConfirmTitle": "Change the licence for this fishing effort?",
     "effortLicenceEditConfirmBody": "This effort will transmit the licence number you enter here.",
     "closeEffortConfirmTitle": "Close this fishing effort?",

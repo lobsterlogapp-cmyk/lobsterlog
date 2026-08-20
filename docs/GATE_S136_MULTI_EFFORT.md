@@ -731,22 +731,159 @@ notes and the Form 233 note still read "for this section" / « pour cette sectio
 
 ---
 
-## PHASE 5 — QUICK CAPTURE (rulings 10 and 11)
+## PHASE 5 — QUICK CAPTURE (rulings 10 and 11) — BUILT 2026-08-19
 
-### 5.1 Scope
+### 5.0 THE DEFECT THIS PHASE FIXES — founder reproduction on the sandbox sim, 2026-08-19
 
-- Tap 1 stamps the haul start; tap 2 stamps the haul stop.
-- Tap 3 in the same log raises **"Start a new haul time? Yes / No"**. **No does nothing at
-  all** — no state change of any kind.
-- **Yes creates a new effort card and stamps its start time** (ruling 11).
-- The same confirm fires on start and stop after the card has been exited and reopened.
-- ⚠ **This also fixes a shipped defect Jonathon found by testing**: the button sits at the
-  top of the screen, is easy to hit by accident, and today an accidental tap silently
-  restarts the haul time. Say so in the commit subject without overclaiming.
+> Start Haul, stop — effort 1 correctly stamped **21:51–21:52**. One more tap **silently
+> restarted** the timer and the card read **"Hauled 21:52–21:52"** — a real haul window
+> overwritten by a zero-length one, with no prompt.
 
-### 5.2 ⛔ STOP — the confirm wording, EN and FR.
+Root cause: the old `handleHaulPress` had only two states (running / not-running), so the
+third tap re-entered the START branch and the unconditional TimerContext sync effect
+overwrote effort 1's `timeStartedHauling`. The walk below proves that exact sequence is no
+longer possible.
 
-### 5.3 Walk, gates, verify table, commit block
+### 5.1 Scope as built (rulings restated, one OVERTURNED)
+
+- Tap 1 stamps the haul start; tap 2 stamps the haul stop — unchanged, silent.
+- **Tap 3** (timer idle, the latest window complete) raises the confirm; **No does nothing
+  at all** — no state change of any kind; **Yes creates the next effort card already
+  stamped with its start time** (ruling 11 — Quick Capture is the harvester's whole path
+  to a second effort), with the LFA pre-filled from the previous effort and one open trap
+  group. The timer runs for the new effort; stopping stamps ITS end and captures GPS into
+  ITS trap group 1 — only where Rule 3059 allows coordinate entry.
+- ⚠ **RULING 10's REOPEN HALF IS OVERTURNED (founder, 2026-08-19): NO confirm on
+  reopening.** After a log is exited and reopened, the first haul tap starts or stops
+  silently, exactly as before. **Reason, recorded verbatim in spirit: a confirm that fires
+  on every reopen becomes a reflex Yes and stops being a guard.** The third-tap guard is
+  unchanged and is the whole protection.
+- **Conformance follow-through (Rule 3059):** the silent stop-tap GPS capture now fires
+  only where coordinate entry is allowed — it no longer fills fields a MAR non-38b or NL
+  harvester cannot see. QC/GLF/38b behavior unchanged.
+- The capture button is **no longer disabled when effort 1 is closed** — tap 3 must be able
+  to create effort 2 on a closed-effort log; writes into closed efforts stay impossible
+  (the data-derived target skips them). Its idle label now shows the **latest** effort's
+  window instead of always effort 1's. (The `captureBtnDisabled` style is now dormant —
+  left in place, orphan-cleanup queue.)
+- Mechanics: a data-derived `quickHaulTarget()` (running effort → stop it; effort 1 open
+  with no start → start it; else 'new' → the confirm), and the TimerContext sync effects
+  gained an `effort1OwnsHaulTimer()` guard — they stand down while an extra effort is
+  running or effort 1's window is complete. The unconditional effect write was the other
+  half of the shipped defect.
+
+### 5.2 ⛔ WORDING — RULED
+
+- **Tap-3 confirm: BARE TITLE, no body** (founder overruled the body-carrying proposal):
+  **"Start a new haul time?" / « Commencer une nouvelle levée? »**, buttons Yes/No via the
+  existing `common.yes`/`common.no` ("Yes"/"No" · « Oui »/« Non »). New key
+  `newHaulConfirmTitle`. (Case against the bare title, noted at the STOP: it does not say
+  a new effort card is about to appear.)
+- The reopen-guard wording pair died with the overturn — no keys added for it.
+
+### 5.3 Gates and verify table
+
+| # | Item | Command / evidence | Result |
+|---|---|---|---|
+| 1 | Tap 3 confirms; No is a pure no-op | `handleHaulPress` target 'new' → Alert; the No button carries NO handler beyond dismiss | ✅ PASS |
+| 2 | Yes creates the stamped effort | `startNewEffortFromCapture`: LFA pre-fill + `haulStartDate/Time` from the same now() + one open trap group + `startHaul` | ✅ PASS |
+| 3 | The overwrite path is gone | the START branch is reachable only when effort 1 is open with NO start; the sync effects are gated by `effort1OwnsHaulTimer()` | ✅ PASS — walked (steps 1–2) |
+| 4 | Reopen behaves exactly as today | no reopen guard exists (overturned); no new state, no ref | ✅ PASS |
+| 5 | Stop-tap GPS obeys Rule 3059 | both stop branches gate `captureGps` on `effortCoordsEntryAllowed` | ✅ PASS |
+| 6 | Byte identity — fixture A | `cmp` retained bytes vs fresh generate | ✅ IDENTICAL — 2,287 → 2,287 bytes (UI-only phase; the emit path untouched) |
+| 7 | tsc predicted / measured | predicted 33 | ✅ 33 (0 new) |
+| 8 | jest predicted / measured | predicted 45 / 228 (no suite touches Quick Capture) | ✅ 45 suites / 228 tests |
+| 9 | i18n key-set symmetry | python set-diff over form234 | ✅ EN 245 / FR 245, diff = ∅ (1 new key each: `newHaulConfirmTitle`; FR curly apostrophe, no space before ?) |
+| 10 | Harness deleted | `git status --short` | ✅ tmpByteHarness8 deleted; tracked modifications = FullDfoForm.tsx + the two dfo.json |
+
+**Predicted staged stat:** 3 source files, **121 insertions / 24 deletions** — **4 files
+staged** with this gate doc. No new test file.
+
+**⚠ PIN AUDIT, answered plainly (founder question, 2026-08-19): `quickHaulTarget()` CANNOT
+be pinned without changing source.** It is a closure inside the component reading component
+state (`timeStartedHauling` / `timeStoppedHauling` / `extraEffortNodes` / the `closes`
+map) — not exported, not importable by a suite. The two ways to pin it are both source
+moves: (a) extract it into `dfoLogStorage` as a data-map predicate (the Phase-4 extraction
+precedent — `quickHaulTargetFromData(d)` over `effortsFromData`, then a three-case suite:
+running effort → stop-target, effort 1 open with no start → start-target, every window
+complete → 'new', the shipped-defect case); or (b) stand up the repo's FIRST component-
+render test (react-test-renderer is installed but unused — new infrastructure, not a small
+suite). A test that re-implements the logic beside it would pin nothing. **Left unpinned
+by ruling tonight; the (a) extraction is the queued hardening.** Until then the three
+cases rest on walk steps 1–4, and the halves that ARE data-layer — `effortsFromData`,
+`effortCoordsEntryAllowed`, `effortsAnyClosed` — are already pinned by their suites.
+
+**⛔ WALK — sandbox sim, EN and FR, before the commit block:**
+1. **THE REPRODUCTION, re-run:** Start Haul → stop → effort 1 stamped (e.g. 21:51–21:52) →
+   **tap the button once more** → the confirm "Start a new haul time?"/« Commencer une
+   nouvelle levée? » appears; tap **No** → NOTHING changes — effort 1 still reads
+   21:51–21:52, no new effort, timer idle. Repeat the extra tap → No again → still nothing.
+   **The 21:52–21:52 overwrite must be impossible to produce.**
+2. Same sequence, tap **Yes** → "Fishing Effort 2" appears, LFA pre-filled, its start
+   already stamped, timer running; effort 1's 21:51–21:52 UNTOUCHED. Stop → effort 2's end
+   stamps (and on 38b/QC/GLF its Trap Group 1 gets coordinates; on MAR non-38b it must
+   NOT).
+3. Exit the log mid-haul, reopen, tap → the stop happens silently (no confirm — the
+   overturn); exit/reopen with the timer idle and windows complete, tap → the tap-3
+   confirm, not a silent start.
+4. Close effort 1, then tap the (now enabled) button → the tap-3 confirm; Yes creates
+   effort 2; effort 1's stamps and closure untouched.
+5. Idle button label shows the LATEST effort's window once effort 2 has times.
+6. Regression: Start/Stop Sail unchanged; a brand-new log's first Start Haul is silent.
+
+### 5.4 Commit block — Jonathon runs it AFTER the walk passes, one line at a time
+
+```
+git add src/components/FullDfoForm.tsx
+git add src/i18n/locales/en/dfo.json
+git add src/i18n/locales/fr/dfo.json
+git add docs/GATE_S136_MULTI_EFFORT.md
+git diff --cached --stat
+git commit -m "Confirm before starting a new haul time from Quick Capture, creating the next fishing effort instead of silently restarting a finished one"
+git push
+git log origin/main..HEAD --oneline
+```
+
+Expected: `git diff --cached --stat` shows 4 files (the three source files at 121+/24−,
+plus this gate doc); the last command prints **nothing**.
+
+---
+
+## PHASE 6 — ROUTE THE RULE 781 PROMPT TO FORM 222 (ruled earlier, recorded 2026-08-19; NOT YET BUILT)
+
+### 6.1 Why
+
+Phase 2 (ruling 4) removed the marine-mammal detail fields from the 234 surface, so the
+Rule 781 mandated prompt — EN "Please, complete the declaration of interaction with a
+marine mammal." — now tells the harvester to complete a declaration **with nothing on
+screen to complete**. The actual declaration is Form 222, reachable today only by leaving
+the log and finding the Form 222 button on the logs list. Phase 6 gives the prompt a route.
+
+### 6.2 Scope (build later)
+
+- When ANY effort's marine-mammal question is answered Yes (effort 1's `handleMmYes` and
+  the extras' `handleNodeMmYes`), the Rule 781 alert offers a way to Form 222 alongside
+  plain acknowledgement.
+- ⚠ **FENCE: the Rule 781 message text is DFO-mandated** (`mmInterIndPrompt`, both
+  languages, byte-protected since S101a) — it must stay verbatim. The route lives in the
+  alert's BUTTONS, which are app chrome.
+- Routing mechanics to settle at build time: the Form 222 modal is owned by
+  `DfoLogsListScreen`, not `FullDfoForm` — the route needs either a callback prop threaded
+  from App/DfoLogsListScreen or a navigate-after-save hand-off. ⚠ Leaving the log mid-entry
+  must not lose unsaved effort data — the draft autosave path is the likely carrier; prove
+  it on the walk.
+- The 222 pre-fill question (does the routed 222 inherit the log's date/position?) is OUT
+  of scope unless ruled otherwise — the 222 already prefills its logbook reference.
+
+### 6.3 ⛔ STOP — the wording, EN and FR (curly apostrophes, no space before ? ! : ;)
+
+One ruling before building: the alert's button labels — the route button (e.g. "Open Form
+222" / « Ouvrir le formulaire 222 ») and the stay-here button (e.g. "Later" / « Plus
+tard ») — plus whether the route goes NOW (leave the log immediately) or arms a reminder at
+save. Recommendation and the honest case against to be put with the STOP when this phase
+opens. **Do not build until ruled.**
+
+### 6.4 Walk, gates, verify table, commit block — written when built.
 
 ---
 
