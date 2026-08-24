@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CheckCircle, XCircle, X } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { DfoLog, TransmissionRecord, transmissionKind } from '../utils/dfoLogStorage';
+import { formatSentDateTime } from '../utils/formatSentDateTime';
 
 // Latest SUCCESS transmission record per logId. A log can have several attempts
 // (failures + the eventual success); the register card always shows the success.
@@ -27,13 +28,6 @@ export function indexFailureRecords(records: TransmissionRecord[]): Transmission
     .filter(r => r.outcome === 'failure')
     .sort((a, b) => b.attemptedAt - a.attemptedAt);
 }
-
-const formatSentDate = (ts?: number): string => {
-  if (!ts) return '—';
-  const d = new Date(ts);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-};
 
 const Field: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <View style={styles.field}>
@@ -69,7 +63,7 @@ interface SentLogCardProps {
 }
 
 export const SentLogCard: React.FC<SentLogCardProps> = ({ log, record, onPress }) => {
-  const { t } = useTranslation('dfo');
+  const { t, i18n } = useTranslation('dfo');
   const tripNum = record?.tripNum ?? log.tripNum;
 
   return (
@@ -88,7 +82,7 @@ export const SentLogCard: React.FC<SentLogCardProps> = ({ log, record, onPress }
         {!!log.lgbkUid && <Field label={t('logs.elogUidLabel')} value={log.lgbkUid} />}
         {!!record?.vrn && <Field label={t('logs.regVesselLabel')} value={record.vrn} />}
         {!!record?.confNumber && <Field label={t('logs.regConfLabel')} value={record.confNumber} />}
-        <Field label={t('logs.regSentLabel')} value={formatSentDate(record?.attemptedAt)} />
+        <Field label={t('logs.regSentLabel')} value={formatSentDateTime(record?.attemptedAt, i18n.language)} />
       </View>
     </TouchableOpacity>
   );
@@ -102,13 +96,9 @@ interface SentLogDetailModalProps {
 }
 
 export const SentLogDetailModal: React.FC<SentLogDetailModalProps> = ({ visible, log, record, onClose }) => {
-  const { t } = useTranslation('dfo');
+  const { t, i18n } = useTranslation('dfo');
   const insets = useSafeAreaInsets(); // S95: edge-to-edge safe-area top for this full-screen modal header
   const tripNum = record?.tripNum ?? log?.tripNum;
-  const xsdLabel =
-    record?.xsdValid === true ? t('logs.detailXsdPass')
-    : record?.xsdValid === false ? t('logs.detailXsdFail')
-    : t('logs.detailXsdUnknown');
 
   // For form records (no backing DfoLog) the header is derived from the record kind,
   // mirroring FormSentCard's title contract; logbook records ignore this and use log.*.
@@ -136,7 +126,7 @@ export const SentLogDetailModal: React.FC<SentLogDetailModalProps> = ({ visible,
               <View style={styles.detailIdRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.logId}>{log ? log.id : formTitle}</Text>
-                  <Text style={styles.logDate}>{log ? log.dateFished : formatSentDate(record.attemptedAt)}</Text>
+                  <Text style={styles.logDate}>{log ? log.dateFished : formatSentDateTime(record.attemptedAt, i18n.language)}</Text>
                 </View>
                 <OutcomeBadge outcome={record.outcome} />
               </View>
@@ -150,11 +140,10 @@ export const SentLogDetailModal: React.FC<SentLogDetailModalProps> = ({ visible,
                 {!!log?.lgbkUid && <DetailRow label={t('logs.elogUidLabel')} value={log.lgbkUid} />}
                 <DetailRow label={t('logs.regVesselLabel')} value={record.vrn || '—'} />
                 <DetailRow label={t('logs.regConfLabel')} value={record.confNumber || '—'} />
-                <DetailRow label={t('logs.regSentLabel')} value={formatSentDate(record.attemptedAt)} />
+                <DetailRow label={t('logs.regSentLabel')} value={formatSentDateTime(record.attemptedAt, i18n.language)} />
                 {record.outcome === 'failure' && (
                   <DetailRow label={t('logs.detailErr')} value={record.errorMessage || '—'} />
                 )}
-                <DetailRow label={t('logs.detailXsd')} value={xsdLabel} />
                 <DetailRow label={t('logs.detailWsCode')} value={record.wsErrCode || '—'} />
                 <DetailRow label={t('logs.detailFileName')} value={record.fileName || '—'} />
                 <DetailRow label={t('logs.detailHttp')} value={record.httpStatus !== undefined ? String(record.httpStatus) : '—'} last />

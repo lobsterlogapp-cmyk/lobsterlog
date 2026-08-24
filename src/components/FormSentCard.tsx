@@ -8,14 +8,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { CheckCircle, XCircle } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { TransmissionRecord, transmissionKind } from '../utils/dfoLogStorage';
-
-// Same format as SentLogCard.formatSentDate — YYYY-MM-DD HH:MM, em dash when missing.
-const formatSentDate = (ts?: number): string => {
-  if (!ts) return '—';
-  const d = new Date(ts);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-};
+import { formatSentDateTime } from '../utils/formatSentDateTime';
 
 const Field: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <View style={styles.field}>
@@ -49,7 +42,7 @@ interface FormSentCardProps {
 }
 
 export const FormSentCard: React.FC<FormSentCardProps> = ({ record, onPress }) => {
-  const { t } = useTranslation('dfo');
+  const { t, i18n } = useTranslation('dfo');
   const kind = transmissionKind(record);
   const title =
     kind === 'form222' ? t('logs.regForm222Title')
@@ -63,7 +56,7 @@ export const FormSentCard: React.FC<FormSentCardProps> = ({ record, onPress }) =
       <View style={styles.cardTopRow}>
         <View style={{ flex: 1 }}>
           <Text style={styles.logId}>{title}</Text>
-          <Text style={styles.logDate}>{formatSentDate(record.attemptedAt)}</Text>
+          <Text style={styles.logDate}>{formatSentDateTime(record.attemptedAt, i18n.language)}</Text>
         </View>
         <OutcomeBadge outcome={record.outcome} />
       </View>
@@ -73,7 +66,7 @@ export const FormSentCard: React.FC<FormSentCardProps> = ({ record, onPress }) =
         {isFailure
           ? <Field label={t('logs.regErrorLabel')} value={record.errorMessage || record.wsErrCode || '—'} />
           : !!record.confNumber && <Field label={t('logs.regConfLabel')} value={record.confNumber} />}
-        <Field label={t('logs.regSentLabel')} value={formatSentDate(record.attemptedAt)} />
+        <Field label={t('logs.regSentLabel')} value={formatSentDateTime(record.attemptedAt, i18n.language)} />
       </View>
     </TouchableOpacity>
   );
