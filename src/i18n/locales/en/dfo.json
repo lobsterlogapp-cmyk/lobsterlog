@@ -213,6 +213,7 @@
     "transferToHint": "Enter either a destination vessel VRN or a pound number, not both.",
     "personalUseLabel": "PERSONAL USE DECLARATION (LBS)",
     "hlinSection": "HLIN — Hail-In",
+    "hailRequiredNote": "DFO requires a hail for this trip",
     "companyLabel": "COMPANY",
     "companyPlaceholder": "Company that issued the confirmation number",
     "confirmNoLabel": "CONFIRMATION NO.",

@@ -7,7 +7,7 @@ import { generateElogXml } from '../dfoXmlGenerator';
 import { EMPTY_PROFILE, CaptainProfile } from '../captainStorage';
 
 const base: DataGroupInputs = {
-  subformId: 90, fmaId: 38065, effortYes: true, baitCount: 0, bycatchYes: false, bycatchCount: 0,
+  subformId: 90, hailFma: false, effortYes: true, baitCount: 0, bycatchYes: false, bycatchCount: 0,
   personalUse: '', sarYes: false, transferYes: false,
   hlinCompany: '', hlinConfirmNo: '', hloutCompany: '', hloutConfirmNo: '',
 };

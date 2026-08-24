@@ -5,7 +5,7 @@
 // digits only). Flat ISO-8601 fields still inside TRIP are S2/S3 scope.
 
 import forge from 'node-forge';
-import { DfoLog, ExtraSarDetail, ExtraEffortNode, sarBlocksFromData, effortsFromData } from './dfoLogStorage';
+import { DfoLog, ExtraSarDetail, ExtraEffortNode, sarBlocksFromData, effortsFromData, fishesHailArea } from './dfoLogStorage';
 import { CaptainProfile } from './captainStorage';
 import { getDfoBaitTypeList, baitConditionState, getDfoPconsSpeciesList, DFO_SPECIE_FRM_ID, DFO_PCONS_OTHER_SIZE_ID, DFO_GEAR_ID, DFO_SOFT_VER, DFO_CIE_ID, DFO_FORM_VER_ID, DFO_HLIN_COMPANY_LIST, DFO_HLOUT_COMPANY_LIST, DFO_SUBFORM_REGISTRY, DFO_FMA_38B, DFO_FMA_NB_VNTCH, DFO_FMA_NB_VNTCH_YOU, DFO_FMA_STAT_SECT_REQUIRED, DFO_STAT_SECT_BY_FMA, DFO_FMA_GRID_MAP, DFO_GRID_BLOCKED_FMA, clampCoord4, effortCoordsEntryAllowed } from './dfoConstants';
 import { MV_PARTNERSHIP_TYPE, MV_GRID } from '../data/reftables';
@@ -428,8 +428,12 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
       body += `    </SAR>\n`;
     });
   }
-  // HLIN/HLOUT: Rules 2024/2025/1018 — emit only for FMA 28599 (38b) and 1595 (41)
-  if (Number(d.fmaId) === 28599 || Number(d.fmaId) === 1595) {
+  // HLIN/HLOUT: Rules 2024/2025/1018 — emit only when ANY effort fishes FMA 28599 (38b) or
+  // 1595 (41). S137 (STOP-5-approved gate-condition change): the rules say "a fishing
+  // effort", so the gate rides the single-sourced any-effort predicate, matching the render
+  // and save gates exactly — the effort-1-only test silently dropped the hail on logs whose
+  // 38b/41 effort was the second one.
+  if (fishesHailArea(d)) {
     if (d.hlinCompany || d.hlinConfirmNo) {
       // HLIN_CIE_ID: integer company code via label→codeId lookup (Rule 27);
       // '0' when unmatched — TODO open question 4 (companies name→code confirmation)

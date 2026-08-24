@@ -63,7 +63,7 @@ test('legacy log with NO dgClose* keys: guard fires (effort + landing always use
   expect(open.length).toBeGreaterThan(0); // → the send refuses, names these sections
   // and the "used" set for a MAR-90 no-extras log is exactly effort + landing
   expect(usedDataGroupKeys({
-    subformId: 90, fmaId: 38065, effortYes: true, baitCount: 0, bycatchYes: false, bycatchCount: 0,
+    subformId: 90, hailFma: false, effortYes: true, baitCount: 0, bycatchYes: false, bycatchCount: 0,
     personalUse: '', sarYes: false, transferYes: false,
     hlinCompany: '', hlinConfirmNo: '', hloutCompany: '', hloutConfirmNo: '',
   }).sort()).toEqual(['dgCloseEffort', 'dgCloseLanding']);

@@ -257,7 +257,9 @@ export const saveDraft = async (log: Omit<DfoLog, 'status'>): Promise<boolean> =
 // a group being silently dropped from a file. Keys are the generator's dgClose* data-map keys.
 export interface DataGroupInputs {
   subformId: number;
-  fmaId: number;            // NaN when absent — the hlFma test below is false for NaN
+  // S137: hail-area qualification is ANY effort's FMA ∈ {38b, 41} — callers compute it via
+  // the single-sourced fishesHailArea predicate, never a local FMA comparison.
+  hailFma: boolean;
   effortYes: boolean;       // S128 Phase 5: false on a no-haul (setting) day → EFFORT omitted
   baitCount: number;
   bycatchYes: boolean;
@@ -270,7 +272,7 @@ export interface DataGroupInputs {
 }
 
 export function usedDataGroupKeys(v: DataGroupInputs): string[] {
-  const hlFma = v.fmaId === 28599 || v.fmaId === 1595;
+  const hlFma = v.hailFma;
   const used: Record<string, boolean> = {
     // S128 Phase 5: EFFORT is used only when a haul is declared — on a no-haul day the generator
     // omits the whole EFFORT node (dfoXmlGenerator: `if (d.effortYes !== 'false')`), so counting
@@ -297,7 +299,7 @@ export function dataGroupInputsFromLog(log: Pick<DfoLog, 'subformId' | 'data'>):
   const len = (s?: string) => { try { return (JSON.parse(s || '[]') as unknown[]).length; } catch { return 0; } };
   return {
     subformId: log.subformId ?? 90,
-    fmaId: Number(d.fmaId),
+    hailFma: fishesHailArea(d),
     // Matches the generator's gate exactly: missing key (old logs) = haul, only 'false' = no-haul.
     effortYes: d.effortYes !== 'false',
     baitCount: len(d.baitEntries),
@@ -484,6 +486,20 @@ export function sarNoToggleRefused(d: Record<string, string | undefined>, except
 // the extras' node flags, through the ONE effort reader (the sarYes twin at the callers above).
 export function mmYesOnAnyEffort(d: Record<string, string | undefined>): boolean {
   return effortsFromData(d).some(e => e.mmYes === 'true');
+}
+
+// S137 hail conformance (Rules 2024/2025): the hail groups are required when ANY effort
+// fishes area 38b (28599) or area 41 (1595) — never effort 1's flat key alone. ONE
+// definition for every gate (render, save, used-groups, emit); a second definition of this
+// test is how the multi-effort hole existed.
+export function fishesHailArea(d: Record<string, string | undefined>): boolean {
+  return effortsFromData(d).some(e => Number(e.fmaId) === 28599 || Number(e.fmaId) === 1595);
+}
+
+// Rules 660/661 trigger (ETA_DT / TOT_WT_ONBRD): mandatory when any effort fishes 38b,
+// entry blocked otherwise — 41 alone does NOT qualify.
+export function fishes38b(d: Record<string, string | undefined>): boolean {
+  return effortsFromData(d).some(e => Number(e.fmaId) === 28599);
 }
 
 // S137 Phase 6: a minimal structural view of a Form 222 entry. Deliberately NOT the

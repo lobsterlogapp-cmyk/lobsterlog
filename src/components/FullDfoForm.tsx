@@ -60,6 +60,8 @@ import {
   effortsAnyClosed,
   sarYesOnAnotherEffort,
   sarNoToggleRefused,
+  fishesHailArea,
+  fishes38b,
   baitRowsAllClosed,
   stampOpenBaitRows,
   rowsAllClosed,
@@ -2678,9 +2680,16 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const liveEffortData = (): Record<string, string | undefined> => ({
     ...liveSarData(),
     ...(sarYes !== null ? { sarYes: String(sarYes) } : {}),
+    // S137: effort 1's FMA rides along so the hail predicates (fishesHailArea/fishes38b)
+    // see every effort's area — the extras already travel in extraEffortNodes below.
+    ...(fmaId != null ? { fmaId: String(fmaId) } : {}),
     ...(closes['dgCloseEffort'] ? { dgCloseEffort: closes['dgCloseEffort'] } : {}),
     ...(extraEffortNodes.length > 0 ? { extraEffortNodes: JSON.stringify(extraEffortNodes) } : {}),
   });
+  // S137 (Rules 2024/2025): the hail sections are REQUIRED — and rendered — when ANY effort
+  // fishes 38b or 41; blocked (hidden) otherwise. Single-sourced predicate, recomputed per
+  // render so an area change on any effort updates the sections immediately.
+  const hailRequired = fishesHailArea(liveEffortData());
   // Local "YYYY-MM-DD HH:MM" — §2: the app's existing timestamp display format.
   const formatClose = (iso?: string): string => {
     if (!iso) return '';
@@ -3139,7 +3148,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // session close state) is UI-specific.
   const openUsedGroups = (): string[] =>
     usedDataGroupKeys({
-      subformId, fmaId: fmaId ?? NaN,
+      // S137: any-effort hail qualification through the ONE predicate (Rules 2024/2025).
+      subformId, hailFma: fishesHailArea(liveEffortData()),
       effortYes, // S128 Phase 5: a no-haul day omits EFFORT — don't count it as an open section
       baitCount: baitEntries.length,
       bycatchYes: bycatchYes === true, bycatchCount: bycatchEntries.length,
@@ -3292,6 +3302,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       haulStartTime: 'Time Started Hauling',
       haulEndTime:   'Time Stopped Hauling',
       landingTime:   'Time of Landing',
+      // S137 hail conformance (Rules 2024/2025) — used by the appended hail gate below.
+      hlinCompany:   'Hail-In Company',
+      hlinConfirmNo: 'Hail-In Confirmation Number',
+      hloutCompany:  'Hail-Out Company',
+      hloutConfirmNo:'Hail-Out Confirmation Number',
+      hlinEta:       'Estimated Date/Time of Arrival',
+      hlinTotalWeight:'Total Weight Onboard',
     };
     // S124 Phase 6: on a no-haul day the EFFORT-group fields don't apply (the EFFORT node is
     // omitted). TRIP / LANDING / GENERAL fields (date, crew, port landed, times, operator) stay.
@@ -3353,6 +3370,19 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       });
       nodeMissing.forEach(lbl => missing.push(`${t('form234.effortNodeTitle', { n: i + 2 })} — ${lbl}`));
     });
+
+    // S137 hail conformance (Rules 2024/2025 + matrix rows 42/43/49/50): when ANY effort
+    // fishes 38b or 41 on a MAR-90 log, company and confirmation number are mandatory in
+    // both directions. Appended here (the S121 extra-block pattern) instead of
+    // FULL_DFO_REQUIRED_FIELDS so the draft completion % never counts fields a
+    // non-qualifying log can never show. STOP-1 ruling: save gate only, no send backstop.
+    // (ETA/weight checks land with their Phase 3 render gating.)
+    if (subformId === 90 && hailRequired) {
+      if (!hlinCompany.trim()) missing.push(fieldLabels.hlinCompany);
+      if (!hlinConfirmNo.trim()) missing.push(fieldLabels.hlinConfirmNo);
+      if (!hloutCompany.trim()) missing.push(fieldLabels.hloutCompany);
+      if (!hloutConfirmNo.trim()) missing.push(fieldLabels.hloutConfirmNo);
+    }
 
     if (missing.length > 0) {
       Alert.alert(
@@ -4515,13 +4545,15 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           </View>}
         </View>
 
-        {(fmaId === 28599 || fmaId === 1595) && (
+        {hailRequired && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View style={[styles.sectionIcon, { backgroundColor: '#DBEAFE' }]}><Anchor size={16} color="#1E3A8A" /></View>
             <Text style={styles.sectionTitle}>{t('form234.hlinSection')}</Text>
             {renderNoteButton('hlin')}
           </View>
+          {/* S137 STOP-2a ruling: the sections carry a why-line whenever they render. */}
+          <Text style={styles.hailRequiredNote}>{t('form234.hailRequiredNote')}</Text>
           <View {...closedBodyProps('dgCloseHlin')}>
           {renderNoteInput('hlin', remarks.hlin ?? '', (v) => setNote('hlin', v))}
           {renderField(t('form234.companyLabel'), hlinCompany, setHlinCompany, t('form234.companyPlaceholder'), false, false, 'default', isRequired('hlinCompany'))}
@@ -4533,13 +4565,14 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         </View>
         )}
 
-        {(fmaId === 28599 || fmaId === 1595) && (
+        {hailRequired && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View style={[styles.sectionIcon, { backgroundColor: '#DBEAFE' }]}><Anchor size={16} color="#1E3A8A" /></View>
             <Text style={styles.sectionTitle}>{t('form234.hloutSection')}</Text>
             {renderNoteButton('hlout')}
           </View>
+          <Text style={styles.hailRequiredNote}>{t('form234.hailRequiredNote')}</Text>
           <View {...closedBodyProps('dgCloseHlout')}>
           {renderNoteInput('hlout', remarks.hlout ?? '', (v) => setNote('hlout', v))}
           {renderField(t('form234.companyLabel'), hloutCompany, setHloutCompany, t('form234.companyPlaceholder'), false, false, 'default', isRequired('hloutCompany'))}
@@ -4800,6 +4833,8 @@ const styles = StyleSheet.create({
   },
   sectionIcon: { width: 32, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   sectionTitle: { fontSize: 15, fontWeight: '700', color: '#1E293B', flex: 1 },
+  // S137: the why-line under the hail section headers (STOP-2a ruling).
+  hailRequiredNote: { fontSize: 12.5, color: '#64748B', fontStyle: 'italic', marginBottom: 8 },
   problemPill: { backgroundColor: '#FEE2E2', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
   problemPillText: { fontSize: 10, fontWeight: '700', color: '#B91C1C' },
   fieldRow: { marginBottom: 10 },

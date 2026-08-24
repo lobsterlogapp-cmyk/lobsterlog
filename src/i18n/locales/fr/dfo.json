@@ -214,6 +214,7 @@
     "transferToHint": "Entrez soit le NEB du navire de destination, soit un numéro de vivier, pas les deux.",
     "personalUseLabel": "DÉCLARATION D’USAGE PERSONNEL (LBS)",
     "hlinSection": "HLIN — Appel en mer",
+    "hailRequiredNote": "Le MPO exige un appel pour ce voyage",
     "companyLabel": "COMPAGNIE",
     "companyPlaceholder": "Compagnie émettrice du no de confirmation",
     "confirmNoLabel": "N° DE CONFIRMATION",
