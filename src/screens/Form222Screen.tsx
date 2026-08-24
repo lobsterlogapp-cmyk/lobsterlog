@@ -66,6 +66,11 @@ interface Props {
   // S125 7c: which parked draft to open. Provided → hydrate that entry; absent → fresh EMPTY form.
   // Replaces 7a's auto-restore-newest-draft (the trap: no way to start a new form / delete one).
   entryUid?: string;
+  // S137 Phase 6 (R-J): the owing log's lgbkUid, supplied by the red logs-list button when
+  // exactly one log owes a declaration. Preferred over loadLastLog()'s most-recent-completed
+  // guess for the logbook-reference prefill; the field stays visible and editable. Absent on
+  // every other open path (parked draft, closed-card Review, the button while blue).
+  prefillUid?: string;
 }
 
 interface FormState {
@@ -157,7 +162,7 @@ const parsePickerDateTime = (dateStr: string, timeStr: string): Date => {
   return d;
 };
 
-export default function Form222Screen({ onClose, registerClose, entryUid }: Props) {
+export default function Form222Screen({ onClose, registerClose, entryUid, prefillUid }: Props) {
   const { t, i18n } = useTranslation('dfo');
   const { t: tc } = useTranslation('common');
   const isFr = i18n.language.startsWith('fr');
@@ -195,7 +200,10 @@ export default function Form222Screen({ onClose, registerClose, entryUid }: Prop
         loadLastLog(),
         entryUid ? loadForm222EntryByUid(entryUid) : Promise.resolve(null),
       ]);
-      const prefill = last?.lgbkUid ?? '';
+      // S137 Phase 6 (R-J): the owing log's UID, when the red button supplied one, beats the
+      // most-recent-completed guess. prefillRef tracks whichever value was used, so the
+      // isEmpty changed-from-prefill rule is unaffected.
+      const prefill = prefillUid ?? last?.lgbkUid ?? '';
       prefillRef.current = prefill;
       if (draft) {
         draftUidRef.current = draft.uid;

@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { Plus, FileText, Send, Edit3, Eye, Trash2, CheckCircle, User, Shield, RotateCcw, Archive, HelpCircle } from 'lucide-react-native';
 import HelpSupportScreen from './HelpSupportScreen';
-import { loadAllLogs, deleteLog, markSentToDfo, DfoLog, saveTransmissionRecord, TransmissionRecord, saveXmlArchiveEntry, loadTransmissionRegister, transmissionKind, unclosedUsedGroupKeys } from '../utils/dfoLogStorage';
+import { loadAllLogs, deleteLog, markSentToDfo, DfoLog, saveTransmissionRecord, TransmissionRecord, saveXmlArchiveEntry, loadTransmissionRegister, transmissionKind, unclosedUsedGroupKeys, logsOwingForm222 } from '../utils/dfoLogStorage';
 import { useTimer } from '../context/TimerContext';
 import { triggerBackup } from '../utils/dfoBackup';
 import { SentLogCard, SentLogDetailModal, indexSuccessRecords, indexFailureRecords } from '../components/SentLogCard';
@@ -182,6 +182,13 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
   // Which parked draft to open (undefined = a fresh, EMPTY form — the trap fix).
   const [form222EntryUid, setForm222EntryUid] = useState<string | undefined>(undefined);
   const [form233EntryUid, setForm233EntryUid] = useState<string | undefined>(undefined);
+  // S137 Phase 6: the logs owing a marine-mammal declaration (rulings R-D/R-E/R-F), computed
+  // live in refresh() from BOTH stores. Non-empty ⇒ the Form 222 button renders red.
+  const [owed222, setOwed222] = useState<DfoLog[]>([]);
+  // S137 Phase 6 (R-J): when exactly ONE log owes, the red button hands its lgbkUid to the
+  // 222 screen so the logbook-reference prefill names the owing log instead of the
+  // most-recent-completed guess. Every other open path passes undefined (unchanged behavior).
+  const [form222PrefillUid, setForm222PrefillUid] = useState<string | undefined>(undefined);
   // S125 7a: each form screen registers its park-then-close handler here so the Modal's
   // onRequestClose (Android hardware back) routes through the SAME single exit path as "← Back".
   // Fallback (before the screen registers, or if it doesn't) just hides + refreshes.
@@ -215,6 +222,9 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
     setForm233Drafts(f233.filter(isFormDraft));
     setForm222Closed(f222.filter(isClosedUnsent));
     setForm233Closed(f233.filter(isClosedUnsent));
+    // S137 Phase 6: both stores are in hand — compute the owed set over ALL logs (sent logs
+    // are complete, so they stay in; R-D(b)). The selector is single-sourced in dfoLogStorage.
+    setOwed222(logsOwingForm222(all, f222));
     setLoading(false);
   }, []);
 
@@ -553,7 +563,7 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
     const savedWhen = new Date(entry.savedAt).toLocaleString(isFr ? 'fr-CA' : 'en-CA',
       { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     const open = () => {
-      if (kind === 'form222') { setForm222EntryUid(entry.uid); setForm222Visible(true); }
+      if (kind === 'form222') { setForm222EntryUid(entry.uid); setForm222PrefillUid(undefined); setForm222Visible(true); }
       else { setForm233EntryUid(entry.uid); setForm233Visible(true); }
     };
     return (
@@ -671,7 +681,7 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
           <TouchableOpacity
             style={styles.editButton}
             onPress={() => {
-              if (kind === 'form222') { setForm222EntryUid(entry.uid); setForm222Visible(true); }
+              if (kind === 'form222') { setForm222EntryUid(entry.uid); setForm222PrefillUid(undefined); setForm222Visible(true); }
               else { setForm233EntryUid(entry.uid); setForm233Visible(true); }
             }}
           >
@@ -938,15 +948,31 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
           <Text style={styles.newLogButtonText}>{t('logs.newElogButton')}</Text>
         </TouchableOpacity>
 
+        {/* S137 Phase 6 (defect 45): the Form 222 button IS the reminder (rulings R-B/R-C).
+            Solid red + a third line while any closed log owes a declaration; a small count
+            when two or more owe (R-H). Both buttons are permanently three lines tall so the
+            row never reflows (R-I) — the variants are ADDITIVE, the shared styles untouched. */}
         <View style={styles.secondaryButtons}>
           <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={() => { setForm222EntryUid(undefined); setForm222Visible(true); }}
+            style={[styles.secondaryButton, styles.secondaryButtonTall, owed222.length > 0 && styles.secondaryButtonOwed]}
+            onPress={() => {
+              setForm222EntryUid(undefined);
+              // R-J: exactly one owing log → hand its lgbkUid to the 222 prefill.
+              setForm222PrefillUid(owed222.length === 1 ? owed222[0].lgbkUid : undefined);
+              setForm222Visible(true);
+            }}
           >
-            <Text style={styles.secondaryButtonText}>{t('logs.form222Button')}</Text>
+            <Text style={[styles.secondaryButtonText, owed222.length > 0 && styles.secondaryButtonTextOwed]}>
+              {t('logs.form222Button')}{owed222.length > 0 ? `\n${t('logs.form222Needed')}` : ''}
+            </Text>
+            {owed222.length >= 2 && (
+              <View style={styles.owedCountBadge}>
+                <Text style={styles.owedCountBadgeText}>{owed222.length}</Text>
+              </View>
+            )}
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.secondaryButton}
+            style={[styles.secondaryButton, styles.secondaryButtonTall]}
             onPress={() => { setForm233EntryUid(undefined); setForm233Visible(true); }}
           >
             <Text style={styles.secondaryButtonText}>{t('logs.form233Button')}</Text>
@@ -1080,6 +1106,7 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
         {form222Visible && (
           <Form222Screen
             entryUid={form222EntryUid}
+            prefillUid={form222PrefillUid}
             onClose={() => { setForm222Visible(false); refresh(); }}
             registerClose={(fn) => { form222CloseRef.current = fn; }}
           />
@@ -1540,6 +1567,41 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
     lineHeight: 18,
+  },
+  // S137 Phase 6 — ADDITIVE variants only; the shared secondaryButton/secondaryButtonText
+  // above are untouched (the 233 button uses them too).
+  // Both buttons permanently sized to three lines (R-I): 3 × lineHeight 18 + 2 × paddingVertical 11.
+  secondaryButtonTall: {
+    minHeight: 76,
+  },
+  // R-C: solid red, never flashing — the established DFO-pill red (pillButtonShield).
+  secondaryButtonOwed: {
+    backgroundColor: '#DC2626',
+    borderColor: '#DC2626',
+  },
+  secondaryButtonTextOwed: {
+    color: '#FFFFFF',
+  },
+  // R-H: the ≥2 count — a small corner badge so the R-I third-line wording stays verbatim.
+  owedCountBadge: {
+    position: 'absolute',
+    // top/right 6 still clears the button's 10px rounded corner at 40px: the corner arc's
+    // center is 10px in from each edge, and the badge's nearest point (6,6) lies 5.7px from
+    // it — inside the arc, so the badge never pokes past the curve.
+    top: 6,
+    right: 6,
+    minWidth: 40,
+    height: 40,
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  owedCountBadgeText: {
+    color: '#DC2626',
+    fontSize: 24,
+    fontWeight: '800',
   },
 });
 

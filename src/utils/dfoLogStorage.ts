@@ -480,6 +480,49 @@ export function sarNoToggleRefused(d: Record<string, string | undefined>, except
   return !sarYesOnAnotherEffort(d, exceptIdx) && sarBlocksAnyClosed(d);
 }
 
+// S137 Phase 6: true when ANY effort answered marine-mammal Yes — effort 1's flat mmYes and
+// the extras' node flags, through the ONE effort reader (the sarYes twin at the callers above).
+export function mmYesOnAnyEffort(d: Record<string, string | undefined>): boolean {
+  return effortsFromData(d).some(e => e.mmYes === 'true');
+}
+
+// S137 Phase 6: a minimal structural view of a Form 222 entry. Deliberately NOT the
+// Form222Entry type — importing it would close the cycle dfoLogStorage →
+// dfoForm222Generator → dfoXmlGenerator → dfoLogStorage (the S90 clampCoord4 hazard class).
+export interface Form222LinkView {
+  interactInd: string;
+  status?: string;
+  sentToDfo?: boolean;
+  closeDt?: string;
+  lgbkNumRef?: string;
+}
+
+// S137 Phase 6: the logs that owe a marine-mammal declaration — the red-button condition
+// (rulings R-D/R-E/R-F). A log owes when (a) any effort answered MM Yes, (b) it is closed
+// (status 'complete' — sent logs are complete too, so they stay in), and (c) no QUALIFYING
+// 222 names its lgbkUid. Qualifying = a Yes-declaration that is not a draft by the list's
+// own S125 classification: sent, or complete with a real Close & Save stamp (closeDt) —
+// pre-S125 sent records lack closeDt, which is why the sentToDfo arm exists. An N-entry
+// never discharges (R-F), and deleting the qualifying 222 re-opens the debt because this
+// is computed live from both stores (R-G).
+export function logsOwingForm222<
+  T extends { status?: DfoLogStatus; lgbkUid: string; data: Record<string, string | undefined> },
+>(
+  logs: T[],
+  entries: Form222LinkView[],
+): T[] {
+  const cleared = new Set(
+    entries
+      .filter(e =>
+        e.interactInd === 'Y' &&
+        (e.sentToDfo === true || (e.status === 'complete' && !!e.closeDt)) &&
+        !!e.lgbkNumRef)
+      .map(e => e.lgbkNumRef as string),
+  );
+  return logs.filter(l =>
+    l.status === 'complete' && mmYesOnAnyEffort(l.data) && !cleared.has(l.lgbkUid));
+}
+
 // Stamp every still-open effort with `stamp` — effort 1 via the flat dgCloseEffort (kept if
 // already set, never restamped), efforts 2+ via their own closeDt (same skip rule). ONE
 // definition for both writers (the per-card close-all and the form-level Close & Save All),

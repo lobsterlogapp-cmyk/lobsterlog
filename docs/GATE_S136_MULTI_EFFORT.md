@@ -849,41 +849,208 @@ plus this gate doc); the last command prints **nothing**.
 
 ---
 
-## PHASE 6 — ROUTE THE RULE 781 PROMPT TO FORM 222 (ruled earlier, recorded 2026-08-19; NOT YET BUILT)
+## PHASE 6 — ROUTE THE RULE 781 PROMPT TO FORM 222 (ruled 2026-08-23 on the S137 recon; BUILT 2026-08-24)
 
 ### 6.1 Why
 
 Phase 2 (ruling 4) removed the marine-mammal detail fields from the 234 surface, so the
 Rule 781 mandated prompt — EN "Please, complete the declaration of interaction with a
-marine mammal." — now tells the harvester to complete a declaration **with nothing on
-screen to complete**. The actual declaration is Form 222, reachable today only by leaving
-the log and finding the Form 222 button on the logs list. Phase 6 gives the prompt a route.
+marine mammal." — told the harvester to complete a declaration **with nothing on screen to
+complete**. The actual declaration is Form 222, reachable only by leaving the log and
+finding the Form 222 button on the logs list. This was recorded as **defect 45**. Phase 6
+gives the instruction somewhere to go — not by re-chroming the alert, but by making the
+existing Form 222 button on the logs list carry the reminder.
 
-### 6.2 Scope (build later)
+### 6.2 Scope — as ruled (supersedes the 2026-08-19 draft scope that put the route in the alert's buttons)
 
-- When ANY effort's marine-mammal question is answered Yes (effort 1's `handleMmYes` and
-  the extras' `handleNodeMmYes`), the Rule 781 alert offers a way to Form 222 alongside
-  plain acknowledgement.
-- ⚠ **FENCE: the Rule 781 message text is DFO-mandated** (`mmInterIndPrompt`, both
-  languages, byte-protected since S101a) — it must stay verbatim. The route lives in the
-  alert's BUTTONS, which are app chrome.
-- Routing mechanics to settle at build time: the Form 222 modal is owned by
-  `DfoLogsListScreen`, not `FullDfoForm` — the route needs either a callback prop threaded
-  from App/DfoLogsListScreen or a navigate-after-save hand-off. ⚠ Leaving the log mid-entry
-  must not lose unsaved effort data — the draft autosave path is the likely carrier; prove
-  it on the walk.
-- The 222 pre-fill question (does the routed 222 inherit the log's date/position?) is OUT
-  of scope unless ruled otherwise — the 222 already prefills its logbook reference.
+The S137 recon (`docs/RECON_S137_MM_222_ROUTE.md`) proved the load-bearing fact first: a
+filed 222 CAN be matched back to its logbook — every 222 entry stores `lgbkNumRef`
+(prefilled with a log's `lgbkUid` at form-open) and every log stores `lgbkUid`; on the
+three dev sims all 14 stored entries matched a real log, 14/14. The rulings were then
+taken one at a time; the earlier §6.3 STOP (alert button labels, go-now vs reminder) is
+**answered: no route in the alert at all** — settled law below.
 
-### 6.3 ⛔ STOP — the wording, EN and FR (curly apostrophes, no space before ? ! : ;)
+### 6.3 THE RULINGS — settled law (Jonathon's, taken in session; do not re-open)
 
-One ruling before building: the alert's button labels — the route button (e.g. "Open Form
-222" / « Ouvrir le formulaire 222 ») and the stay-here button (e.g. "Later" / « Plus
-tard ») — plus whether the route goes NOW (leave the log immediately) or arms a reminder at
-save. Recommendation and the honest case against to be put with the STOP when this phase
-opens. **Do not build until ruled.**
+- **R-A · The tick-time prompt is unchanged.** The Rule 781 alert stays exactly as it was:
+  no title, the mandated body, a single OK, no handler. No second button, no routing, no
+  flag written. A mistaken Yes is fixed by tapping No on the question itself.
+- **R-B · No new control.** The existing Form 222 button in the logs-list `secondaryButtons`
+  row is the indicator — same position, row, tap target and destination.
+- **R-C · Solid red, never flashing** — the established DFO-pill red `#DC2626`, white text,
+  as a conditional style VARIANT; the shared `secondaryButton`/`secondaryButtonText` styles
+  (also used by the 233 button) are untouched.
+- **R-D · The red condition.** A log owes a declaration when all three hold:
+  (a) any effort answered marine-mammal Yes (read through `effortsFromData`);
+  (b) the log is CLOSED — `status === 'complete'`; not sent, closed; drafts never light it;
+  (c) no qualifying Form 222 is linked to it (R-E/R-F).
+- **R-E · Closed clears it, not sent.** A 222 with `status === 'complete'` discharges the
+  log; it need not be transmitted (the closed-unsent 222 card already carries its own Send
+  to DFO button). A 222 still in draft does NOT clear.
+  *Implementation note (recorded, not a re-ruling):* "closed" is read exactly the way the
+  list itself classifies entries (S125): **sent, or complete with a real Close & Save
+  stamp (`closeDt`)**. The `sentToDfo` arm exists because pre-S125 sent records carry no
+  `closeDt`; the "complete but never Close & Saved" anomaly renders as a DRAFT card and
+  therefore does not discharge either.
+- **R-F · Only a Yes-declaration clears it.** An N-declaration leaves the log red: on the
+  No path the logbook-reference field is not rendered at all, yet a prefilled reference is
+  still stored — a No could silently discharge a log the harvester never confirmed; and a
+  Yes-log discharged by a No-declaration is contradictory data.
+  ⚠ Parked on the defect list, REPORT ONLY, not fixed here: (1) the hidden stored
+  reference on the No path; (2) the emit fallback at `dfoForm222Generator.ts:211` that
+  transmits the licence number in the logbook-number element when the field is blank.
+- **R-G · Deleting the 222 brings the red back** — falls out of R-D(c) being computed live
+  on every list refresh; confirmed by test and on the walk.
+- **R-H · Count when more than one.** One owing log → plain red; two or more → the button
+  carries a small count.
+  *Implementation note:* the count renders as a small corner badge (white circle, red
+  numeral, top-right of the button) — appending it to the third line would have altered
+  R-I's ruled wording. ⚠ This placement is the builder's reading of "a small count";
+  flag-for-veto, one-line change if wanted elsewhere.
+- **R-I · Third line in the red state; both buttons permanently three lines tall.**
+  EN `Form 222` / `Marine Mammal` / `Form needed` ·
+  FR `Formulaire 222` / `Mammifère marin` / `Formulaire requis`.
+  The two existing lines are untouched; the third appears only when red. Both the 222 and
+  233 buttons are permanently sized to three lines (an additive `minHeight` variant) so the
+  row never changes height — *"if the button gets bigger we just make the other one bigger
+  to match."* New keys `logs.form222Needed` EN+FR; no apostrophes, no space before
+  punctuation; zero pre-existing consumers of the key name.
+- **R-J · Tapping the red button prefills the owing log.** When exactly ONE log owes, Form
+  222 opens with that log's `lgbkUid` in the logbook-reference field instead of
+  `loadLastLog()`'s most-recent-completed guess; the field stays visible and editable. Two
+  or more owing → today's behaviour. Every other open path (parked draft card, closed
+  card's Review, the button while blue) is unchanged and passes no prefill.
+- **FENCE — untouchable:** `form234.mmInterIndPrompt` (Rule 781) and
+  `form234.mmInterIndLabel` (Rule 780), both languages, byte-identical. Verified: zero
+  locale-file diff beyond the two new `form222Needed` lines.
 
-### 6.4 Walk, gates, verify table, commit block — written when built.
+### 6.4 BUILD RECORD — recon gate, what changed, gates, walk, commit block (2026-08-24)
+
+#### 6.4.1 Recon gate (report, per the build prompt §3)
+
+- The recon's §0 claims re-confirmed at `d35c45d`: `handleMmYes` at
+  `FullDfoForm.tsx:1144` / `handleNodeMmYes` at `:1767`; store base `@form222_entries`
+  (`dfoStorageKeys.ts:44`); `DfoLogsListScreen.refresh()` loads BOTH stores
+  (`loadAllLogs` + `loadForm222Entries`, `DfoLogsListScreen.tsx:198/:213`) — **no new data
+  plumbing was needed**; the owed set is computed inside `refresh()`.
+- The MM helper did not exist; its SAR twin did. Extracted FIRST, before any UI work:
+  `mmYesOnAnyEffort(d)` now lives in `dfoLogStorage.ts` beside `sarYesOnAnotherEffort`,
+  reading the ONE effort reader (`effortsFromData`).
+- The owed selector also lives in `dfoLogStorage.ts`: `logsOwingForm222(logs, entries)` —
+  pure, exported, tested. It takes a minimal structural entry view (`Form222LinkView`)
+  rather than the `Form222Entry` type, because importing that type would close the module
+  cycle dfoLogStorage → dfoForm222Generator → dfoXmlGenerator → dfoLogStorage (the S90
+  `clampCoord4` hazard class).
+- i18n key check: `form222Needed` had ZERO existing consumers in `src/` before this build
+  (the S136 `notePlaceholder` lesson applied).
+- R-F's premise re-verified on the code: the No path renders `noInteractCard` in place of
+  the whole Y-branch (`Form222Screen.tsx` — the `interactInd === 'N'` ternary), so the
+  reference input is genuinely absent while `buildEntry` still stores the prefill.
+
+#### 6.4.2 What changed (5 tracked files + 1 new test suite + this doc)
+
+| File | Change |
+|---|---|
+| `src/utils/dfoLogStorage.ts` | `mmYesOnAnyEffort` (the sarYes twin, beside it) · `Form222LinkView` (cycle-safe structural type) · `logsOwingForm222` (the R-D/R-E/R-F selector, pure + generic) |
+| `src/screens/DfoLogsListScreen.tsx` | `owed222` + `form222PrefillUid` state · owed set computed in `refresh()` after both stores load · 222 button: red variant + third line + ≥2 count badge; both buttons `secondaryButtonTall` (minHeight 76 = 3×18 lineHeight + 2×11 padding) · red-button tap passes the single owing log's `lgbkUid`; the two card open-paths explicitly pass `undefined` · 4 new ADDITIVE styles (`secondaryButtonTall` / `secondaryButtonOwed` / `secondaryButtonTextOwed` / `owedCountBadge`+text) — shared styles untouched |
+| `src/screens/Form222Screen.tsx` | optional `prefillUid` prop; the mount prefill becomes `prefillUid ?? last?.lgbkUid ?? ''`; `prefillRef` tracks whichever was used so the isEmpty changed-from-prefill rule is unaffected. **Nothing else in this file changed.** |
+| `src/i18n/locales/en/dfo.json` | `logs.form222Needed: "Form needed"` |
+| `src/i18n/locales/fr/dfo.json` | `logs.form222Needed: "Formulaire requis"` |
+| `src/utils/__tests__/logsOwingForm222.oneoff.test.ts` | NEW — 17 tests (see 6.4.3) |
+
+#### 6.4.3 Verify table — measured, not asserted (baselines from S136 close: tsc 33 · jest 45/228)
+
+| # | Check | Result |
+|---|---|---|
+| 1 | `npx tsc --noEmit` | **33 errors, 0 new** (one interim regression — the selector's `Pick<DfoLog>` constraint fought the test's `string \| undefined` data map — caught by this gate and fixed by loosening the selector to the structural shape `effortsFromData` itself uses) |
+| 2 | `npx jest` | **46 suites / 245 tests, all passing** (45/228 + the new suite's 17 — behaviour added, count rose) |
+| 3 | i18n key-set symmetry | dfo EN 544 / FR 545 · common EN 329 / FR 330 · map EN 27 / FR 28 — the FR surplus is the deliberate top-level `_todo` sentinel: ONE in each of `fr/dfo.json`, `fr/common.json` and `fr/map.json`, **three in total**, grep-verified (`grep -c '"_todo"'` → 1/1/1 in the fr files, 0/0/0 in the en files); the S133-recorded pre-existing state. This build added `form222Needed` to BOTH languages (+1/+1). New FR string carries no apostrophe and no space before punctuation |
+| 4 | Fence untouched | `git diff` on both locale files = exactly the two `form222Needed` insertions; `mmInterIndPrompt` / `mmInterIndLabel` appear NOWHERE in the diff |
+| 5 | **No emit change** | `git diff src/utils/dfoXmlGenerator.ts src/utils/dfoForm222Generator.ts` = **0 lines**. Stated plainly: this phase changes NO emitted XML — nothing new rides unbuilt 1.10.0. (Phase 1's repeated-EFFORT emit remains the fourth and only outstanding emit change.) |
+| 6 | Shared styles untouched | `secondaryButton` / `secondaryButtonText` byte-identical; the red is the additive `secondaryButtonOwed`/`secondaryButtonTextOwed` pair, the height the additive `secondaryButtonTall` |
+| 7 | Staged stat prediction | see under the commit block in 6.4.5 |
+
+**What the tests pin** (all 17 green): `mmYesOnAnyEffort` — effort 1 only / an extra effort
+only / both / neither (No, unanswered, extras-No). `logsOwingForm222` — complete+MM-Yes+no
+222 → owed · draft+MM-Yes → NOT owed · complete+MM-No → not owed · a DRAFT 222 does not
+discharge (R-E) · a closed N-declaration does not discharge (R-F) · a closed Y matching
+`lgbkUid` discharges · a closed Y naming a DIFFERENT log's UID leaves the log owed · a
+pre-S125 SENT 222 (no `closeDt`) discharges · the complete-but-never-closed anomaly does
+NOT discharge · two owing logs → both returned, clearing one leaves the other · a SENT log
+that owes still owes (R-D(b)) · MM-Yes on an extra effort only still owes · delete the
+qualifying 222 → the debt re-opens (R-G).
+
+**Resting on the walk only** (not pinnable in jest): the red/blue rendering itself, the
+row's fixed three-line height, the count badge's look, the R-J prefill arriving in the
+form's visible field, and live re-evaluation on modal close (`onClose → refresh()`).
+
+#### 6.4.4 THE WALK — Jonathon, on the SANDBOX/DEV sim (⚠ NOT a capture sim, NOT the demo account)
+
+⚠ This walk CREATES state: MM-Yes logs and 222 entries on the dev account. Afterwards,
+delete the walk's 222 draft/closed entries from the list cards, and note the walk logs are
+ordinary dev throwaways (closed logs can't be deleted from the app — they stay, harmless,
+like every other dev log). Do not run it anywhere near the demo account's drawers.
+
+1. Open the DFO ELOGs list fresh. **SEE:** the Form 222 and Form 233 buttons are BLUE, the
+   same height as each other, taller than before (three lines of room), the row even —
+   the 222's third line simply empty.
+2. Start a new log, answer marine-mammal **Yes** on an effort. **SEE:** the Rule 781 alert
+   exactly as always — no title, the mandated sentence, one OK. Tap OK, then leave the log
+   as a DRAFT (back out). **SEE:** the 222 button is STILL BLUE (drafts never light it).
+3. Re-open that draft and Close & Save it. **SEE:** back on the list, the 222 button is
+   **SOLID RED**, white text, third line reading **Form needed** (« Formulaire requis » in
+   FR); the row height has NOT changed; the 233 button is unchanged blue.
+4. Read the six-letter ELOG UID off that log's card, then tap the red button. **SEE:** Form
+   222 opens with the logbook-reference field ALREADY SHOWING those same six letters (R-J).
+5. Answer the interaction question **No** and Close & Save. **SEE:** the button is STILL
+   RED (an N-declaration does not clear it, R-F). Delete that closed N 222's card.
+6. Open the red button again, answer **Yes**, fill the required fields, Close & Save.
+   **SEE:** the button turns **BLUE**; the closed 222 sits in COMPLETED LOGS with its own
+   Send to DFO button (R-E — closed clears it, no send needed).
+7. Delete that closed 222 from its card. **SEE:** the button goes **RED again** (R-G).
+8. Create and close a SECOND MM-Yes log (two owing). **SEE:** the red button now carries a
+   small white count badge reading **2**. File a Yes-222 for one of them (tap the red
+   button — with two owing, the reference prefills the most-recent-completed as before;
+   set it to one log's UID, Yes, Close & Save). **SEE:** badge gone, button still red for
+   the remaining log. Clear the second the same way. **SEE:** blue.
+9. Switch the sim to **French** and repeat the red-state frames: third line « Formulaire
+   requis », the count badge, the prefill. **SEE:** all three, and the Rule 781 alert byte
+   unchanged in both languages.
+
+#### 6.4.5 Commit block — Jonathon runs, one line at a time (NO-GIT rule)
+
+```
+cd ~/Desktop/LobsterLog
+git add src/utils/dfoLogStorage.ts
+git add src/utils/__tests__/logsOwingForm222.oneoff.test.ts
+git add src/screens/DfoLogsListScreen.tsx
+git add src/screens/Form222Screen.tsx
+git add src/i18n/locales/en/dfo.json
+git add src/i18n/locales/fr/dfo.json
+git add docs/GATE_S136_MULTI_EFFORT.md
+git diff --cached --stat
+git commit -m "Turn the Form 222 button red with a count while closed logs owe a marine-mammal declaration, and prefill the owing log's ELOG UID"
+git push
+git log origin/main..HEAD --oneline
+```
+
+⚠ **2026-08-24 amendment (post-staging):** the first `git add` pass was run before two
+follow-up edits landed — the count badge doubled to 40px (fontSize 24; top/right 6
+re-checked against the 10px corner: the badge's nearest point sits 5.7px from the arc
+center, inside the curve, so no move needed), the file's missing end-of-file newline
+added, and the verify-table i18n row corrected (the `_todo` sentinel is ONE per fr file —
+fr/dfo, fr/common, fr/map — three in total, grep-verified, not three in one file). **Re-run
+the `git add` lines for `src/screens/DfoLogsListScreen.tsx` and
+`docs/GATE_S136_MULTI_EFFORT.md`** before committing so the staged copy is current.
+
+Expected after that re-add: `git diff --cached --stat` shows **7 files, 445+/40−** —
+measured with `git diff HEAD --numstat` after the last doc edit: dfoLogStorage.ts 43+/0−,
+DfoLogsListScreen.tsx 70+/8−, Form222Screen.tsx 10+/2−, en/dfo.json 1+/0−, fr/dfo.json
+1+/0−, this gate doc 197+/30− (also swallowing the stray Phase-5 blank line), and the NEW test
+suite at **123+/0−** (⚠ untracked until staged — it never shows in plain `git diff`, only
+in the cached stat). Small drift on the gate-doc line only is fine; drift anywhere else —
+stop and ask before committing. `git log origin/main..HEAD --oneline` after the push must
+print **nothing**.
 
 ---
 

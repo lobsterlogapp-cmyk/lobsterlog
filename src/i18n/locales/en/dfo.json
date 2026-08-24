@@ -355,6 +355,7 @@
     "inspectButton": "Inspect",
     "newElogButton": "Fill Out New ELOG",
     "form222Button": "Form 222\nMarine Mammal",
+    "form222Needed": "Form needed",
     "form233Button": "Form 233\nInactivity",
     "emptySubtitle": "Tap \"Fill Out New ELOG\" above to create your first trip log.",
     "incompleteLogs": "INCOMPLETE LOGS",
