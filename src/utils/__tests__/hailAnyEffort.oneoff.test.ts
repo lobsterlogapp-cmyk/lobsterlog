@@ -5,6 +5,7 @@
 // Authority: docs/RECON_S137_HAIL_MANDATORY.md + docs/GATE_S137_HAIL_CONFORMANCE.md.
 import { fishesHailArea, fishes38b, usedDataGroupKeys, dataGroupInputsFromLog } from '../dfoLogStorage';
 import { generateElogXml } from '../dfoXmlGenerator';
+import { DFO_HLIN_COMPANY_LIST, DFO_HLOUT_COMPANY_LIST } from '../dfoConstants';
 import { closeAllGroups } from './support/closeAllGroups';
 
 const extra = (fmaId: string) =>
@@ -134,5 +135,27 @@ describe('save-gate mirror — the appended hail block (Phase A enforcement)', (
   });
   test('Phase B: a 41-only log (hailRequired without 38b) never demands ETA/weight', () => {
     expect(hailGateMissing(90, true, full, false, '', '')).toHaveLength(0);
+  });
+});
+
+describe('Phase C — the company pickers keep the emit join whole', () => {
+  test('every picker row label resolves to its own non-zero codeId through the emit join', () => {
+    for (const list of [DFO_HLIN_COMPANY_LIST, DFO_HLOUT_COMPANY_LIST]) {
+      for (const c of list) {
+        const found = list.find(e => e.label === c.label);
+        expect(found?.codeId).toBe(c.codeId);
+        expect(found!.codeId).toBeGreaterThan(0);
+      }
+    }
+  });
+  test('Rule 663: the 25110 row carries the FR description byte-verbatim from the fact sheet', () => {
+    const ivr = DFO_HLOUT_COMPANY_LIST.find(c => c.codeId === 25110) as { labelFr?: string };
+    // Extracted programmatically from FS-NAT-234-12-FR.txt (plain hyphen 0x2d, "(IRV)").
+    expect(ivr.labelFr).toBe('MPO Maritimes - Système interactif de reconnaissance vocale (IRV)');
+  });
+  test('no other row needs an FR override — the fence lists identical names both languages', () => {
+    const withFr = [...DFO_HLIN_COMPANY_LIST, ...DFO_HLOUT_COMPANY_LIST]
+      .filter(c => (c as { labelFr?: string }).labelFr !== undefined);
+    expect(withFr.map(c => c.codeId)).toEqual([25110]);
   });
 });

@@ -93,6 +93,8 @@ import {
   DFO_FMA_NB_VNTCH_YOU,
   DFO_TRAP_SIZE_LIST,
   DFO_GEAR_SUBTYPE_LIST,
+  DFO_HLIN_COMPANY_LIST,
+  DFO_HLOUT_COMPANY_LIST,
   clampCoord4,
 } from '../utils/dfoConstants';
 import { loadCaptainProfile } from '../utils/captainStorage';
@@ -376,6 +378,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const [hlinTotalWeight, setHlinTotalWeight] = useState('');
   const [hloutCompany, setHloutCompany] = useState('');
   const [hloutConfirmNo, setHloutConfirmNo] = useState('');
+  // S137 Phase C (audit item 13, folded in by STOP-2c): the company fields are pickers over
+  // the Rule 27/93 coded lists — a coded field must be a picker (S119), and free text let a
+  // typo emit company code 0. Stored value + emit join stay on the EN label (STOP 6).
+  const [hlinCompanyPickerOpen, setHlinCompanyPickerOpen] = useState(false);
+  const [hloutCompanyPickerOpen, setHloutCompanyPickerOpen] = useState(false);
 
   // Per-section REM notes (T1). Mirrors LogRemarks; Catch & Effort writes haul+catch together.
   const [remarks, setRemarks] = useState<LogRemarks>({});
@@ -2697,6 +2704,51 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // if it ever appears in data, the existential predicate lands it on the 38b arm, which
   // asks for MORE rather than less. Defensive branch, not a supported case.
   const hail38b = fishes38b(liveEffortData());
+
+  // S137 Phase C: ONE renderer for both company pickers (Rule 27 = 11 rows, Rule 93 = 4).
+  // Rows display FR where the fence differs (only 25110's Rule-663 labelFr); the STORED
+  // value and the generator's label→codeId join stay on the EN label. A legacy free-typed
+  // value still displays verbatim on the button until a row is picked over it.
+  const renderCompanyPicker = (
+    list: readonly { codeId: number; label: string; labelFr?: string }[],
+    value: string,
+    setValue: (v: string) => void,
+    open: boolean,
+    setOpen: (v: boolean) => void,
+    required: boolean,
+  ) => {
+    const show = (c: { label: string; labelFr?: string }) => (isFr && c.labelFr) || c.label;
+    const current = list.find(c => c.label === value);
+    return (
+      <View style={styles.fieldRow}>
+        <Text style={styles.label}>{t('form234.companyLabel')}{required && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
+        <TouchableOpacity
+          style={styles.timeButton}
+          onPress={() => { if (readOnly) return; setOpen(!open); }}
+        >
+          <Text style={[styles.timeButtonText, !value && styles.timeButtonPlaceholder]}>
+            {current ? show(current) : (value || t('form234.companyPlaceholder'))}
+          </Text>
+          <ChevronDown size={16} color="#64748B" />
+        </TouchableOpacity>
+        {open && (
+          <View style={styles.dropdownList}>
+            {list.map(c => (
+              <TouchableOpacity
+                key={c.codeId}
+                style={[styles.dropdownItem, value === c.label && styles.dropdownItemActive]}
+                onPress={() => { setValue(c.label); setOpen(false); }}
+              >
+                <Text style={[styles.dropdownItemText, value === c.label && styles.dropdownItemTextActive]}>
+                  {show(c)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </View>
+    );
+  };
   // Local "YYYY-MM-DD HH:MM" — §2: the app's existing timestamp display format.
   const formatClose = (iso?: string): string => {
     if (!iso) return '';
@@ -4569,7 +4621,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           <Text style={styles.hailRequiredNote}>{t('form234.hailRequiredNote')}</Text>
           <View {...closedBodyProps('dgCloseHlin')}>
           {renderNoteInput('hlin', remarks.hlin ?? '', (v) => setNote('hlin', v))}
-          {renderField(t('form234.companyLabel'), hlinCompany, setHlinCompany, t('form234.companyPlaceholder'), false, false, 'default', isRequired('hlinCompany'))}
+          {renderCompanyPicker(DFO_HLIN_COMPANY_LIST, hlinCompany, setHlinCompany, hlinCompanyPickerOpen, setHlinCompanyPickerOpen, isRequired('hlinCompany'))}
           {renderField(t('form234.confirmNoLabel'), hlinConfirmNo, setHlinConfirmNo, t('form234.confirmNoPlaceholder'), false, false, 'default', isRequired('hlinConfirmNo'))}
           {/* Rules 660/661: mandatory with a 38b effort (asterisked — shown ⇔ mandatory),
               entry BLOCKED on a 41-only log (hidden, the S110 blocked-means-hide precedent). */}
@@ -4590,7 +4642,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           <Text style={styles.hailRequiredNote}>{t('form234.hailRequiredNote')}</Text>
           <View {...closedBodyProps('dgCloseHlout')}>
           {renderNoteInput('hlout', remarks.hlout ?? '', (v) => setNote('hlout', v))}
-          {renderField(t('form234.companyLabel'), hloutCompany, setHloutCompany, t('form234.companyPlaceholder'), false, false, 'default', isRequired('hloutCompany'))}
+          {renderCompanyPicker(DFO_HLOUT_COMPANY_LIST, hloutCompany, setHloutCompany, hloutCompanyPickerOpen, setHloutCompanyPickerOpen, isRequired('hloutCompany'))}
           {renderField(t('form234.confirmNoLabel'), hloutConfirmNo, setHloutConfirmNo, t('form234.confirmNoPlaceholder'), false, false, 'default', isRequired('hloutConfirmNo'))}
           </View>
           {renderCloseControl('dgCloseHlout', 'form234.hloutSection', !!(hloutCompany || hloutConfirmNo))}

@@ -1415,9 +1415,12 @@ export const DFO_HLIN_COMPANY_LIST = [
 ] as const;
 
 // ─── HLOUT Companies (Rule 93) ──────────────────────────────
-// Note: code 25110 label overridden by Rule 663
+// Note: code 25110 label overridden by Rule 663 — BOTH languages. labelFr is Rule 663's
+// French text byte-verbatim from FS-NAT-234-12-FR (plain hyphen, "(IRV)"), the ONLY row
+// where the fence's FR differs from the EN: every other Rule 27/93 description is the same
+// proper noun in both languages (S137 STOP-6 ruling — FR display, EN stored/emitted).
 export const DFO_HLOUT_COMPANY_LIST = [
-  { codeId: 25110, label: 'DFO Maritimes – Interactive Voice Recognition (IVR) system' },
+  { codeId: 25110, label: 'DFO Maritimes – Interactive Voice Recognition (IVR) system', labelFr: 'MPO Maritimes - Système interactif de reconnaissance vocale (IRV)' },
   { codeId: 25095, label: 'Atlantic Catch Data Ltd.' },
   { codeId: 25096, label: 'Barrington Catch Monitoring Centre Association' },
   { codeId: 25097, label: 'Baywatch Dockside Monitoring' },
