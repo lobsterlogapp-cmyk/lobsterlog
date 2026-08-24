@@ -797,12 +797,15 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
               <View style={styles.lastInputGroup}>
                 <Text style={styles.label}>{t('form222.siteDscLabel')}</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, styles.remarksInput]}
                   value={form.siteDsc}
                   onChangeText={set('siteDsc')}
                   placeholder={t('form222.siteDscPlaceholder')}
                   placeholderTextColor="#CBD5E1"
                   maxLength={150}
+                  multiline
+                  numberOfLines={4}
+                  textAlignVertical="top"
                 />
               </View>
             </View>
@@ -904,24 +907,30 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
               <View style={[styles.inputGroup, { marginTop: 12 }]}>
                 <Text style={styles.label}>{t('form222.gearDmgRemLabel')}</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, styles.remarksInput]}
                   value={form.gearDmgRem}
                   onChangeText={set('gearDmgRem')}
                   placeholder={t('form222.gearDmgRemPlaceholder')}
                   placeholderTextColor="#CBD5E1"
                   maxLength={150}
+                  multiline
+                  numberOfLines={4}
+                  textAlignVertical="top"
                 />
               </View>
               {/* INCDNT_REM (string_150, optional) — remark about the incident type */}
               <View style={styles.lastInputGroup}>
                 <Text style={styles.label}>{t('form222.incdntRemLabel')}</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, styles.remarksInput]}
                   value={form.incdntRem}
                   onChangeText={set('incdntRem')}
                   placeholder={t('form222.incdntRemPlaceholder')}
                   placeholderTextColor="#CBD5E1"
                   maxLength={150}
+                  multiline
+                  numberOfLines={4}
+                  textAlignVertical="top"
                 />
               </View>
             </View>
@@ -962,24 +971,30 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>{t('form222.eventDscLabel')}</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, styles.remarksInput]}
                   value={form.eventDsc}
                   onChangeText={set('eventDsc')}
                   placeholder={t('form222.eventDscPlaceholder')}
                   placeholderTextColor="#CBD5E1"
                   maxLength={150}
+                  multiline
+                  numberOfLines={4}
+                  textAlignVertical="top"
                 />
               </View>
               {/* DOC_REM (string_150, optional) — remark about available documentation */}
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>{t('form222.docRemLabel')}</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, styles.remarksInput]}
                   value={form.docRem}
                   onChangeText={set('docRem')}
                   placeholder={t('form222.docRemPlaceholder')}
                   placeholderTextColor="#CBD5E1"
                   maxLength={150}
+                  multiline
+                  numberOfLines={4}
+                  textAlignVertical="top"
                 />
               </View>
               {/* Existing general Comments (REM, string_2000) — untouched */}
