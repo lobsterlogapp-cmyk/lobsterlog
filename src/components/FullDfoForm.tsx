@@ -74,6 +74,7 @@ import {
   isNoteLocked,
 } from '../utils/dfoLogStorage';
 import { triggerBackup } from '../utils/dfoBackup';
+import { applySarCaptureChoice, SarBlockWriter, SarCaptureDeps } from '../utils/sarCapture';
 import { REQUIRED_ASTERISK_COLOR } from '../styles/GlobalStyles';
 import {
   DFO_FMA_LIST,
@@ -930,21 +931,24 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // Shared GPS fill. Keeps Accuracy.High (234 coords feed the regulator XML — no
   // precision regression). Clamps to the XSD ≤4-decimal limit (shared clampCoord4),
   // races the fix against a timeout, and never writes a blank/0 coordinate on a bad fix.
-  // alertOnFail is opt-in: only the manual "Capture GPS" button surfaces a loud Alert on
-  // failure. The auto-triggers (Stop Haul / MM=Yes / SAR=Yes) stay silent — every coord
+  // alertOnFail is opt-in: the manual "Capture GPS" button surfaces a loud Alert on
+  // failure. The auto-triggers (Stop Haul / MM=Yes) stay silent — every coord
   // they fill is either not a regulator field (MM) or hard-blocked before emit if empty
   // (effort LAT/LONG via validateElogXml Rule 3059; SAR LAT/LONG via handleSave + validator).
+  // S138: the SAR capture prompt's Yes also passes alertOnFail — it is an explicit user
+  // request, so a failure alerts like the manual button (B4). Returns true ONLY when a
+  // usable fix was written, so callers can record provenance from the actual outcome.
   const captureGps = async (
     setLat: (v: string) => void,
     setLng: (v: string) => void,
     opts?: { alertOnFail?: boolean }
-  ) => {
+  ): Promise<boolean> => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         if (opts?.alertOnFail) Alert.alert(t('form234.gpsDeniedTitle'), t('form234.gpsDeniedBody'));
-        return; // fields untouched
+        return false; // fields untouched
       }
       // expo-location has no first-class timeout — race the fix against a rejecting timer.
       const loc = await Promise.race([
@@ -960,15 +964,36 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         typeof lng !== 'number' || !isFinite(lng)
       ) {
         if (opts?.alertOnFail) Alert.alert(t('form234.gpsNoFixTitle'), t('form234.gpsNoFixBody'));
-        return; // never write 0/blank coordinates on a bad fix
+        return false; // never write 0/blank coordinates on a bad fix
       }
       setLat(clampCoord4(String(lat)));
       setLng(clampCoord4(String(lng)));
+      return true;
     } catch (_e) {
       if (opts?.alertOnFail) Alert.alert(t('form234.gpsNoFixTitle'), t('form234.gpsNoFixBody'));
+      return false;
     } finally {
       if (timer) clearTimeout(timer);
     }
+  };
+
+  // S138 Defect 16: the capture prompt — one line of body text, two pinned buttons, no
+  // title — fired for EVERY SAR block (block 1 and each added block) through the ONE
+  // shared applySarCaptureChoice routine (sarCapture.ts). Where the Rule-781 mandated
+  // prompt fires (SAR indicator flip to Yes), this popup waits for its OK; the mandated
+  // text and its own single OK are fenced and never merged with these buttons (R3).
+  const promptSarCapture = (w: SarBlockWriter) => {
+    const deps: SarCaptureDeps = {
+      stampNow: () => {
+        const now = new Date();
+        return { date: formatDate(now), time: formatTime(now) };
+      },
+      capture: (setLat, setLng) => captureGps(setLat, setLng, { alertOnFail: true }),
+    };
+    Alert.alert('', t('form234.sarCaptureBody'), [
+      { text: t('form234.sarCaptureYes'), onPress: () => { void applySarCaptureChoice(true, w, deps); } },
+      { text: t('form234.sarCaptureNo'), onPress: () => { void applySarCaptureChoice(false, w, deps); } },
+    ]);
   };
 
   const handleSailPress = async () => {
@@ -1160,7 +1185,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     }
   };
 
-  const handleSarYes = async (val: boolean) => {
+  const handleSarYes = (val: boolean) => {
     // S135 Phase 3 (ruling 5, the bycatch shape): flipping to No wipes every SAR block —
     // REFUSED while any block is closed (its own stamp or the legacy card stamp), because
     // closed occurrences are irreversible (§5.2.1). Nothing changes on refusal; with only
@@ -1178,12 +1203,19 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     }
     setSarYes(val);
     if (val) {
-      Alert.alert('', t('form234.sarIndPrompt'), [{ text: tc('nav.ok') }]);
-      const now = new Date();
-      setSarDate(formatDate(now));
-      setSarTime(formatTime(now));
-      await captureGps(setSarLat, setSarLng);
-      setSarGpsSrc('gps'); // §11.3: GPS-read SAR coords → MODE="G"
+      // S138: the Rule-781 mandated prompt fires FIRST, unchanged, with its own OK (R3);
+      // the capture popup follows its dismissal. Stamping/capture moved behind the
+      // popup's Yes — No leaves date/time/coords blank for hand entry, and the block's
+      // provenance stays 'manual' (fresh block 1 is 'manual' by init/wipe/hydration).
+      Alert.alert('', t('form234.sarIndPrompt'), [{
+        text: tc('nav.ok'),
+        onPress: () => promptSarCapture({
+          setDateTime: (date, time) => { setSarDate(date); setSarTime(time); },
+          setLat: setSarLat,
+          setLng: setSarLng,
+          setGpsSrc: setSarGpsSrc,
+        }),
+      }]);
     } else {
       setSarSpecies(''); setSarSpeciesOther(''); setSarWhat('');
       setSarLat(''); setSarLng(''); setSarDate(''); setSarTime('');
@@ -2389,11 +2421,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     setExtraSars(prev => prev.map((s, i) => (i === idx ? { ...s, ...patch } : s)));
   };
 
-  const addExtraSar = async () => {
-    // Mirror handleSarYes: stamp the encounter's date/time now and try a GPS fix
-    const now = new Date();
+  const addExtraSar = () => {
+    // S138: mirror handleSarYes — the block is born BLANK (no date/time/coords) and the
+    // shared capture prompt below decides whether to stamp+capture (Yes) or leave it
+    // for hand entry (No). gpsSrc starts 'manual' and only a successful fix flips it.
     const idx = extraSars.length;
-    const newBlock: ExtraSarDetail = { date: formatDate(now), time: formatTime(now), gpsSrc: 'manual' };
+    const newBlock: ExtraSarDetail = { gpsSrc: 'manual' };
     // S135 adopt-on-add (the bait pattern above): a NEW block must never inherit a close
     // through the legacy card-stamp fallback. If this log still carries a pre-S135
     // dgCloseSar, copy that stamp AND the shared rem.sar note onto every block lacking its
@@ -2419,11 +2452,14 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     } else {
       setExtraSars(prev => [...prev, newBlock]);
     }
-    await captureGps(
-      (v: string) => updateExtraSar(idx, { lat: v }),
-      (v: string) => updateExtraSar(idx, { lng: v }),
-    );
-    updateExtraSar(idx, { gpsSrc: 'gps' }); // §11.3: GPS-read SAR coords → MODE="G"
+    // S138: no mandated prompt here (the SAR indicator is already Y when a block can be
+    // added), so the capture popup fires directly — same shared routine as block 1.
+    promptSarCapture({
+      setDateTime: (date, time) => updateExtraSar(idx, { date, time }),
+      setLat: (v: string) => updateExtraSar(idx, { lat: v }),
+      setLng: (v: string) => updateExtraSar(idx, { lng: v }),
+      setGpsSrc: (src) => updateExtraSar(idx, { gpsSrc: src }),
+    });
   };
 
   const removeExtraSar = (idx: number) => {
@@ -2556,8 +2592,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   };
 
   // One additional SAR encounter — mirrors the block-1 field set (species / description /
-  // date+time / coords / count / condition). Date and time are plain inputs seeded from
-  // the moment the block was added, same auto-stamp as handleSarYes. S135: the frame
+  // date+time / coords / count / condition). Date and time are stamped by the shared
+  // capture prompt's Yes (S138), or left blank for hand entry on No. S135: the frame
   // (title / trash / note / close / lock bar) comes from the shared chrome; UI index i+1.
   const renderExtraSarBlock = (s: ExtraSarDetail, i: number) => renderSarBlockChrome(
     i + 1,
@@ -4512,7 +4548,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                     what makes the Phase 1 adopt-on-add guard reachable; a new block can
                     never inherit a close). */}
                 {!readOnly && (
-                  <TouchableOpacity style={[styles.addBtn, { marginTop: 10 }]} onPress={() => { void addExtraSar(); }}>
+                  <TouchableOpacity style={[styles.addBtn, { marginTop: 10 }]} onPress={addExtraSar}>
                     <Plus size={16} color="#1E3A8A" />
                     <Text style={styles.addBtnText}>{t('form234.addSarEncounter')}</Text>
                   </TouchableOpacity>
