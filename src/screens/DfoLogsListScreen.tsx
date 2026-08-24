@@ -1585,22 +1585,22 @@ const styles = StyleSheet.create({
   // R-H: the ≥2 count — a small corner badge so the R-I third-line wording stays verbatim.
   owedCountBadge: {
     position: 'absolute',
-    // top/right 6 still clears the button's 10px rounded corner at 40px: the corner arc's
-    // center is 10px in from each edge, and the badge's nearest point (6,6) lies 5.7px from
-    // it — inside the arc, so the badge never pokes past the curve.
-    top: 6,
-    right: 6,
-    minWidth: 40,
-    height: 40,
-    borderRadius: 20,
-    paddingHorizontal: 10,
+    // top/right 2 still clears the button's 10px rounded corner at 34px: the badge circle's
+    // nearest point toward the corner sits at (6.98, 6.98), which is 4.3px from the corner
+    // arc's center (10,10) — well inside the arc, so the badge never pokes past the curve.
+    top: 2,
+    right: 2,
+    minWidth: 34,
+    height: 34,
+    borderRadius: 17,
+    paddingHorizontal: 8,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
   },
   owedCountBadgeText: {
     color: '#DC2626',
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '800',
   },
 });

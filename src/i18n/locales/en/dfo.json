@@ -461,6 +461,7 @@
     "gpsNoFixBody": "No GPS fix was available. Try again with a clear view of the sky, or enter the coordinates manually.",
     "lgbkNumRefLabel": "LOGBOOK NUMBER REFERRED",
     "lgbkNumRefPlaceholder": "Logbook this report refers to",
+    "enterManually": "Enter manually",
     "speciesCard": "Species & Numbers",
     "speciesLabel": "SPECIES",
     "speciesPlaceholder": "Select species…",

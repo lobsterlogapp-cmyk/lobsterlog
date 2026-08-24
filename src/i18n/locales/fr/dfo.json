@@ -462,6 +462,7 @@
     "gpsNoFixBody": "Aucun signal GPS disponible. Réessayez avec une vue dégagée du ciel, ou saisissez les coordonnées manuellement.",
     "lgbkNumRefLabel": "NO DU JOURNAL DE BORD RÉFÉRÉ",
     "lgbkNumRefPlaceholder": "Journal auquel ce rapport se réfère",
+    "enterManually": "Saisir manuellement",
     "speciesCard": "Espèce et interaction",
     "speciesLabel": "ESPÈCE",
     "speciesPlaceholder": "Sélectionnez une espèce…",

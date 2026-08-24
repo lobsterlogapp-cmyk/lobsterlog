@@ -25,6 +25,7 @@ import {
   generateForm222Uid,
   saveForm222Entry,
   loadForm222EntryByUid,
+  loadForm222Entries,
   MARINE_MAMMAL_SPECIES,
   MARINE_MAMMAL_SPECIES_LABELS,
   INTERACTION_TYPES,
@@ -40,7 +41,7 @@ import {
   MV_MM_SPECIMENS_CONDITION,
   MV_MM_LENGTH_CATEGORY,
 } from '../data/reftables';
-import { loadLastLog } from '../utils/dfoLogStorage';
+import { loadLastLog, loadAllLogs, logsOwingForm222 } from '../utils/dfoLogStorage';
 // S125 7b: send moved off the form onto the list card — the screen no longer imports the
 // generate/validate/envelope/submit/backup surface (now in sendFormEntry.ts, called from the list).
 import { loadCaptainProfile, CaptainProfile, EMPTY_PROFILE } from '../utils/captainStorage';
@@ -173,6 +174,15 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
   const [confidenceOpen, setConfidenceOpen] = useState(false);
   const [specimenCondOpen, setSpecimenCondOpen] = useState(false);
   const [lengthCatOpen, setLengthCatOpen] = useState(false);
+  // S137 Phase 7: the logbook-reference picker. owingRefs = the logs that currently owe a
+  // marine-mammal declaration (Phase 6's logsOwingForm222, the ONE definition of "owes"),
+  // oldest first by founder ruling. Non-empty ⇒ the LOGBOOK NUMBER REFERRED field renders as
+  // a tappable picker; empty ⇒ the plain text input, exactly as before (founder ruling: no
+  // sheet when there is nothing to list). manualRef flips the field back to typing for this
+  // mount after the picker's "Enter manually" row is tapped.
+  const [owingRefs, setOwingRefs] = useState<{ lgbkUid: string; dateFished: string }[]>([]);
+  const [refPickerOpen, setRefPickerOpen] = useState(false);
+  const [manualRef, setManualRef] = useState(false);
   const [latError, setLatError] = useState('');
   const [lonError, setLonError] = useState('');
   const [gpsCapturing, setGpsCapturing] = useState(false);
@@ -196,10 +206,19 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
       // S125 7c: hydrate the SPECIFIC entry the list asked for (entryUid), else start fresh.
       // No more auto-restore-newest — that was the trap (couldn't start a new form or delete one).
       // Labels round-trip straight back into the pickers (the store holds labels).
-      const [last, draft] = await Promise.all([
+      const [last, draft, allLogs, entries] = await Promise.all([
         loadLastLog(),
         entryUid ? loadForm222EntryByUid(entryUid) : Promise.resolve(null),
+        loadAllLogs(),
+        loadForm222Entries(),
       ]);
+      // S137 Phase 7: the picker's list — only the logs that owe a declaration, oldest first
+      // (founder ruling; loadAllLogs returns newest-first, so sort explicitly).
+      setOwingRefs(
+        logsOwingForm222(allLogs, entries)
+          .sort((a, b) => a.createdAt - b.createdAt)
+          .map(l => ({ lgbkUid: l.lgbkUid, dateFished: l.dateFished })),
+      );
       // S137 Phase 6 (R-J): the owing log's UID, when the red button supplied one, beats the
       // most-recent-completed guess. prefillRef tracks whichever value was used, so the
       // isEmpty changed-from-prefill rule is unaffected.
@@ -468,6 +487,17 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
     );
   };
 
+  // S137 Phase 7: "2026-08-23" → "Aug 23, 2026" / « 23 août 2026 » for the picker rows — the
+  // date is what a fisherman remembers (R-2). Built from parts, never new Date(string), so the
+  // day can't shift across the UTC boundary. Falls back to the raw string if malformed.
+  const formatRefDate = (iso: string): string => {
+    const [y, mo, da] = iso.split('-').map(Number);
+    if (isNaN(y) || isNaN(mo) || isNaN(da)) return iso;
+    return new Date(y, mo - 1, da).toLocaleDateString(isFr ? 'fr-CA' : 'en-CA', {
+      year: 'numeric', month: 'short', day: 'numeric',
+    });
+  };
+
   const renderDropdown = (
     label: string,
     value: string,
@@ -493,6 +523,7 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
           setConfidenceOpen(false);
           setSpecimenCondOpen(false);
           setLengthCatOpen(false);
+          setRefPickerOpen(false);
           setOpen(!isOpen);
         }}
         activeOpacity={0.8}
@@ -624,15 +655,66 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
               </View>
               <View style={styles.lastInputGroup}>
                 <Text style={styles.label}>{t('form222.lgbkNumRefLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
-                <TextInput
-                  style={styles.input}
-                  value={form.lgbkNumRef}
-                  onChangeText={set('lgbkNumRef')}
-                  placeholder={t('form222.lgbkNumRefPlaceholder')}
-                  placeholderTextColor="#CBD5E1"
-                  maxLength={15}
-                  autoCapitalize="characters"
-                />
+                {/* S137 Phase 7: picker while logs owe a declaration (owing set only, oldest
+                    first, date + UID on every row, "Enter manually" last); the plain input when
+                    nothing owes or after Enter manually. Picking fills the field, never locks it
+                    (R-5); the R-J prefill above is untouched — the picker sits on top of it. */}
+                {owingRefs.length > 0 && !manualRef ? (
+                  <>
+                    <TouchableOpacity
+                      style={styles.dropdownButton}
+                      onPress={() => {
+                        setSpeciesOpen(false);
+                        setInteractionTypeOpen(false);
+                        setConfidenceOpen(false);
+                        setSpecimenCondOpen(false);
+                        setLengthCatOpen(false);
+                        setRefPickerOpen(!refPickerOpen);
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={form.lgbkNumRef ? styles.dropdownValueText : styles.dropdownPlaceholderText}>
+                        {form.lgbkNumRef || t('form222.lgbkNumRefPlaceholder')}
+                      </Text>
+                      <ChevronDown size={18} color="#94A3B8" />
+                    </TouchableOpacity>
+                    {refPickerOpen && (
+                      <View style={styles.dropdownList}>
+                        {owingRefs.map(r => {
+                          const selected = form.lgbkNumRef === r.lgbkUid;
+                          return (
+                            <TouchableOpacity
+                              key={r.lgbkUid}
+                              style={[styles.dropdownItem, selected && styles.dropdownItemSelected]}
+                              onPress={() => { set('lgbkNumRef')(r.lgbkUid); setRefPickerOpen(false); }}
+                            >
+                              <Text style={[styles.dropdownItemText, selected && styles.dropdownItemTextSelected]}>
+                                {`${formatRefDate(r.dateFished)} · ${r.lgbkUid}`}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                        <TouchableOpacity
+                          style={[styles.dropdownItem, styles.dropdownItemLast]}
+                          onPress={() => { setRefPickerOpen(false); setManualRef(true); }}
+                        >
+                          <Text style={styles.dropdownItemManualText}>{t('form222.enterManually')}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </>
+                ) : (
+                  <TextInput
+                    style={styles.input}
+                    value={form.lgbkNumRef}
+                    onChangeText={set('lgbkNumRef')}
+                    placeholder={t('form222.lgbkNumRefPlaceholder')}
+                    placeholderTextColor="#CBD5E1"
+                    maxLength={15}
+                    autoCapitalize="characters"
+                    autoFocus={manualRef}
+                  />
+                )}
               </View>
             </View>
 
@@ -1118,6 +1200,11 @@ const styles = StyleSheet.create({
   dropdownItemTextSelected: {
     color: '#1E3A8A',
     fontWeight: 'bold',
+  },
+  dropdownItemManualText: {
+    fontSize: 15,
+    color: '#1E3A8A',
+    fontWeight: '600',
   },
   // Y/N toggles for master interact indicator
   ynToggleGroupFull: {
