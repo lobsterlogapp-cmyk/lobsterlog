@@ -40,6 +40,10 @@ describe('fishes38b — Rules 660/661 trigger (ETA/weight), 38b only', () => {
   test('a second-effort 38b qualifies', () => {
     expect(fishes38b({ fmaId: '1595', extraEffortNodes: extra('28599') })).toBe(true);
   });
+  test('DEFENSIVE BRANCH: both areas in one log (not a real trip — founder ruling) lands on the 38b arm, either order', () => {
+    expect(fishes38b({ fmaId: '28599', extraEffortNodes: extra('1595') })).toBe(true);
+    expect(fishes38b({ fmaId: '1595', extraEffortNodes: extra('28599') })).toBe(true);
+  });
 });
 
 describe('used-groups + emit ride the same predicate', () => {
@@ -81,11 +85,15 @@ describe('used-groups + emit ride the same predicate', () => {
 });
 
 // Faithful mirror of the FullDfoForm handleSave appended hail block (the gpsCoordsSaveGate
-// mirror pattern): subformId 90 + hailRequired → all four fields must be non-blank.
+// mirror pattern): subformId 90 + hailRequired → all four fields must be non-blank; the 38b
+// trigger (Phase B, Rules 660/661) adds ETA + total weight.
 function hailGateMissing(
   subformId: number,
   hailRequired: boolean,
   f: { hlinCompany: string; hlinConfirmNo: string; hloutCompany: string; hloutConfirmNo: string },
+  hail38b = false,
+  eta = '',
+  totalWeight = '',
 ): string[] {
   const missing: string[] = [];
   if (subformId === 90 && hailRequired) {
@@ -93,6 +101,10 @@ function hailGateMissing(
     if (!f.hlinConfirmNo.trim()) missing.push('hlinConfirmNo');
     if (!f.hloutCompany.trim()) missing.push('hloutCompany');
     if (!f.hloutConfirmNo.trim()) missing.push('hloutConfirmNo');
+    if (hail38b) {
+      if (!eta.trim()) missing.push('hlinEta');
+      if (!totalWeight.trim()) missing.push('hlinTotalWeight');
+    }
   }
   return missing;
 }
@@ -115,5 +127,12 @@ describe('save-gate mirror — the appended hail block (Phase A enforcement)', (
   test('other subforms never gate (hail Blocked on 88/89/91)', () => {
     expect(hailGateMissing(88, true, blank)).toHaveLength(0);
     expect(hailGateMissing(91, true, blank)).toHaveLength(0);
+  });
+  test('Phase B: a 38b log demands ETA and total weight too', () => {
+    expect(hailGateMissing(90, true, full, true, '', '')).toEqual(['hlinEta', 'hlinTotalWeight']);
+    expect(hailGateMissing(90, true, full, true, '2026-06-10 14:00', '350')).toHaveLength(0);
+  });
+  test('Phase B: a 41-only log (hailRequired without 38b) never demands ETA/weight', () => {
+    expect(hailGateMissing(90, true, full, false, '', '')).toHaveLength(0);
   });
 });

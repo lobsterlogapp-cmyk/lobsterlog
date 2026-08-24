@@ -2690,6 +2690,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // fishes 38b or 41; blocked (hidden) otherwise. Single-sourced predicate, recomputed per
   // render so an area change on any effort updates the sections immediately.
   const hailRequired = fishesHailArea(liveEffortData());
+  // S137 Phase B (Rules 660/661, STOP-4 rule-exact ruling): ETA and total weight are
+  // mandatory when any effort fishes 38b, and their ENTRY is blocked otherwise — on a
+  // 41-only log the two fields do not render inside the (still required) hail section.
+  // Both-areas-on-one-trip does not occur in reality (founder ruling — separate fisheries);
+  // if it ever appears in data, the existential predicate lands it on the 38b arm, which
+  // asks for MORE rather than less. Defensive branch, not a supported case.
+  const hail38b = fishes38b(liveEffortData());
   // Local "YYYY-MM-DD HH:MM" — §2: the app's existing timestamp display format.
   const formatClose = (iso?: string): string => {
     if (!iso) return '';
@@ -3382,6 +3389,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       if (!hlinConfirmNo.trim()) missing.push(fieldLabels.hlinConfirmNo);
       if (!hloutCompany.trim()) missing.push(fieldLabels.hloutCompany);
       if (!hloutConfirmNo.trim()) missing.push(fieldLabels.hloutConfirmNo);
+      // Phase B (Rules 660/661): ETA + total weight join only on the 38b trigger — a
+      // 41-only log neither renders nor requires them (entry blocked).
+      if (hail38b) {
+        if (!hlinEta.trim()) missing.push(fieldLabels.hlinEta);
+        if (!hlinTotalWeight.trim()) missing.push(fieldLabels.hlinTotalWeight);
+      }
     }
 
     if (missing.length > 0) {
@@ -4558,8 +4571,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           {renderNoteInput('hlin', remarks.hlin ?? '', (v) => setNote('hlin', v))}
           {renderField(t('form234.companyLabel'), hlinCompany, setHlinCompany, t('form234.companyPlaceholder'), false, false, 'default', isRequired('hlinCompany'))}
           {renderField(t('form234.confirmNoLabel'), hlinConfirmNo, setHlinConfirmNo, t('form234.confirmNoPlaceholder'), false, false, 'default', isRequired('hlinConfirmNo'))}
-          {renderField(t('form234.etaLabel'), hlinEta, setHlinEta, t('form234.etaPlaceholder'))}
-          {renderField(t('form234.totalWeightLabel'), hlinTotalWeight, setHlinTotalWeight, '0', false, false, 'numeric')}
+          {/* Rules 660/661: mandatory with a 38b effort (asterisked — shown ⇔ mandatory),
+              entry BLOCKED on a 41-only log (hidden, the S110 blocked-means-hide precedent). */}
+          {hail38b && renderField(t('form234.etaLabel'), hlinEta, setHlinEta, t('form234.etaPlaceholder'), false, false, 'default', true)}
+          {hail38b && renderField(t('form234.totalWeightLabel'), hlinTotalWeight, setHlinTotalWeight, '0', false, false, 'numeric', true)}
           </View>
           {renderCloseControl('dgCloseHlin', 'form234.hlinSection', !!(hlinCompany || hlinConfirmNo))}
         </View>
