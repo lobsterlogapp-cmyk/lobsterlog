@@ -712,3 +712,73 @@ describe('P2 marks: the table answers every star the screens now draw', () => {
     expect(isFieldRequired('hlinTotalWeight', ctx(90, undefined, [28599]), {}, 'hlin')).toBe(true);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// P3b (S141) ruling 2 — the three seal-then-unsendable value checks, each pinned
+// against the independent form validator that already refuses it at send. The close
+// door stays EXACTLY as wide as the send door: every table 'invalid' here has a
+// matching validator error, and the table goes quiet exactly where the validator does.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('P3b (S141) ruling 2: form value checks agree with the send validators', () => {
+  const y222 = (over: Record<string, string> = {}): Record<string, string> => ({
+    interactInd: 'Y', reportDate: '2026-06-11', lgbkNumRef: 'QWERTY', interactionDate: '2026-06-10',
+    interactionTime: '08:30', lat: '44.1234', lon: '-66.5432', speciesLabel: 'Gray Seal',
+    nbAnimals: '2', interactionTypeLabel: 'Entanglement', observerNm: 'Jane',
+    contactInfo: 'x@y.z', siteDsc: 'Off the ledge', eventDsc: 'Swam clear',
+    confidenceLabel: 'Sure', specimenCondLabel: 'Alive', lengthCatLabel: 'Adult', ...over,
+  });
+  const entry222 = (over: Record<string, string>): any => ({
+    uid: 'ABCDEF', savedAt: 1760000000000, reportDate: '2026-06-11',
+    interactionDate: '2026-06-10', interactionTime: '08:30', lat: '44.1234', lon: '-66.5432',
+    speciesLabel: 'Gray Seal', nbAnimals: '2', interactionTypeLabel: 'Entanglement',
+    injuryInd: 'N', deathInd: 'N', entangleInd: 'N', releaseInd: 'N', gearDamageInd: 'N',
+    observerNm: 'Jane Observer', contactInfo: '123 Wharf Rd', remarks: '',
+    lgbkNumRef: 'QWERTY', interactInd: 'Y', sentToDfo: false, ...over,
+  });
+  const entry233 = (over: Record<string, string>): any => ({
+    uid: 'ABCDEF', savedAt: 1760000000000, periodStartDate: '2026-06-01',
+    periodEndDate: '2026-06-07', reason: 'Weather', licenceNo: '300123', fin: '123456789',
+    sentToDfo: false, ...over,
+  });
+
+  test('222 animal count: a 5-digit value is invalid at the table AND refused at send (NB_SPCMN_BEST 0–9999)', () => {
+    expect(missingInContainer('form222', ctx(90), y222({ nbAnimals: '12345' }))
+      .map(m => ({ f: m.fieldKey, r: m.reason }))).toEqual([{ f: 'nbAnimals', r: 'invalid' }]);
+    const xml = generateForm222Xml(entry222({ nbAnimals: '12345' }), profile);
+    expect(validateForm222Xml(xml).errors.some(e => e.includes('NB_SPCMN_BEST'))).toBe(true);
+    // 4 digits stays clean both sides
+    expect(missingInContainer('form222', ctx(90), y222({ nbAnimals: '9999' }))).toEqual([]);
+  });
+
+  test('222 date order: an interaction date after the report date is invalid at the table AND refused at send (Rules 566/590/591)', () => {
+    expect(missingInContainer('form222', ctx(90), y222({ interactionDate: '2026-06-12' }))
+      .map(m => ({ f: m.fieldKey, r: m.reason }))).toEqual([{ f: 'interactionDate', r: 'invalid' }]);
+    const xml = generateForm222Xml(entry222({ interactionDate: '2026-06-12' }), profile);
+    expect(validateForm222Xml(xml).errors.some(e => e.includes('Rule 591'))).toBe(true);
+  });
+
+  test('222 future report date: invalid exactly where the validator checks (Y-path, interaction date present — Rule 592)', () => {
+    const future = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+    expect(missingInContainer('form222', ctx(90),
+      y222({ reportDate: future, interactionDate: future }))
+      .map(m => ({ f: m.fieldKey, r: m.reason }))).toEqual([{ f: 'reportDate', r: 'invalid' }]);
+    const xml = generateForm222Xml(
+      entry222({ reportDate: future, interactionDate: future }), profile);
+    expect(validateForm222Xml(xml).errors.some(e => e.includes('Rule 592'))).toBe(true);
+    // Exactness pin: with NO interaction date, the validator never reaches the future
+    // check — and neither does the table (blank refusal only, no invalid).
+    expect(missingInContainer('form222', ctx(90),
+      y222({ reportDate: future, interactionDate: '' }))
+      .every(m => m.reason === 'blank')).toBe(true);
+  });
+
+  test('233 period order: an end date before the start date is invalid at the table AND refused at send', () => {
+    const form = { periodStartDate: '2026-06-07', periodEndDate: '2026-06-01', reason: 'Weather' };
+    expect(missingInContainer('form233', ctx(90), form)
+      .map(m => ({ f: m.fieldKey, r: m.reason }))).toEqual([{ f: 'periodEndDate', r: 'invalid' }]);
+    const xml = generateForm233Xml(
+      entry233({ periodStartDate: '2026-06-07', periodEndDate: '2026-06-01' }), profile);
+    expect(validateForm233Xml(xml).errors.some(e => e.includes('END_DT is before START_DT'))).toBe(true);
+  });
+});

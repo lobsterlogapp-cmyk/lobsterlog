@@ -29,7 +29,7 @@ import {
 import { loadCaptainProfile, CaptainProfile, EMPTY_PROFILE } from '../utils/captainStorage';
 import { loadLastLog } from '../utils/dfoLogStorage';
 import { REQUIRED_ASTERISK_COLOR } from '../styles/GlobalStyles';
-import { isFieldRequired } from '../utils/dfoRequirements';
+import { isFieldRequired, missingInContainer, MissingField } from '../utils/dfoRequirements';
 
 interface Props {
   onClose: () => void;
@@ -248,8 +248,37 @@ export default function Form233Screen({ onClose, registerClose, entryUid }: Prop
   // list (7d parity with the 234's Close & Save All). The save is AWAITED before onClose so the
   // list's refresh reads the closed record; if the save FAILS we stay on the form and say so
   // (ruling 1 — never navigate off unsaved data). No send here (send is from the list card).
+  // S141 P3b: refusal bullets — blank fields read as their bare label; invalid values
+  // carry their field's error wording (the 953 format line, the period-order line).
+  const closeBulletText = (m: MissingField): string => {
+    if (m.reason === 'invalid') {
+      const errKey =
+        m.fieldKey === 'logbookUidRefered' ? 'form233.refFormatError' :
+        m.fieldKey === 'periodEndDate' ? 'form233.periodOrderError' : null;
+      if (errKey) return t(errKey);
+    }
+    return t(m.labelKey);
+  };
+
   const handleCloseAndSave = () => {
     if (lockedCloseDt) return;
+    // S141 P3b: refuse to seal a form the send validator would refuse to send. The table
+    // check runs BEFORE the confirm dialog; nothing is stamped on a refusal. Ruling 3:
+    // the 233 SNAPSHOTS the profile licence into the record at save, so a blank profile
+    // licence at close would seal a permanently unsendable report — refused here with a
+    // bullet pointing at the Captain Profile (the 222 needs no twin: it reads the
+    // profile at send time).
+    const rows = missingInContainer('form233', { subformId: profile.subformId ?? 90 }, { ...form })
+      .map(closeBulletText);
+    if (!profile.fishingNumber.trim()) rows.push(t('form233.licenceNoCloseBullet'));
+    if (rows.length) {
+      Alert.alert(
+        t('form234.closeBlockedTitle'),
+        `${t('form234.closeBlockedBody')}\n• ${rows.join('\n• ')}`,
+        [{ text: tc('nav.ok') }],
+      );
+      return;
+    }
     Alert.alert(
       t('form233.closeConfirmTitle'),
       t('form234.closeConfirmBody'),

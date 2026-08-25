@@ -46,7 +46,7 @@ import { loadLastLog, loadAllLogs, logsOwingForm222 } from '../utils/dfoLogStora
 // generate/validate/envelope/submit/backup surface (now in sendFormEntry.ts, called from the list).
 import { loadCaptainProfile, CaptainProfile, EMPTY_PROFILE } from '../utils/captainStorage';
 import { clampCoord4 } from '../utils/dfoConstants';
-import { isFieldRequired } from '../utils/dfoRequirements';
+import { isFieldRequired, missingInContainer, MissingField } from '../utils/dfoRequirements';
 import { REQUIRED_ASTERISK_COLOR } from '../styles/GlobalStyles';
 
 // FR display text for the stored EN reftable labels, one map per table (same descEn can
@@ -466,8 +466,36 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
   // list (7d parity with the 234's Close & Save All). The save is AWAITED before onClose so the
   // list's refresh reads the closed record; if the save FAILS we stay on the form and say so
   // (ruling 1 — never navigate off unsaved data). No send here (send is from the list card).
+  // S141 P3b: the close gate. The refusal bullet — blank fields read as their bare label
+  // (one container, no prefix, ruling 8); invalid values carry their field's error wording.
+  const closeBulletText = (m: MissingField): string => {
+    if (m.reason === 'invalid') {
+      const errKey =
+        m.fieldKey === 'lat' ? 'form222.latError' :
+        m.fieldKey === 'lon' ? 'form222.lonError' :
+        m.fieldKey === 'nbAnimals' ? 'form222.nbAnimalsRangeError' :
+        m.fieldKey === 'interactionDate' ? 'form222.dateOrderError' :
+        m.fieldKey === 'reportDate' ? 'form222.reportDateFutureError' : null;
+      if (errKey) return t(errKey);
+    }
+    return t(m.labelKey);
+  };
+
   const handleCloseAndSave = () => {
     if (lockedCloseDt) return;
+    // S141 P3b: refuse to seal a form the send validator would refuse to send — the gate
+    // asks the shared table (dfoRequirements) BEFORE the confirm dialog; nothing is
+    // stamped on a refusal. The Rule-593 set keys on the interaction answer via the
+    // form values themselves.
+    const missing = missingInContainer('form222', { subformId: profile.subformId ?? 90 }, { ...form });
+    if (missing.length) {
+      Alert.alert(
+        t('form234.closeBlockedTitle'),
+        `${t('form234.closeBlockedBody')}\n• ${missing.map(closeBulletText).join('\n• ')}`,
+        [{ text: tc('nav.ok') }],
+      );
+      return;
+    }
     Alert.alert(
       t('form222.closeConfirmTitle'),
       t('form234.closeConfirmBody'),

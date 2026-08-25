@@ -397,18 +397,25 @@ export const DFO_REQUIREMENTS_TABLE: FieldRequirement[] = [
     note: 'MM_INTER.LGBK_NUM_REF (CSV REQUIRED=Y) — prefilled but editable, so gated.' },
   { fieldKey: 'reportDate', container: 'form222', labelKey: 'form222.reportDateLabel',
     kind: 'per-subform', state: MMMM,
-    note: 'MM_INTER.REP_DATE (CSV REQUIRED=Y) — prefilled to today and editable, so it can ' +
-      'never actually be blank. Reclassified from app-supplied at P2 (S140 P2 ruling 1) so ' +
-      'its existing on-screen star survives the repoint; a gate check on it is inert.' },
+    isInvalid: values => {
+      // Rule 592 exactly as the send validator applies it: only on the Y-path, and only
+      // when an interaction date is present (the check lives inside that guard there).
+      const r = String(values.reportDate ?? '').trim();
+      const d = String(values.interactionDate ?? '').trim();
+      return String(values.interactInd ?? '') === 'Y' &&
+        /^\d{4}-\d{2}-\d{2}$/.test(r) && /^\d{4}-\d{2}-\d{2}$/.test(d) &&
+        r > new Date().toISOString().slice(0, 10);
+    },
+    checkDescribe: 'must not be in the future (Rule 592, S141 P3b ruling 2)',
+    note: 'MM_INTER.REP_DATE (CSV REQUIRED=Y) — prefilled to today and editable, so the ' +
+      'blank check is inert (S140 P2 ruling 1); the future check (ruling 2, S141 P3b) is not.' },
   { fieldKey: 'gearDamageInd', container: 'form222', labelKey: null, kind: 'app-supplied',
     state: MMMM, note: 'GEAR_DMG_IND — defaulted N by the screen, can never be blank.' },
   // Rule 593 members keyed on the interaction answer (Rule 594 blocks the set when N):
   ...([
-    ['interactionDate', 'form222.interactionDateLabel', 'INTERACT_DT date half'],
     ['interactionTime', 'form222.interactionTimeLabel', 'INTERACT_DT time half'],
     ['speciesLabel', 'form222.speciesLabel', 'NOAA_SPECIE_COD'],
     ['interactionTypeLabel', 'form222.interactionTypeLabel', 'MM_INTER_INCDNT.INCDNT_TYP_ID (Rule 1027)'],
-    ['nbAnimals', 'form222.nbAnimalsLabel', 'NB_SPCMN_BEST'],
     ['observerNm', 'form222.observerNmLabel', 'NAME'],
     ['contactInfo', 'form222.contactInfoLabel', 'ADDR'],
     // The five ruled-in (ruling 3): exist as inputs, Rule-593-mandatory when Y, previously
@@ -425,6 +432,25 @@ export const DFO_REQUIREMENTS_TABLE: FieldRequirement[] = [
       (String(values.interactInd ?? '') === 'Y' ? 'mandatory' : 'blocked'),
     note: `${element} — Rule 593 mandatory when INTERACT_IND=Y; Rule 594 blocks it when N.`,
   })),
+  // interactionDate and nbAnimals sit outside the map because they carry the send
+  // validator's own value checks (S141 P3b ruling 2) on top of the Rule-593 state.
+  { fieldKey: 'interactionDate', container: 'form222', labelKey: 'form222.interactionDateLabel',
+    kind: 'depends-on-another-answer',
+    state: (_ctx, values) => (String(values.interactInd ?? '') === 'Y' ? 'mandatory' : 'blocked'),
+    isInvalid: values => {
+      const d = String(values.interactionDate ?? '').trim();
+      const r = String(values.reportDate ?? '').trim();
+      return /^\d{4}-\d{2}-\d{2}$/.test(d) && /^\d{4}-\d{2}-\d{2}$/.test(r) && d > r;
+    },
+    checkDescribe: 'must not be after the report date (Rules 566/590/591, S141 P3b ruling 2)',
+    note: 'INTERACT_DT date half — Rule 593 mandatory when INTERACT_IND=Y; Rule 594 blocks it when N.' },
+  { fieldKey: 'nbAnimals', container: 'form222', labelKey: 'form222.nbAnimalsLabel',
+    kind: 'depends-on-another-answer',
+    state: (_ctx, values) => (String(values.interactInd ?? '') === 'Y' ? 'mandatory' : 'blocked'),
+    isInvalid: simpleInvalid('nbAnimals', v => /^\d{1,4}$/.test(v.trim())),
+    checkDescribe: 'a whole number of at most 4 digits — the validator’s NB_SPCMN_BEST 0–9999 ' +
+      'check (S141 P3b ruling 2)',
+    note: 'NB_SPCMN_BEST — Rule 593 mandatory when INTERACT_IND=Y; Rule 594 blocks it when N.' },
   { fieldKey: 'lat', container: 'form222', labelKey: 'form222.latLabel',
     kind: 'depends-on-another-answer',
     state: (_ctx, values) => (String(values.interactInd ?? '') === 'Y' ? 'mandatory' : 'blocked'),
@@ -442,7 +468,16 @@ export const DFO_REQUIREMENTS_TABLE: FieldRequirement[] = [
   { fieldKey: 'periodStartDate', container: 'form233', labelKey: 'form233.startDateLabel',
     kind: 'per-subform', state: MMMM, note: 'REPORT_DTL.START_DT (CSV REQUIRED=Y).' },
   { fieldKey: 'periodEndDate', container: 'form233', labelKey: 'form233.endDateLabel',
-    kind: 'per-subform', state: MMMM, note: 'REPORT_DTL.END_DT (CSV REQUIRED=Y).' },
+    kind: 'per-subform', state: MMMM,
+    isInvalid: values => {
+      // The validator's END_DT-before-START_DT refusal (S141 P3b ruling 2). Start emits
+      // at 0000 and end at 2359, so only a strictly earlier end DATE can trip it.
+      const s = String(values.periodStartDate ?? '').trim();
+      const e = String(values.periodEndDate ?? '').trim();
+      return /^\d{4}-\d{2}-\d{2}$/.test(s) && /^\d{4}-\d{2}-\d{2}$/.test(e) && e < s;
+    },
+    checkDescribe: 'must not be before the start date (the validator’s END_DT order check)',
+    note: 'REPORT_DTL.END_DT (CSV REQUIRED=Y).' },
   { fieldKey: 'reason', container: 'form233', labelKey: 'form233.reasonLabel',
     kind: 'per-subform', state: MMMM, note: 'REPORT_DTL.REASON (CSV REQUIRED=Y).' },
   { fieldKey: 'logbookUidRefered', container: 'form233', labelKey: 'form233.logbookUidRefLabel',
