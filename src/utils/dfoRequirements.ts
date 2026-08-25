@@ -386,8 +386,11 @@ export const DFO_REQUIREMENTS_TABLE: FieldRequirement[] = [
   { fieldKey: 'lgbkNumRef', container: 'form222', labelKey: 'form222.lgbkNumRefLabel',
     kind: 'per-subform', state: MMMM,
     note: 'MM_INTER.LGBK_NUM_REF (CSV REQUIRED=Y) — prefilled but editable, so gated.' },
-  { fieldKey: 'reportDate', container: 'form222', labelKey: null, kind: 'app-supplied',
-    state: MMMM, note: 'MM_INTER.REP_DATE — auto-defaulted to today, can never be blank.' },
+  { fieldKey: 'reportDate', container: 'form222', labelKey: 'form222.reportDateLabel',
+    kind: 'per-subform', state: MMMM,
+    note: 'MM_INTER.REP_DATE (CSV REQUIRED=Y) — prefilled to today and editable, so it can ' +
+      'never actually be blank. Reclassified from app-supplied at P2 (S140 P2 ruling 1) so ' +
+      'its existing on-screen star survives the repoint; a gate check on it is inert.' },
   { fieldKey: 'gearDamageInd', container: 'form222', labelKey: null, kind: 'app-supplied',
     state: MMMM, note: 'GEAR_DMG_IND — defaulted N by the screen, can never be blank.' },
   // Rule 593 members keyed on the interaction answer (Rule 594 blocks the set when N):

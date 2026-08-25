@@ -29,6 +29,7 @@ import {
 import { loadCaptainProfile, CaptainProfile, EMPTY_PROFILE } from '../utils/captainStorage';
 import { loadLastLog } from '../utils/dfoLogStorage';
 import { REQUIRED_ASTERISK_COLOR } from '../styles/GlobalStyles';
+import { isFieldRequired } from '../utils/dfoRequirements';
 
 interface Props {
   onClose: () => void;
@@ -81,6 +82,9 @@ export default function Form233Screen({ onClose, registerClose, entryUid }: Prop
   const { t: tc } = useTranslation('common');
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [profile, setProfile] = useState<CaptainProfile>(EMPTY_PROFILE);
+  // S140 P2: every star asks the shared table (the 233's three required fields
+  // are region-invariant).
+  const req = (f: string) => isFieldRequired(f, { subformId: profile.subformId ?? 90 }, {}, 'form233');
   const [reasonOpen, setReasonOpen] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
   // S125 7b/7d: the lock is derived STRICTLY from the loaded entry's stored closeDt (ruling 2 —
@@ -323,7 +327,7 @@ export default function Form233Screen({ onClose, registerClose, entryUid }: Prop
           <Text style={styles.cardHeader}>{t('form233.reportingPeriodCard')}</Text>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>{t('form233.startDateLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+            <Text style={styles.label}>{t('form233.startDateLabel')}{req('periodStartDate') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
             <TouchableOpacity
               style={styles.dropdownButton}
               onPress={() => openPicker('start')}
@@ -337,7 +341,7 @@ export default function Form233Screen({ onClose, registerClose, entryUid }: Prop
           </View>
 
           <View style={[styles.inputGroup, styles.lastInputGroup]}>
-            <Text style={styles.label}>{t('form233.endDateLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+            <Text style={styles.label}>{t('form233.endDateLabel')}{req('periodEndDate') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
             <TouchableOpacity
               style={styles.dropdownButton}
               onPress={() => openPicker('end')}
@@ -383,7 +387,7 @@ export default function Form233Screen({ onClose, registerClose, entryUid }: Prop
           <Text style={styles.cardHeader}>{t('form233.reasonCard')}</Text>
 
           <View style={[styles.inputGroup, styles.lastInputGroup]}>
-            <Text style={styles.label}>{t('form233.reasonLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+            <Text style={styles.label}>{t('form233.reasonLabel')}{req('reason') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
             <TouchableOpacity
               style={styles.dropdownButton}
               onPress={() => setReasonOpen(o => !o)}

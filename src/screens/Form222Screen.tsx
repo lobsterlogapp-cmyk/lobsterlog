@@ -46,6 +46,7 @@ import { loadLastLog, loadAllLogs, logsOwingForm222 } from '../utils/dfoLogStora
 // generate/validate/envelope/submit/backup surface (now in sendFormEntry.ts, called from the list).
 import { loadCaptainProfile, CaptainProfile, EMPTY_PROFILE } from '../utils/captainStorage';
 import { clampCoord4 } from '../utils/dfoConstants';
+import { isFieldRequired } from '../utils/dfoRequirements';
 import { REQUIRED_ASTERISK_COLOR } from '../styles/GlobalStyles';
 
 // FR display text for the stored EN reftable labels, one map per table (same descEn can
@@ -169,6 +170,10 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
   const isFr = i18n.language.startsWith('fr');
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [profile, setProfile] = useState<CaptainProfile>(EMPTY_PROFILE);
+  // S140 P2: every star asks the shared table. The 222's requirements don't vary by
+  // region; the Rule-593 set keys on the interaction answer, passed as values.
+  const req = (f: string) =>
+    isFieldRequired(f, { subformId: profile.subformId ?? 90 }, { interactInd: form.interactInd }, 'form222');
   const [speciesOpen, setSpeciesOpen] = useState(false);
   const [interactionTypeOpen, setInteractionTypeOpen] = useState(false);
   const [confidenceOpen, setConfidenceOpen] = useState(false);
@@ -641,7 +646,7 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
             <View style={styles.card}>
               <Text style={styles.cardHeader}>{t('form222.reportDetailsCard')}</Text>
               <View style={styles.lastInputGroup}>
-                <Text style={styles.label}>{t('form222.reportDateLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+                <Text style={styles.label}>{t('form222.reportDateLabel')}{req('reportDate') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
                 <TouchableOpacity
                   style={styles.dropdownButton}
                   onPress={() => openPicker('report')}
@@ -654,7 +659,7 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
                 </TouchableOpacity>
               </View>
               <View style={styles.lastInputGroup}>
-                <Text style={styles.label}>{t('form222.lgbkNumRefLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+                <Text style={styles.label}>{t('form222.lgbkNumRefLabel')}{req('lgbkNumRef') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
                 {/* S137 Phase 7: picker while logs owe a declaration (owing set only, oldest
                     first, date + UID on every row, "Enter manually" last); the plain input when
                     nothing owes or after Enter manually. Picking fills the field, never locks it
@@ -723,7 +728,7 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
               <Text style={styles.cardHeader}>{t('form222.interactionDetailsCard')}</Text>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>{t('form222.interactionDateLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+                <Text style={styles.label}>{t('form222.interactionDateLabel')}{req('interactionDate') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
                 <TouchableOpacity
                   style={styles.dropdownButton}
                   onPress={() => openPicker('interaction')}
@@ -737,7 +742,7 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
               </View>
 
               <View style={styles.lastInputGroup}>
-                <Text style={styles.label}>{t('form222.interactionTimeLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+                <Text style={styles.label}>{t('form222.interactionTimeLabel')}{req('interactionTime') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
                 <TouchableOpacity
                   style={styles.dropdownButton}
                   onPress={() => openPicker('interaction')}
@@ -768,7 +773,7 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
               </TouchableOpacity>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>{t('form222.latLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+                <Text style={styles.label}>{t('form222.latLabel')}{req('lat') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
                 <TextInput
                   style={[styles.input, latError ? styles.inputError : null]}
                   value={form.lat}
@@ -781,7 +786,7 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>{t('form222.lonLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+                <Text style={styles.label}>{t('form222.lonLabel')}{req('lon') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
                 <TextInput
                   style={[styles.input, lonError ? styles.inputError : null]}
                   value={form.lon}
@@ -795,7 +800,7 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
 
               {/* SITE_DSC (string_150, optional) — free-text description of the interaction site */}
               <View style={styles.lastInputGroup}>
-                <Text style={styles.label}>{t('form222.siteDscLabel')}</Text>
+                <Text style={styles.label}>{t('form222.siteDscLabel')}{req('siteDsc') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
                 <TextInput
                   style={[styles.input, styles.remarksInput]}
                   value={form.siteDsc}
@@ -823,12 +828,12 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
                 set('speciesLabel'),
                 t('form222.speciesPlaceholder'),
                 false,
-                true,
+                req('speciesLabel'),
                 SPECIES_FR,
               )}
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>{t('form222.nbAnimalsLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+                <Text style={styles.label}>{t('form222.nbAnimalsLabel')}{req('nbAnimals') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
                 <TextInput
                   style={styles.input}
                   value={form.nbAnimals}
@@ -848,11 +853,13 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
                 set('interactionTypeLabel'),
                 t('form222.interactionTypePlaceholder'),
                 false,
-                true,
+                req('interactionTypeLabel'),
                 INTERACTION_TYPE_FR,
               )}
 
-              {/* Optional specimen detail (XSD minOccurs=0) → ID_CNFDNCE_ID / SPCMN_COND_ID / BDY_LEN_ID */}
+              {/* Specimen detail trio → ID_CNFDNCE_ID / SPCMN_COND_ID / BDY_LEN_ID — XSD minOccurs=0
+                  but Rule 593 makes them mandatory when the interaction answer is Yes; marked
+                  via the table since S140 P2 (design ruling 3). */}
               {renderDropdown(
                 t('form222.confidenceLabel'),
                 form.confidenceLabel,
@@ -862,7 +869,7 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
                 set('confidenceLabel'),
                 t('form222.confidencePlaceholder'),
                 false,
-                false,
+                req('confidenceLabel'),
                 CONFIDENCE_FR,
               )}
 
@@ -875,7 +882,7 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
                 set('specimenCondLabel'),
                 t('form222.specimenCondPlaceholder'),
                 false,
-                false,
+                req('specimenCondLabel'),
                 SPECIMEN_COND_FR,
               )}
 
@@ -888,7 +895,7 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
                 set('lengthCatLabel'),
                 t('form222.lengthCatPlaceholder'),
                 true,
-                false,
+                req('lengthCatLabel'),
                 LENGTH_CAT_FR,
               )}
             </View>
@@ -940,7 +947,7 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
               <Text style={styles.cardHeader}>{t('form222.observerCard')}</Text>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>{t('form222.observerNmLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+                <Text style={styles.label}>{t('form222.observerNmLabel')}{req('observerNm') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
                 <TextInput
                   style={styles.input}
                   value={form.observerNm}
@@ -951,7 +958,7 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
               </View>
 
               <View style={styles.lastInputGroup}>
-                <Text style={styles.label}>{t('form222.contactInfoLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+                <Text style={styles.label}>{t('form222.contactInfoLabel')}{req('contactInfo') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
                 <TextInput
                   style={styles.input}
                   value={form.contactInfo}
@@ -969,7 +976,7 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
 
               {/* EVENT_DSC (string_150, optional) — narrative description of the event */}
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>{t('form222.eventDscLabel')}</Text>
+                <Text style={styles.label}>{t('form222.eventDscLabel')}{req('eventDsc') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
                 <TextInput
                   style={[styles.input, styles.remarksInput]}
                   value={form.eventDsc}

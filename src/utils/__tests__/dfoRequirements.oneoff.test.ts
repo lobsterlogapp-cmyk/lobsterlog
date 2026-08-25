@@ -20,6 +20,7 @@ import {
   requiredGroups,
   RequirementContext,
 } from '../dfoRequirements';
+import { DFO_SUBFORM_FIELD_CONFIG } from '../dfoConstants';
 import { generateElogXml, validateElogXml } from '../dfoXmlGenerator';
 import { generateForm222Xml, validateForm222Xml } from '../dfoForm222Generator';
 import { generateForm233Xml, validateForm233Xml } from '../dfoForm233Generator';
@@ -206,10 +207,12 @@ describe('golden: per-subform answers', () => {
   });
 
   test('app-supplied fields are documentation — never required, never in a gate list', () => {
+    // reportDate left this list at P2: reclassified mandatory (S140 P2 ruling 1) so its
+    // on-screen star survives the repoint — it is prefilled, so gates never find it blank.
     for (const [f, container] of [
       ['operName', 'trip'], ['lgbkUid', 'trip'], ['useCrInd', 'trip'],
       ['targetSpecies', 'effort'], ['specieSzId', 'bycatchRow'],
-      ['reportDate', 'form222'], ['fin', 'form233'],
+      ['gearDamageInd', 'form222'], ['fin', 'form233'],
     ] as const) {
       expect(isFieldRequired(f, ctx(88))).toBe(false);
       expect(fieldRequirement(f, container)!.kind).toBe('app-supplied');
@@ -389,7 +392,7 @@ describe('value checks: a sealed invalid value is the same dead end as a sealed 
 
   test('222 coordinates: XSD ranges (clamped at emit, so range only)', () => {
     const y: Record<string, string> = {
-      interactInd: 'Y', lgbkNumRef: 'QWERTY', interactionDate: '2026-06-10',
+      interactInd: 'Y', reportDate: '2026-06-11', lgbkNumRef: 'QWERTY', interactionDate: '2026-06-10',
       interactionTime: '08:30', lat: '44.1234', lon: '-66.5432', speciesLabel: 'Gray Seal',
       nbAnimals: '2', interactionTypeLabel: 'Entanglement', observerNm: 'Jane',
       contactInfo: 'x@y.z', siteDsc: 'Off the ledge', eventDsc: 'Swam clear',
@@ -626,5 +629,68 @@ describe('agreement (222/233): the form validators', () => {
     expect(missingInContainer('form233', ctx(90),
       { periodStartDate: '2026-06-01', periodEndDate: '2026-06-07', reason: 'Weather',
         logbookUidRefered: 'abc123' }).map(m => m.reason)).toEqual(['invalid']);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// P2 (S140) — THE MARK REPOINT: golden answers for every star the screens now
+// draw by asking the table instead of deciding for themselves
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('P2 marks: the table answers every star the screens now draw', () => {
+  test('config parity: every key in every subform\'s old required[] gets the same star from the table (the isRequired wrapper swap is invisible)', () => {
+    for (const sf of [88, 89, 90, 91]) {
+      for (const key of DFO_SUBFORM_FIELD_CONFIG[sf].required) {
+        expect(isFieldRequired(key, ctx(sf))).toBe(true);
+      }
+    }
+  });
+
+  test('the dormant bait-section key stays dormant through the wrapper', () => {
+    for (const sf of [88, 89, 90, 91]) {
+      expect(isFieldRequired('baitEntries', ctx(sf))).toBe(false);
+    }
+  });
+
+  test('Date Fished (startDt) is marked on all four (ruling 2)', () => {
+    for (const sf of [88, 89, 90, 91]) {
+      expect(isFieldRequired('startDt', ctx(sf))).toBe(true);
+    }
+  });
+
+  test('222 report date keeps its star (ruling 1): reclassified mandatory, prefilled so a gate check is inert', () => {
+    expect(isFieldRequired('reportDate', ctx(90))).toBe(true);
+    expect(fieldRequirement('reportDate', 'form222')!.kind).toBe('per-subform');
+  });
+
+  test('transfer TO pair: both members marked on QC (Rule 252), nowhere else', () => {
+    expect(isFieldRequired('transferToVrn', ctx(88))).toBe(true);
+    expect(isFieldRequired('transferToPndNum', ctx(88))).toBe(true);
+    expect(isFieldRequired('transferToVrn', ctx(90))).toBe(false);
+  });
+
+  test('add-sheet fields: type/species + weight marked everywhere, usage MAR-only (ruling 4)', () => {
+    for (const sf of [88, 89, 90, 91]) {
+      expect(isFieldRequired('type', ctx(sf), {}, 'baitRow')).toBe(true);
+      expect(isFieldRequired('lbs', ctx(sf), {}, 'baitRow')).toBe(true);
+      expect(isFieldRequired('species', ctx(sf), {}, 'bycatchRow')).toBe(true);
+      expect(isFieldRequired('lbs', ctx(sf), {}, 'bycatchRow')).toBe(true);
+    }
+    expect(isFieldRequired('usage', ctx(90), {}, 'bycatchRow')).toBe(true);
+    expect(isFieldRequired('usage', ctx(88), {}, 'bycatchRow')).toBe(false);
+  });
+
+  test('the 222 five + coordinates mark only when the interaction answer is Yes (Rules 593/594)', () => {
+    for (const f of ['siteDsc', 'eventDsc', 'confidenceLabel', 'specimenCondLabel',
+                     'lengthCatLabel', 'lat', 'lon']) {
+      expect(isFieldRequired(f, ctx(90), { interactInd: 'Y' })).toBe(true);
+      expect(isFieldRequired(f, ctx(90), { interactInd: 'N' })).toBe(false);
+    }
+  });
+
+  test('hail extras mark exactly when an effort fishes 38b (Rules 660/661 — 41 alone does not qualify)', () => {
+    expect(isFieldRequired('hlinEta', ctx(90, undefined, [28599]), {}, 'hlin')).toBe(true);
+    expect(isFieldRequired('hlinEta', ctx(90, undefined, [1595]), {}, 'hlin')).toBe(false);
+    expect(isFieldRequired('hlinTotalWeight', ctx(90, undefined, [28599]), {}, 'hlin')).toBe(true);
   });
 });
