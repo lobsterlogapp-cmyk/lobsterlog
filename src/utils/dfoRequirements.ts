@@ -176,6 +176,12 @@ export const DFO_REQUIREMENTS_TABLE: FieldRequirement[] = [
     note: 'QC carrier question — app defaults N (Rule 639), can never be blank.' },
   { fieldKey: 'prtnshpId', container: 'trip', labelKey: null, kind: 'app-supplied',
     state: per({ 88: 'mandatory' }), note: 'QC partnership — app pre-selects 39468.' },
+  { fieldKey: 'bycatchAnswered', container: 'trip', labelKey: 'form234.bycatchShortLabel',
+    kind: 'answered', state: MMMM,
+    note: 'App-chrome usage question (were there bycatch? → is the PCONS group used) — not a ' +
+      'DFO element. Save-gated today (handleSave), converging at P4; starred since the S140 ' +
+      'P3 ruling so the mark and the block are one claim. Rule 1051 untouched: answering No ' +
+      'uses nothing.' },
 
   // ── EFFORT — one entry set per effort / trap group, evaluated with its OWN FMA ──
   { fieldKey: 'fmaId', container: 'effort', labelKey: 'form234.fishingAreaLabel',
@@ -184,12 +190,15 @@ export const DFO_REQUIREMENTS_TABLE: FieldRequirement[] = [
     kind: 'per-subform', state: MMMM, note: 'EFFORT.START_DT (row 62).' },
   { fieldKey: 'haulEndTime', container: 'effort', labelKey: 'form234.timeStoppedHaulingLabel',
     kind: 'per-subform', state: MMMM, note: 'EFFORT.END_DT (row 63).' },
-  { fieldKey: 'sarInd', container: 'effort', labelKey: 'form234.sarIndLabel',
+  { fieldKey: 'sarInd', container: 'effort', labelKey: 'form234.sarIndShortLabel',
     kind: 'answered', state: MMMM,
-    note: 'EFFORT.SAR_IND (row 67) — starts null by Rule 602; pass "" while unanswered.' },
-  { fieldKey: 'mmInterInd', container: 'effort', labelKey: 'form234.mmInterIndLabel',
+    note: 'EFFORT.SAR_IND (row 67) — starts null by Rule 602; pass "" while unanswered. ' +
+      'labelKey is the SHORT form (S140 P3 ruling: toggle bullets read as labels, not ' +
+      'sentences); the on-screen question stays form234.sarIndLabel.' },
+  { fieldKey: 'mmInterInd', container: 'effort', labelKey: 'form234.mmIndShortLabel',
     kind: 'answered', state: MMMM,
-    note: 'EFFORT.MM_INTER_IND (row 68) — starts null by Rule 602; pass "" while unanswered.' },
+    note: 'EFFORT.MM_INTER_IND (row 68) — starts null by Rule 602; short labelKey per the ' +
+      'S140 P3 ruling (see sarInd).' },
   { fieldKey: 'trapHauls', container: 'effort', labelKey: 'form234.trapHaulsLabel',
     kind: 'per-subform', state: MMMM, note: 'EFFORT_DETAIL.NB_GEAR_HLD (row 80).' },
   { fieldKey: 'catchWeight', container: 'effort', labelKey: 'form234.catchWeightLabel',

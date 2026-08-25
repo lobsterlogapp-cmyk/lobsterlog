@@ -219,6 +219,7 @@ describe('golden: per-subform answers', () => {
     }
     expect(missingInContainer('trip', ctx(88), {
       startDt: '2026-06-10', sailTime: '05:30', departurePort: 'RIMOUSKI', crewNb: '2',
+      bycatchAnswered: 'N',
     })).toEqual([]);
   });
 
@@ -374,7 +375,7 @@ describe('value checks: a sealed invalid value is the same dead end as a sealed 
   });
 
   test('crew: count must be 1–20 (Rule 444)', () => {
-    const trip = { startDt: '2026-06-10', sailTime: '05:30', departurePort: 'X', crewNb: '21' };
+    const trip = { startDt: '2026-06-10', sailTime: '05:30', departurePort: 'X', crewNb: '21', bycatchAnswered: 'N' };
     expect(missingInContainer('trip', ctx(88), trip).map(m => ({ f: m.fieldKey, r: m.reason })))
       .toEqual([{ f: 'crewNb', r: 'invalid' }]);
     expect(missingInContainer('trip', ctx(88), { ...trip, crewNb: '20' })).toEqual([]);
@@ -686,6 +687,23 @@ describe('P2 marks: the table answers every star the screens now draw', () => {
       expect(isFieldRequired(f, ctx(90), { interactInd: 'Y' })).toBe(true);
       expect(isFieldRequired(f, ctx(90), { interactInd: 'N' })).toBe(false);
     }
+  });
+
+  test('S140 P3 ruling: the three blocking toggles are one claim — starred via the table, with SHORT bullet labels', () => {
+    // Bycatch is app chrome (the PCONS usage question), save-gated today, starred by ruling.
+    for (const sf of [88, 89, 90, 91]) {
+      expect(isFieldRequired('bycatchAnswered', ctx(sf))).toBe(true);
+    }
+    expect(fieldRequirement('bycatchAnswered', 'trip')!.kind).toBe('answered');
+    // The refusal bullets read as labels, not sentences — the labelKey IS the short form.
+    expect(fieldRequirement('sarInd', 'effort')!.labelKey).toBe('form234.sarIndShortLabel');
+    expect(fieldRequirement('mmInterInd', 'effort')!.labelKey).toBe('form234.mmIndShortLabel');
+    expect(fieldRequirement('bycatchAnswered', 'trip')!.labelKey).toBe('form234.bycatchShortLabel');
+    // An unanswered toggle still refuses through the gate list (the block half of the claim).
+    expect(missingInContainer('trip', ctx(90), {
+      startDt: '2026-08-25', sailTime: '05:30', crewNb: '2', bycatchAnswered: '',
+    }).map(m => ({ f: m.fieldKey, l: m.labelKey })))
+      .toEqual([{ f: 'bycatchAnswered', l: 'form234.bycatchShortLabel' }]);
   });
 
   test('hail extras mark exactly when an effort fishes 38b (Rules 660/661 — 41 alone does not qualify)', () => {
