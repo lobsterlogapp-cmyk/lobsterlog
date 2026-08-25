@@ -482,6 +482,24 @@ export function sarNoToggleRefused(d: Record<string, string | undefined>, except
   return !sarYesOnAnotherEffort(d, exceptIdx) && sarBlocksAnyClosed(d);
 }
 
+// S140 P3 (design ruling 6): deleting a CLOSED fishing effort is refused inside the
+// function itself, not only at the render-hidden trash icon — a future caller that skips
+// the render gate can no longer launder a closed effort's stamp through the slide-up.
+// uiIdx 0 = effort 1 (the flat dgCloseEffort stamp); 1+ = extraEffortNodes[uiIdx-1].
+export function effortDeleteRefused(
+  uiIdx: number,
+  dgCloseEffort: string | undefined,
+  extraEffortNodesJson: string | undefined,
+): boolean {
+  if (uiIdx === 0) return !!dgCloseEffort;
+  try {
+    const nodes = JSON.parse(extraEffortNodesJson || '[]') as Array<{ closeDt?: string }>;
+    return !!nodes[uiIdx - 1]?.closeDt;
+  } catch {
+    return false;
+  }
+}
+
 // S137 Phase 6: true when ANY effort answered marine-mammal Yes — effort 1's flat mmYes and
 // the extras' node flags, through the ONE effort reader (the sarYes twin at the callers above).
 export function mmYesOnAnyEffort(d: Record<string, string | undefined>): boolean {
