@@ -72,9 +72,10 @@ import {
   sarBlocksAnyOpen,
   stampOpenSarBlocks,
   isNoteLocked,
+  effortDeleteRefused,
 } from '../utils/dfoLogStorage';
 import { triggerBackup } from '../utils/dfoBackup';
-import { isFieldRequired } from '../utils/dfoRequirements';
+import { isFieldRequired, missingInContainer, MissingField, FieldValues } from '../utils/dfoRequirements';
 import { applySarCaptureChoice, SarBlockWriter, SarCaptureDeps } from '../utils/sarCapture';
 import { REQUIRED_ASTERISK_COLOR } from '../styles/GlobalStyles';
 import {
@@ -1486,7 +1487,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
 
   const renderTimestampField = (
     label: string, value: string, field: PickerField, isProblem: boolean = false, isReq: boolean = false,
-    extraIdx?: number // S135 Phase 4: which SAR block 2+ this field belongs to (default: none)
+    extraIdx?: number, // S135 Phase 4: which SAR block 2+ this field belongs to (default: none)
+    sealed: boolean = false // S140 P3 (ruled): a sealed blank must not invite a tap it ignores
   ) => (
     <View style={styles.fieldRow}>
       <View style={styles.labelRow}>
@@ -1495,7 +1497,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       </View>
       <TouchableOpacity style={styles.timeButton} onPress={() => { if (!readOnly) openPicker(field, extraIdx); }}>
         <Text style={[styles.timeButtonText, !value && styles.timeButtonPlaceholder]}>
-          {value || t('form234.tapToSetDateTime')}
+          {value || t(sealed ? 'form234.notSetLabel' : 'form234.tapToSetDateTime')}
         </Text>
         <Clock size={16} color="#64748B" />
       </TouchableOpacity>
@@ -1665,6 +1667,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // slide-up argument, one level up). With no effort 2, the delete wipes effort 1's fields
   // (same end state as the toggle-No wipe, without flipping the toggle).
   const removeEffortNode = (uiIdx: number) => {
+    // S140 P3 (design ruling 6): a CLOSED effort can never be deleted — structural, not
+    // render-only. The trash icons are already hidden on closed efforts; this guard stops
+    // any future caller from laundering a closed effort 1's stamp through the slide-up.
+    if (effortDeleteRefused(uiIdx, closes['dgCloseEffort'], JSON.stringify(extraEffortNodes))) return;
     if (uiIdx === 0) {
       if (extraEffortNodes.length > 0) {
         const [first, ...rest] = extraEffortNodes;
@@ -1744,6 +1750,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     if (readOnly) return;
     const e = extraEffortNodes[idx];
     if (!e || e.closeDt) return;
+    {
+      // S140 P3: the gate — this node's full set with its OWN fishing area.
+      const rows = nodeMissingRows(e);
+      if (rows.length) { showCloseBlocked(rows); return; }
+    }
     Alert.alert(
       t('form234.closeEffortConfirmTitle'),
       t('form234.closeEffortConfirmBody'),
@@ -1774,6 +1785,18 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     // Counted through the ONE reader so the confirm's count and the stamping can't drift.
     const openCount = effortsFromData(liveEffortData()).filter(e => !e.closeDt).length;
     if (openCount === 0) return;
+    {
+      // S140 P3 all-or-nothing (ruled): any incomplete open effort → NOTHING closes; one
+      // message lists every missing field grouped by effort ("Fishing Effort N — Field").
+      const allRows: string[] = [];
+      if (effortYes && !closes['dgCloseEffort']) {
+        allRows.push(...effort1MissingRows().map(r => `${t('form234.effortNodeTitle', { n: 1 })} — ${r}`));
+      }
+      extraEffortNodes.forEach((e, i) => {
+        if (!e.closeDt) allRows.push(...nodeMissingRows(e).map(r => `${t('form234.effortNodeTitle', { n: i + 2 })} — ${r}`));
+      });
+      if (allRows.length) { showCloseBlocked(allRows); return; }
+    }
     Alert.alert(
       t('form234.closeConfirmTitle', { section: t('form234.catchEffortSection') }),
       t('form234.closeEffortAllConfirmBody', { count: openCount }),
@@ -2128,8 +2151,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           </View>
           {/* S136 UI round item 2 (RULED): the effort's haul times sit directly under its
               LFA picker, above the trap groups — same shape as effort 1. */}
-          {isVisible('haulStartTime') && renderTimestampField(t('form234.timeStartedHaulingLabel'), formatDateTimeDisplay(e.haulStartDate ?? '', e.haulStartTime ?? ''), 'extraEffortStart', false, isRequired('haulStartTime'), i)}
-          {isVisible('haulEndTime') && renderTimestampField(t('form234.timeStoppedHaulingLabel'), formatDateTimeDisplay(e.haulEndDate ?? '', e.haulEndTime ?? ''), 'extraEffortEnd', false, isRequired('haulEndTime'), i)}
+          {isVisible('haulStartTime') && renderTimestampField(t('form234.timeStartedHaulingLabel'), formatDateTimeDisplay(e.haulStartDate ?? '', e.haulStartTime ?? ''), 'extraEffortStart', false, isRequired('haulStartTime'), i, nodeClosed)}
+          {isVisible('haulEndTime') && renderTimestampField(t('form234.timeStoppedHaulingLabel'), formatDateTimeDisplay(e.haulEndDate ?? '', e.haulEndTime ?? ''), 'extraEffortEnd', false, isRequired('haulEndTime'), i, nodeClosed)}
           {isVisible('gearSubtypeId') && (
             <View style={styles.fieldRow}>
               <Text style={styles.label}>{t('form234.gearSubtypeLabel')}{isRequired('gearSubtypeId') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
@@ -2167,8 +2190,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             </TouchableOpacity>
           )}
           <View style={{ height: 14 }} />
-          {renderYesNoToggle(t('form234.sarIndLabel'), e.sarYes === 'true' ? true : (e.sarYes === 'false' ? false : null), (v: boolean) => handleNodeSarYes(i, v))}
-          {renderYesNoToggle(t('form234.mmInterIndLabel'), e.mmYes === 'true' ? true : (e.mmYes === 'false' ? false : null), (v: boolean) => handleNodeMmYes(i, v))}
+          {renderYesNoToggle(t('form234.sarIndLabel'), e.sarYes === 'true' ? true : (e.sarYes === 'false' ? false : null), (v: boolean) => handleNodeSarYes(i, v), false, isRequired('sarInd'))}
+          {renderYesNoToggle(t('form234.mmInterIndLabel'), e.mmYes === 'true' ? true : (e.mmYes === 'false' ? false : null), (v: boolean) => handleNodeMmYes(i, v), false, isRequired('mmInterInd'))}
           {/* S136 UI round item 6 (RULED): the always-visible one-line NOTE field below the
               questions (the bycatch-sheet shape); hidden only when closed AND empty. */}
           {!(nodeClosed && !note.trim()) && (
@@ -2649,7 +2672,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       {renderTimestampField(
         t('form234.dateTimeLabel'),
         s.date && s.time ? `${s.date} ${s.time}` : '',
-        'extraSarTime', false, isRequired('sarDateTime'), i,
+        'extraSarTime', false, isRequired('sarDateTime'), i, !!s.closeDt || isClosed('dgCloseSar'),
       )}
       <Text style={styles.label}>{t('form234.gpsLocationLabel')}{isRequired('sarGps') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
       <View style={styles.gpsRow}>
@@ -2806,8 +2829,146 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   };
   // Confirm (never suppressible), then stamp the close and persist immediately — closure is
   // irreversible (DFO 234.7). The save merges the new stamp so the lock survives without a later Save.
+  // ── S140 P3: THE CLOSE GATES ─────────────────────────────────────────────────────────
+  // Every close path asks the P1 table (missingInContainer) BEFORE its confirm dialog —
+  // a close with a missing or invalid required field REFUSES, names the fields, and says
+  // the close is permanent (design B3.3, ruled: block, not warn; close-alls all-or-nothing).
+  // Rule 1051 is untouched: an unused section has no close button, so no gate can fire.
+  // The Rule-1052 landing warning stays FIRST and stays warn-and-continue.
+
+  const indToValue = (v: boolean | null): string => (v === null ? '' : v ? 'Y' : 'N');
+
+  // Bullet for one refused field: blank → its label; invalid → the ruled range line
+  // (which carries the label itself); the exactly-one TO pair → both labels + suffix.
+  const closeBulletText = (m: MissingField): string => {
+    if (m.reason === 'invalid') {
+      const rangeKey =
+        m.fieldKey === 'soakDuration' ? 'form234.soakRangeError' :
+        m.fieldKey === 'sarGps' ? 'form234.sarGpsRangeError' :
+        m.fieldKey === 'gpsCoords' ? 'form234.gpsRangeError' : null;
+      if (rangeKey) return t(rangeKey);
+    }
+    if (m.reason === 'pair-none' || m.reason === 'pair-both') {
+      return `${t(m.labelKey)} / ${t(m.pairLabelKey ?? m.labelKey)} — ${t('form234.pairExactlyOne')}`;
+    }
+    return t(m.labelKey);
+  };
+
+  const showCloseBlocked = (rows: string[]) => {
+    Alert.alert(
+      t('form234.closeBlockedTitle'),
+      `${t('form234.closeBlockedBody')}\n• ${rows.join('\n• ')}`,
+      [{ text: tc('nav.ok') }],
+    );
+  };
+
+  // Effort-level table keys (checked once per effort; trap groups carry the rest).
+  const EFFORT_LEVEL_KEYS = new Set(['fmaId', 'haulStartTime', 'haulEndTime', 'sarInd', 'mmInterInd', 'gearSubtypeId']);
+
+  const groupValues = (g: ExtraEffortDetail): FieldValues => ({
+    catchWeight: g.catchWeight ?? '', trapHauls: g.trapHauls ?? '', soakDuration: g.soakDuration ?? '',
+    gpsLat: g.gpsLat ?? '', gpsLng: g.gpsLng ?? '',
+    gridId: g.gridDisplay ?? '', lgridCodeId: g.lgridDisplay ?? '', statSectId: g.statSectDisplay ?? '',
+    vNotchCount: g.vNotchCount ?? '', nbVntchYou: g.nbVntchYou ?? '',
+    nbSpcmnBrd: g.nbSpcmnBrd ?? '', nbSpcmnKept: g.nbSpcmnKept ?? '', trapSize: g.trapSize ?? '',
+  });
+
+  // Rows for ONE fishing effort: effort-level fields once, then every trap group with its
+  // own values (per-block context). Group prefix only when the effort has several groups.
+  const effortMissingRows = (ctxFma: number | null, effortLevel: FieldValues, groups: FieldValues[]): string[] => {
+    const ctx = { subformId, fmaId: ctxFma };
+    const rows: string[] = [];
+    const list = groups.length ? groups : [{} as FieldValues];
+    list.forEach((g, gi) => {
+      for (const m of missingInContainer('effort', ctx, { ...effortLevel, ...g })) {
+        if (gi > 0 && EFFORT_LEVEL_KEYS.has(m.fieldKey)) continue;
+        const prefix = list.length > 1 && !EFFORT_LEVEL_KEYS.has(m.fieldKey)
+          ? `${t('form234.catchEffortBlock', { n: gi + 1 })} — ` : '';
+        rows.push(prefix + closeBulletText(m));
+      }
+    });
+    return rows;
+  };
+
+  // Effort 1 = the flat block (effort level + trap group 1) plus extraEfforts (groups 2+).
+  const effort1MissingRows = (): string[] => {
+    const lvlAndG1: FieldValues = {
+      fmaId: fmaId != null ? String(fmaId) : '',
+      haulStartTime: timeStartedHauling, haulEndTime: timeStoppedHauling,
+      sarInd: indToValue(sarYes), mmInterInd: indToValue(mmYes),
+      gearSubtypeId,
+      catchWeight, trapHauls, soakDuration,
+      gpsLat, gpsLng,
+      gridId: gridDisplay, lgridCodeId: lgridDisplay, statSectId: statSectDisplay,
+      vNotchCount, nbVntchYou, nbSpcmnBrd, nbSpcmnKept, trapSize,
+    };
+    return effortMissingRows(fmaId, lvlAndG1, [lvlAndG1, ...extraEfforts.map(groupValues)]);
+  };
+
+  const nodeMissingRows = (e: ExtraEffortNode): string[] => {
+    const lvl: FieldValues = {
+      fmaId: e.fmaId ?? '', haulStartTime: e.haulStartTime ?? '', haulEndTime: e.haulEndTime ?? '',
+      sarInd: e.sarYes === 'true' ? 'Y' : e.sarYes === 'false' ? 'N' : '',
+      mmInterInd: e.mmYes === 'true' ? 'Y' : e.mmYes === 'false' ? 'N' : '',
+      gearSubtypeId: e.gearSubtypeId ?? '',
+    };
+    const groups = (e.details?.length ? e.details : [{} as ExtraEffortDetail]).map(groupValues);
+    return effortMissingRows(e.fmaId ? Number(e.fmaId) : null, lvl, groups);
+  };
+
+  const sarBlockValues = (uiIdx: number): FieldValues => {
+    if (uiIdx === 0) return { sarDate, sarTime, sarSpecies, sarNbSpcmn, sarCondId, sarLat, sarLng };
+    const s = extraSars[uiIdx - 1];
+    return {
+      sarDate: s?.date ?? '', sarTime: s?.time ?? '', sarSpecies: s?.species ?? '',
+      sarNbSpcmn: s?.nbSpcmn ?? '', sarCondId: s?.condId ?? '', sarLat: s?.lat ?? '', sarLng: s?.lng ?? '',
+    };
+  };
+
+  const baitRowMissing = (e: BaitEntry): MissingField[] => {
+    const codeId = getDfoBaitTypeList(subformId).find(b => b.label === e.type)?.codeId ?? 0;
+    return missingInContainer('baitRow', { subformId, fmaId }, {
+      type: e.type ?? '', lbs: e.lbs ?? '',
+      condition: e.condition != null ? String(e.condition) : '',
+      baitTypeCodeId: String(codeId),
+    });
+  };
+
+  const bycatchRowMissing = (e: BycatchEntry): MissingField[] =>
+    missingInContainer('bycatchRow', { subformId, fmaId }, {
+      species: e.species ?? '', lbs: e.lbs ?? '', usage: e.usage ?? '',
+    });
+
+  // The generic closeSection serves five stamps — each maps to its table container.
+  const sectionMissingRows = (dataKey: string): string[] => {
+    const ctx = { subformId, fmaId };
+    switch (dataKey) {
+      case 'dgCloseLanding':
+        return missingInContainer('landing', ctx, { portId: portLanded, landingTime: timeOfLanding }).map(closeBulletText);
+      case 'dgCloseTransfer':
+        return missingInContainer('transfer', ctx, {
+          transferTime, transferWt, transferToVrn, transferToPndNum, carrierVrn, useCrInd,
+        }).map(closeBulletText);
+      case 'dgCloseHlin':
+        return missingInContainer('hlin', { subformId, effortFmaIds: hail38b ? [DFO_FMA_38B] : [] }, {
+          hlinCompany, hlinConfirmNo, hlinEta, hlinTotalWeight,
+        }).map(closeBulletText);
+      case 'dgCloseHlout':
+        return missingInContainer('hlout', ctx, { hloutCompany, hloutConfirmNo }).map(closeBulletText);
+      case 'dgClosePconsPersonal':
+        // Formality by construction: the close button only renders when the field is filled.
+        return missingInContainer('personalUse', ctx, { personalUse }).map(closeBulletText);
+      default:
+        return [];
+    }
+  };
+
   const closeSection = (dataKey: string, sectionTitleKey: string) => {
     if (readOnly || isClosed(dataKey)) return;
+    {
+      const rows = sectionMissingRows(dataKey);
+      if (rows.length) { showCloseBlocked(rows); return; }
+    }
     Alert.alert(
       t('form234.closeConfirmTitle', { section: t(sectionTitleKey) }),
       t('form234.closeConfirmBody'),
@@ -2833,6 +2994,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // legacy dgCloseEffort; the persistence mirrors closeSection exactly.
   const closeEffortNode = () => {
     if (readOnly || isClosed('dgCloseEffort')) return;
+    {
+      const rows = effort1MissingRows();
+      if (rows.length) { showCloseBlocked(rows); return; }
+    }
     Alert.alert(
       t('form234.closeEffortConfirmTitle'),
       t('form234.closeEffortConfirmBody'),
@@ -2882,6 +3047,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     if (readOnly) return;
     const e = bycatchEntries[index];
     if (!e || bycatchRowClosed(e)) return;
+    {
+      const rows = bycatchRowMissing(e).map(closeBulletText);
+      if (rows.length) { showCloseBlocked(rows); return; }
+    }
     Alert.alert(
       t('form234.closeBycatchRowConfirmTitle'),
       t('form234.closeBycatchRowConfirmBody'),
@@ -2909,6 +3078,15 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     if (readOnly) return;
     const lockCount = bycatchEntries.filter(e => !bycatchRowClosed(e)).length;
     if (lockCount === 0) return;
+    {
+      const allRows: string[] = [];
+      bycatchEntries.forEach((en, i) => {
+        if (bycatchRowClosed(en)) return;
+        bycatchRowMissing(en).forEach(m =>
+          allRows.push(`${en.species?.trim() || t('form234.bycatchRowTitle', { n: i + 1 })} — ${closeBulletText(m)}`));
+      });
+      if (allRows.length) { showCloseBlocked(allRows); return; }
+    }
     Alert.alert(
       t('form234.closeConfirmTitle', { section: t('form234.bycatchSubsection') }),
       t('form234.closeBycatchAllConfirmBody', { count: lockCount }),
@@ -2964,6 +3142,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     if (readOnly) return;
     const e = baitEntries[index];
     if (!e || baitRowClosed(e)) return;
+    {
+      // Normally a no-op — the add-sheet makes blank rows unconstructable; armour for
+      // legacy/hydrated drafts (which have S134 edit-in-place as their fix path).
+      const rows = baitRowMissing(e).map(closeBulletText);
+      if (rows.length) { showCloseBlocked(rows); return; }
+    }
     Alert.alert(
       t('form234.closeBaitRowConfirmTitle'),
       t('form234.closeBaitRowConfirmBody'),
@@ -2995,6 +3179,15 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     if (readOnly) return;
     const lockCount = baitEntries.filter(e => !baitRowClosed(e)).length;
     if (lockCount === 0) return;
+    {
+      const allRows: string[] = [];
+      baitEntries.forEach((en, i) => {
+        if (baitRowClosed(en)) return;
+        baitRowMissing(en).forEach(m =>
+          allRows.push(`${en.type?.trim() || t('form234.baitRowTitle', { n: i + 1 })} — ${closeBulletText(m)}`));
+      });
+      if (allRows.length) { showCloseBlocked(allRows); return; }
+    }
     Alert.alert(
       t('form234.closeConfirmTitle', { section: t('form234.baitReportingSection') }),
       t('form234.closeBaitAllConfirmBody', { count: lockCount }),
@@ -3024,6 +3217,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     if (readOnly) return;
     const b = sarBlocksFromData(liveSarData())[uiIdx];
     if (!b || sarBlockClosedStamp(b)) return;
+    {
+      const rows = missingInContainer('sar', { subformId, fmaId }, sarBlockValues(uiIdx)).map(closeBulletText);
+      if (rows.length) { showCloseBlocked(rows); return; }
+    }
     Alert.alert(
       t('form234.closeSarBlockConfirmTitle'),
       t('form234.closeSarBlockConfirmBody'),
@@ -3059,6 +3256,16 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     if (readOnly) return;
     const lockCount = sarBlocksFromData(liveSarData()).filter(b => !sarBlockClosedStamp(b)).length;
     if (lockCount === 0) return;
+    {
+      // All-or-nothing (ruled): grouped by block ("Species at Risk N — Field").
+      const allRows: string[] = [];
+      sarBlocksFromData(liveSarData()).forEach((b, i) => {
+        if (sarBlockClosedStamp(b)) return;
+        missingInContainer('sar', { subformId, fmaId }, sarBlockValues(i))
+          .forEach(m => allRows.push(`${t('form234.sarBlockTitle', { n: i + 1 })} — ${closeBulletText(m)}`));
+      });
+      if (allRows.length) { showCloseBlocked(allRows); return; }
+    }
     Alert.alert(
       t('form234.closeConfirmTitle', { section: t('form234.sarSubsection') }),
       t('form234.closeSarAllConfirmBody', { count: lockCount }),
@@ -3116,10 +3323,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     // S124: softYes uses the muted "Accepted ✓" chip greens for selected-Yes. The EFFORT toggle
     // is green by default on every log (on screen constantly), so the vibrant fill is too loud;
     // the three Interactions toggles keep the vibrant green (they only turn green on a tap).
-    softYes: boolean = false
+    softYes: boolean = false,
+    required: boolean = false // S140 P3 ruling: the blocking toggles carry the table's star
   ) => (
     <View style={styles.yesNoRow}>
-      <Text style={styles.yesNoLabel}>{label}</Text>
+      <Text style={styles.yesNoLabel}>{label}{required && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
       <View style={styles.yesNoButtons}>
         <TouchableOpacity
           style={[styles.yesNoBtn, value === false && styles.yesNoBtnNoActive]}
@@ -3161,7 +3369,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     // Subforms_requirements_234.xlsx rows 32-40). The Marine Mammal call site does not pass
     // it, so MM renders byte-identically (default false keeps the exact current markup;
     // MM's fields are not DFO elements and stay unmarked by ruling).
-    bare: boolean = false
+    bare: boolean = false,
+    sealed: boolean = false // S140 P3: block-1 SAR closed state, for the timestamp display
   ) => {
     // Normalize to { value, label }: plain strings (Marine Mammal) keep the EN string as
     // the stored value/code and translate at render via mmSpeciesLabels (defaultValue =
@@ -3219,7 +3428,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
 
       <View style={{ height: 10 }} />
       {renderField(t('form234.whatHappenedLabel'), what, setWhat, t('form234.describeInteraction'))}
-      {renderTimestampField(t('form234.dateTimeLabel'), dateStr && timeStr ? `${dateStr} ${timeStr}` : '', pickerFieldName, false, bare && isRequired('sarDateTime'))}
+      {renderTimestampField(t('form234.dateTimeLabel'), dateStr && timeStr ? `${dateStr} ${timeStr}` : '', pickerFieldName, false, bare && isRequired('sarDateTime'), undefined, sealed)}
 
       <Text style={[styles.label, { marginTop: 6 }]}>{t('form234.gpsLocationLabel')}{bare && isRequired('sarGps') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
       <View style={styles.gpsRow}>
@@ -3781,7 +3990,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             />
           </View>
           )}
-          {isVisible('landingTime') && renderTimestampField(t('form234.timeOfLandingLabel'), formatDateTimeDisplay(landingDate, timeOfLanding), 'landing', false, isRequired('landingTime'))}
+          {isVisible('landingTime') && renderTimestampField(t('form234.timeOfLandingLabel'), formatDateTimeDisplay(landingDate, timeOfLanding), 'landing', false, isRequired('landingTime'), undefined, isClosed('dgCloseLanding'))}
           </View>
           {renderCloseControl('dgCloseLanding', 'form234.landingSection', true, closeLanding)}
         </View>
@@ -3921,8 +4130,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           {/* S136 UI round item 2 (RULED): the two haul times sit in the effort header area —
               directly under the LFA picker, above the trap groups. EFFORT-level pair
               (START_DT / END_DT), one per effort. */}
-          {isVisible('haulStartTime') && renderTimestampField(t('form234.timeStartedHaulingLabel'), formatDateTimeDisplay(haulStartDate, timeStartedHauling), 'startHaul', false, isRequired('haulStartTime'))}
-          {isVisible('haulEndTime') && renderTimestampField(t('form234.timeStoppedHaulingLabel'), formatDateTimeDisplay(haulEndDate, timeStoppedHauling), 'stopHaul', false, isRequired('haulEndTime'))}
+          {isVisible('haulStartTime') && renderTimestampField(t('form234.timeStartedHaulingLabel'), formatDateTimeDisplay(haulStartDate, timeStartedHauling), 'startHaul', false, isRequired('haulStartTime'), undefined, isClosed('dgCloseEffort'))}
+          {isVisible('haulEndTime') && renderTimestampField(t('form234.timeStoppedHaulingLabel'), formatDateTimeDisplay(haulEndDate, timeStoppedHauling), 'stopHaul', false, isRequired('haulEndTime'), undefined, isClosed('dgCloseEffort'))}
           {/* GEAR_SBTYP_ID: NL(91) only — EFFORT_BY_GEAR level, so it sits with the effort's
               own fields ABOVE the trap groups (S136 walk fix 2 moved it up from between the
               group fields). Values from DFO_GEAR_SUBTYPE_LIST; i18n display, .label fallback. */}
@@ -4259,8 +4468,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               Interactions & Other; the detail blocks and their per-block closes are
               untouched there. */}
           <View style={{ height: 14 }} />
-          {renderYesNoToggle(t('form234.sarIndLabel'), sarYes, handleSarYes)}
-          {renderYesNoToggle(t('form234.mmInterIndLabel'), mmYes, handleMmYes)}
+          {renderYesNoToggle(t('form234.sarIndLabel'), sarYes, handleSarYes, false, isRequired('sarInd'))}
+          {renderYesNoToggle(t('form234.mmInterIndLabel'), mmYes, handleMmYes, false, isRequired('mmInterInd'))}
           {/* S136 UI round item 6 (RULED): the effort note is an always-visible ONE-LINE
               labelled field below the questions (the bycatch-sheet NOTE shape) — the header
               "Add a note" affordance is gone. Same storage as ever (remarks catch+haul,
@@ -4417,7 +4626,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               }
               setBycatchYes(val);
               if (!val) setBycatchEntries([]);
-            })}
+            }, false, isRequired('bycatchAnswered'))}
             {bycatchYes === true && (
               <View style={styles.incidentBlock}>
                 {bycatchEntries.length === 0 && <Text style={styles.emptyHint}>{t('form234.noBycatchYet')}</Text>}
@@ -4524,7 +4733,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               sarLat, (v: string) => { setSarLat(v); setSarGpsSrc('manual'); },
               sarLng, (v: string) => { setSarLng(v); setSarGpsSrc('manual'); },
               sarDate, sarTime, 'sarTime',
-              true // S135 bare: no inner container — the block chrome IS the card
+              true, // S135 bare: no inner container — the block chrome IS the card
+              !!(sarCloseDt || closes['dgCloseSar']) // S140 P3: sealed display
             )}
                 {renderField(t('form234.sarNbSpcmnLabel'), sarNbSpcmn, setSarNbSpcmn, '0', false, false, 'numeric', isRequired('sarNbSpcmn'))}
                 <View style={styles.fieldRow}>
