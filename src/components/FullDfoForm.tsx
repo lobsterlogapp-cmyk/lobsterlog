@@ -74,6 +74,7 @@ import {
   isNoteLocked,
 } from '../utils/dfoLogStorage';
 import { triggerBackup } from '../utils/dfoBackup';
+import { isFieldRequired } from '../utils/dfoRequirements';
 import { applySarCaptureChoice, SarBlockWriter, SarCaptureDeps } from '../utils/sarCapture';
 import { REQUIRED_ASTERISK_COLOR } from '../styles/GlobalStyles';
 import {
@@ -343,9 +344,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
 
   const fieldConfig = useMemo(() => DFO_SUBFORM_FIELD_CONFIG[subformId] ?? DFO_SUBFORM_FIELD_CONFIG[90], [subformId]);
   const visibleFields = useMemo(() => new Set(fieldConfig.visible), [fieldConfig]);
-  const requiredFields = useMemo(() => new Set(fieldConfig.required), [fieldConfig]);
   const isVisible = (f: string) => visibleFields.has(f);
-  const isRequired = (f: string) => requiredFields.has(f);
+  // S140 P2: requiredness comes from the shared table (dfoRequirements) — the config's
+  // required[] arrays are no longer read for marks (visible[] stays: what is SHOWN is a
+  // different question from what is REQUIRED). The context carries block 1's fishing area;
+  // extra effort nodes ask the table with their own FMA directly (per-block context).
+  const isRequired = (f: string) => isFieldRequired(f, { subformId, fmaId });
 
   // GRID_ID options (QC subform 88, Rules 613x/614x): MV_GRID rows whose DESC_FRE first
   // char equals the map digit for this FMA ("1" ≈ 3259 rows, "4" ≈ 957 — long list is correct).
@@ -1090,8 +1094,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           // where coordinate ENTRY is allowed (Rule 3059) — it must not fill fields the
           // harvester can no longer see (MAR non-38b, NL).
           if (effortCoordsEntryAllowed(subformId, fmaId)) {
-            await captureGps(setGpsLat, setGpsLng);
-            setGpsSrc('gps'); // §11.3: GPS-read coordinates → MODE="G"
+            // S140 P2 defect 48: stamp 'gps' only on a real fix (§11.3 MODE="G"); a failed
+            // capture leaves the fields untouched, so their provenance stays untouched too.
+            // Stays silent — auto-triggers deliberately don't alert (S96).
+            const ok = await captureGps(setGpsLat, setGpsLng);
+            if (ok) setGpsSrc('gps');
           }
         }
         return;
@@ -1103,11 +1110,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       updateEffortNode(idx, { haulEndDate: date, haulEndTime: time });
       const nodeFmaNum = extraEffortNodes[idx]?.fmaId ? Number(extraEffortNodes[idx].fmaId) : null;
       if (effortCoordsEntryAllowed(subformId, nodeFmaNum)) {
-        await captureGps(
+        // S140 P2 defect 48: 'gps' only on success (silent auto-trigger, S96).
+        const ok = await captureGps(
           (v: string) => updateNodeGroup(idx, 0, { gpsLat: v }),
           (v: string) => updateNodeGroup(idx, 0, { gpsLng: v }),
         );
-        updateNodeGroup(idx, 0, { gpsSrc: 'gps' }); // §11.3
+        if (ok) updateNodeGroup(idx, 0, { gpsSrc: 'gps' }); // §11.3
       }
     };
 
@@ -1867,7 +1875,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           <>
             {subformId === 90 && nodeFma !== null && (DFO_LGRID_BY_FMA[nodeFma] ?? []).length > 0 && (
               <View style={styles.fieldRow}>
-                <Text style={styles.label}>{t('form234.lgridLabel')}</Text>
+                <Text style={styles.label}>{t('form234.lgridLabel')}{isFieldRequired('lgridCodeId', { subformId, fmaId: nodeFma }) && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
                 <TouchableOpacity style={styles.timeButton} onPress={() => toggleDd('lgrid')}>
                   <Text style={[styles.timeButtonText, !g.lgridDisplay && styles.timeButtonPlaceholder]}>
                     {g.lgridDisplay || t('form234.selectGrid')}
@@ -1895,7 +1903,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             )}
             {subformId === 88 && nodeFma !== null && nodeFma in DFO_FMA_GRID_MAP && (
               <View style={styles.fieldRow}>
-                <Text style={styles.label}>{t('form234.gridLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+                <Text style={styles.label}>{t('form234.gridLabel')}{isFieldRequired('gridId', { subformId, fmaId: nodeFma }) && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
                 <TouchableOpacity
                   style={styles.timeButton}
                   onPress={() => { if (readOnly) return; setGridSearch(''); setGridPickerNodeTarget({ node: nodeIdx, group: gIdx }); setGridPickerOpen(true); }}
@@ -1909,7 +1917,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             )}
             {subformId === 91 && nodeFma !== null && DFO_FMA_STAT_SECT_REQUIRED.has(nodeFma) && (
               <View style={styles.fieldRow}>
-                <Text style={styles.label}>{t('form234.statSectLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+                <Text style={styles.label}>{t('form234.statSectLabel')}{isFieldRequired('statSectId', { subformId, fmaId: nodeFma }) && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
                 <TouchableOpacity style={styles.timeButton} onPress={() => toggleDd('statSect')}>
                   <Text style={[styles.timeButtonText, !g.statSectDisplay && styles.timeButtonPlaceholder]}>
                     {g.statSectDisplay || t('form234.selectStatSect')}
@@ -1943,14 +1951,14 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             {subformId !== 90 &&
               nodeGroupField(nodeIdx, gIdx, t('form234.soakDurationLabel'), 'soakDuration', 'decimal-pad', isRequired('soakDuration'))}
             {subformId === 88 && nodeFma != null && DFO_FMA_NB_VNTCH.has(nodeFma) &&
-              nodeGroupField(nodeIdx, gIdx, t('form234.nbVntchLabel'), 'vNotchCount', 'numeric', true)}
+              nodeGroupField(nodeIdx, gIdx, t('form234.nbVntchLabel'), 'vNotchCount', 'numeric', isFieldRequired('vNotchCount', { subformId, fmaId: nodeFma }))}
             {subformId === 88 && nodeFma != null && DFO_FMA_NB_VNTCH_YOU.has(nodeFma) &&
-              nodeGroupField(nodeIdx, gIdx, t('form234.nbVntchYouLabel'), 'nbVntchYou', 'numeric', true)}
+              nodeGroupField(nodeIdx, gIdx, t('form234.nbVntchYouLabel'), 'nbVntchYou', 'numeric', isFieldRequired('nbVntchYou', { subformId, fmaId: nodeFma }))}
             {subformId === 91 &&
-              nodeGroupField(nodeIdx, gIdx, t('form234.nbSpcmnKeptLabel'), 'nbSpcmnKept', 'numeric', true)}
+              nodeGroupField(nodeIdx, gIdx, t('form234.nbSpcmnKeptLabel'), 'nbSpcmnKept', 'numeric', isFieldRequired('nbSpcmnKept', { subformId, fmaId: nodeFma }))}
             {subformId === 91 && (
               <View style={styles.fieldRow}>
-                <Text style={styles.label}>{t('form234.trapSizeLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+                <Text style={styles.label}>{t('form234.trapSizeLabel')}{isFieldRequired('trapSize', { subformId, fmaId: nodeFma }) && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
                 <TouchableOpacity style={styles.timeButton} onPress={() => toggleDd('trapSize')}>
                   <Text style={[styles.timeButtonText, !g.trapSize && styles.timeButtonPlaceholder]}>
                     {g.trapSize ? t(`form234.trapSizeOption_${g.trapSize}`, { defaultValue: DFO_TRAP_SIZE_LIST.find(s => String(s.codeId) === g.trapSize)?.label ?? t('form234.selectTrapSize') }) : t('form234.selectTrapSize')}
@@ -1975,7 +1983,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               </View>
             )}
             {subformId === 90 && nodeFma === DFO_FMA_38B &&
-              nodeGroupField(nodeIdx, gIdx, t('form234.nbSpcmnBrdLabel'), 'nbSpcmnBrd', 'numeric', true)}
+              nodeGroupField(nodeIdx, gIdx, t('form234.nbSpcmnBrdLabel'), 'nbSpcmnBrd', 'numeric', isFieldRequired('nbSpcmnBrd', { subformId, fmaId: nodeFma }))}
             {showCoords && (
               <>
                 {!readOnly && !nodeClosed && (
@@ -1983,12 +1991,14 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                     style={styles.captureGpsBtn}
                     onPress={async () => {
                       setGpsCapturing(true);
-                      await captureGps(
+                      // S140 P2 defect 48: 'gps' only on success — a failed capture leaves
+                      // the fields (and so their provenance) untouched.
+                      const ok = await captureGps(
                         (v: string) => updateNodeGroup(nodeIdx, gIdx, { gpsLat: v }),
                         (v: string) => updateNodeGroup(nodeIdx, gIdx, { gpsLng: v }),
                         { alertOnFail: true }
                       );
-                      updateNodeGroup(nodeIdx, gIdx, { gpsSrc: 'gps' }); // §11.3: GPS read → MODE="G"
+                      if (ok) updateNodeGroup(nodeIdx, gIdx, { gpsSrc: 'gps' }); // §11.3: GPS read → MODE="G"
                       setGpsCapturing(false);
                     }}
                     disabled={gpsCapturing}
@@ -2000,9 +2010,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                     </Text>
                   </TouchableOpacity>
                 )}
-                {nodeGroupField(nodeIdx, gIdx, t('form234.latitudeLabel'), 'gpsLat', 'numeric', subformId !== 90,
+                {nodeGroupField(nodeIdx, gIdx, t('form234.latitudeLabel'), 'gpsLat', 'numeric', isFieldRequired('gpsCoords', { subformId, fmaId: nodeFma }),
                   (v: string) => updateNodeGroup(nodeIdx, gIdx, { gpsLat: v, gpsSrc: 'manual' }))}
-                {nodeGroupField(nodeIdx, gIdx, t('form234.longitudeLabel'), 'gpsLng', 'numeric', subformId !== 90,
+                {nodeGroupField(nodeIdx, gIdx, t('form234.longitudeLabel'), 'gpsLng', 'numeric', isFieldRequired('gpsCoords', { subformId, fmaId: nodeFma }),
                   (v: string) => updateNodeGroup(nodeIdx, gIdx, { gpsLng: v, gpsSrc: 'manual' }))}
               </>
             )}
@@ -2252,10 +2262,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           </TouchableOpacity>
         ) : (
           <>
-            {/* MAR settlement grid — same list/gate as block 1 */}
+            {/* MAR settlement grid — same list/gate as block 1; star from the table (Rule 619) */}
             {subformId === 90 && fmaId !== null && (DFO_LGRID_BY_FMA[fmaId] ?? []).length > 0 && (
               <View style={styles.fieldRow}>
-                <Text style={styles.label}>{t('form234.lgridLabel')}</Text>
+                <Text style={styles.label}>{t('form234.lgridLabel')}{isRequired('lgridCodeId') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
                 <TouchableOpacity
                   style={styles.timeButton}
                   onPress={() => { if (readOnly) return; setExtraDropdown(cur => (cur?.idx === i && cur.kind === 'lgrid') ? null : { idx: i, kind: 'lgrid' }); }}
@@ -2287,7 +2297,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             {/* QC grid — reuses the block-1 search Modal via gridPickerTarget */}
             {subformId === 88 && fmaId !== null && fmaId in DFO_FMA_GRID_MAP && (
               <View style={styles.fieldRow}>
-                <Text style={styles.label}>{t('form234.gridLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+                <Text style={styles.label}>{t('form234.gridLabel')}{isRequired('gridId') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
                 <TouchableOpacity
                   style={styles.timeButton}
                   onPress={() => { if (readOnly) return; setGridSearch(''); setGridPickerNodeTarget(null); setGridPickerTarget(i); setGridPickerOpen(true); }}
@@ -2302,7 +2312,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             {/* NL statistical section — same FMA gate as block 1 */}
             {subformId === 91 && fmaId !== null && DFO_FMA_STAT_SECT_REQUIRED.has(fmaId) && (
               <View style={styles.fieldRow}>
-                <Text style={styles.label}>{t('form234.statSectLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+                <Text style={styles.label}>{t('form234.statSectLabel')}{isRequired('statSectId') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
                 <TouchableOpacity
                   style={styles.timeButton}
                   onPress={() => { if (readOnly) return; setExtraDropdown(cur => (cur?.idx === i && cur.kind === 'statSect') ? null : { idx: i, kind: 'statSect' }); }}
@@ -2341,15 +2351,15 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               extraField(i, t('form234.soakDurationLabel'), 'soakDuration', 'decimal-pad', isRequired('soakDuration'))}
             {/* NB_VNTCH / NB_VNTCH_YOU: QC(88) FMA-gated (Rules 623-626) */}
             {subformId === 88 && fmaId != null && DFO_FMA_NB_VNTCH.has(fmaId) &&
-              extraField(i, t('form234.nbVntchLabel'), 'vNotchCount', 'numeric', true)}
+              extraField(i, t('form234.nbVntchLabel'), 'vNotchCount', 'numeric', isRequired('vNotchCount'))}
             {subformId === 88 && fmaId != null && DFO_FMA_NB_VNTCH_YOU.has(fmaId) &&
-              extraField(i, t('form234.nbVntchYouLabel'), 'nbVntchYou', 'numeric', true)}
+              extraField(i, t('form234.nbVntchYouLabel'), 'nbVntchYou', 'numeric', isRequired('nbVntchYou'))}
             {/* NL: specimens kept + trap size */}
             {subformId === 91 &&
-              extraField(i, t('form234.nbSpcmnKeptLabel'), 'nbSpcmnKept', 'numeric', true)}
+              extraField(i, t('form234.nbSpcmnKeptLabel'), 'nbSpcmnKept', 'numeric', isRequired('nbSpcmnKept'))}
             {subformId === 91 && (
               <View style={styles.fieldRow}>
-                <Text style={styles.label}>{t('form234.trapSizeLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+                <Text style={styles.label}>{t('form234.trapSizeLabel')}{isRequired('trapSize') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
                 <TouchableOpacity
                   style={styles.timeButton}
                   onPress={() => { if (readOnly) return; setExtraDropdown(cur => (cur?.idx === i && cur.kind === 'trapSize') ? null : { idx: i, kind: 'trapSize' }); }}
@@ -2378,7 +2388,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             )}
             {/* MAR 38b: broodstock count per CATCH (Rule 654) */}
             {subformId === 90 && fmaId === DFO_FMA_38B &&
-              extraField(i, t('form234.nbSpcmnBrdLabel'), 'nbSpcmnBrd', 'numeric', true)}
+              extraField(i, t('form234.nbSpcmnBrdLabel'), 'nbSpcmnBrd', 'numeric', isRequired('nbSpcmnBrd'))}
             {/* Per-block GPS — QC/GLF mandatory (rows 82/83); MAR 38b (Rule 3059); NL blocked */}
             {showBlockCoords && (
               <>
@@ -2387,12 +2397,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                     style={styles.captureGpsBtn}
                     onPress={async () => {
                       setGpsCapturing(true);
-                      await captureGps(
+                      // S140 P2 defect 48: 'gps' only on success.
+                      const ok = await captureGps(
                         (v: string) => updateExtra(i, { gpsLat: v }),
                         (v: string) => updateExtra(i, { gpsLng: v }),
                         { alertOnFail: true }
                       );
-                      updateExtra(i, { gpsSrc: 'gps' }); // §11.3: GPS-read coordinates → MODE="G"
+                      if (ok) updateExtra(i, { gpsSrc: 'gps' }); // §11.3: GPS-read coordinates → MODE="G"
                       setGpsCapturing(false);
                     }}
                     disabled={gpsCapturing}
@@ -2404,9 +2415,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                     </Text>
                   </TouchableOpacity>
                 )}
-                {extraField(i, t('form234.latitudeLabel'), 'gpsLat', 'numeric', subformId !== 90,
+                {extraField(i, t('form234.latitudeLabel'), 'gpsLat', 'numeric', isRequired('gpsCoords'),
                   (v: string) => updateExtra(i, { gpsLat: v, gpsSrc: 'manual' }))}
-                {extraField(i, t('form234.longitudeLabel'), 'gpsLng', 'numeric', subformId !== 90,
+                {extraField(i, t('form234.longitudeLabel'), 'gpsLng', 'numeric', isRequired('gpsCoords'),
                   (v: string) => updateExtra(i, { gpsLng: v, gpsSrc: 'manual' }))}
               </>
             )}
@@ -2603,7 +2614,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     () => removeSarBlock(i + 1),
     () => closeSarBlock(i + 1),
     <>
-      <Text style={styles.label}>{t('form234.speciesLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+      <Text style={styles.label}>{t('form234.speciesLabel')}{isRequired('sarSpecies') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
       <TouchableOpacity
         style={styles.dropdownBtn}
         onPress={() => { if (readOnly) return; setExtraSarDropdown(cur => (cur?.idx === i && cur.kind === 'species') ? null : { idx: i, kind: 'species' }); }}
@@ -2638,9 +2649,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       {renderTimestampField(
         t('form234.dateTimeLabel'),
         s.date && s.time ? `${s.date} ${s.time}` : '',
-        'extraSarTime', false, true, i,
+        'extraSarTime', false, isRequired('sarDateTime'), i,
       )}
-      <Text style={styles.label}>{t('form234.gpsLocationLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+      <Text style={styles.label}>{t('form234.gpsLocationLabel')}{isRequired('sarGps') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
       <View style={styles.gpsRow}>
         <TextInput
           style={[styles.input, { flex: 1 }, readOnly && styles.inputReadOnly]}
@@ -2662,9 +2673,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           keyboardType="numeric"
         />
       </View>
-      {extraSarInput(i, t('form234.sarNbSpcmnLabel'), 'nbSpcmn', '0', 'numeric', true)}
+      {extraSarInput(i, t('form234.sarNbSpcmnLabel'), 'nbSpcmn', '0', 'numeric', isRequired('sarNbSpcmn'))}
       <View style={styles.fieldRow}>
-        <Text style={styles.label}>{t('form234.sarCondLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+        <Text style={styles.label}>{t('form234.sarCondLabel')}{isRequired('sarCondId') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
         <TouchableOpacity
           style={styles.timeButton}
           onPress={() => { if (readOnly) return; setExtraSarDropdown(cur => (cur?.idx === i && cur.kind === 'cond') ? null : { idx: i, kind: 'cond' }); }}
@@ -3164,7 +3175,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     const selectedLabel = opts.find(o => o.value === species)?.label ?? species;
     return (
     <View style={bare ? undefined : styles.incidentBlock}>
-      <Text style={styles.label}>{t('form234.speciesLabel')}{bare && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
+      <Text style={styles.label}>{t('form234.speciesLabel')}{bare && isRequired('sarSpecies') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
       <TouchableOpacity
         style={styles.dropdownBtn}
         onPress={() => setDropdownOpen(!dropdownOpen)}
@@ -3208,9 +3219,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
 
       <View style={{ height: 10 }} />
       {renderField(t('form234.whatHappenedLabel'), what, setWhat, t('form234.describeInteraction'))}
-      {renderTimestampField(t('form234.dateTimeLabel'), dateStr && timeStr ? `${dateStr} ${timeStr}` : '', pickerFieldName, false, bare)}
+      {renderTimestampField(t('form234.dateTimeLabel'), dateStr && timeStr ? `${dateStr} ${timeStr}` : '', pickerFieldName, false, bare && isRequired('sarDateTime'))}
 
-      <Text style={[styles.label, { marginTop: 6 }]}>{t('form234.gpsLocationLabel')}{bare && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
+      <Text style={[styles.label, { marginTop: 6 }]}>{t('form234.gpsLocationLabel')}{bare && isRequired('sarGps') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
       <View style={styles.gpsRow}>
         <TextInput
           style={[styles.input, { flex: 1 }]}
@@ -3690,9 +3701,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             {renderNoteButton('trip')}
           </View>
           {renderNoteInput('trip', remarks.trip ?? '', (v) => setNote('trip', v))}
-          {/* DATE FISHED — date picker, auto-fills today on new log */}
+          {/* DATE FISHED — date picker, auto-fills today on new log. S140 P2 ruling 2:
+              marked (TRIP.START_DT, matrix row 16 — same element as Time Sailed). */}
           <View style={styles.fieldRow}>
-            <Text style={styles.label}>{t('form234.dateFishedLabel')}</Text>
+            <Text style={styles.label}>{t('form234.dateFishedLabel')}{isRequired('startDt') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
             <TouchableOpacity
               style={styles.timeButton}
               onPress={() => {
@@ -3729,7 +3741,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               this render previously showed on all four subforms. */}
           {isVisible('departurePort') && (
           <View style={styles.fieldRow}>
-            <Text style={styles.label}>{t('form234.departurePortLabel')}</Text>
+            <Text style={styles.label}>{t('form234.departurePortLabel')}{isRequired('departurePort') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
             <DfoPortSelector
               value={departurePort}
               codeId={departurePortCodeId}
@@ -3968,10 +3980,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 <Text style={styles.effortBlockSummary} numberOfLines={1}>{extraSummary(block1Detail())}</Text>
               </TouchableOpacity>
             ) : (<>
-                    {/* LGRID Selector — shown for any FMA that has a grid list */}
+                    {/* LGRID Selector — shown for any FMA that has a grid list (≡ the 13
+                        Rule-619 LFAs); S140 P2: the star now comes from the table (Rule 619
+                        makes the grid DFO-mandatory on those LFAs, incl. LFA 34) */}
                     {fmaId !== null && (DFO_LGRID_BY_FMA[fmaId] ?? []).length > 0 && (
                       <View style={styles.fieldRow}>
-                        <Text style={styles.label}>{t('form234.lgridLabel')}</Text>
+                        <Text style={styles.label}>{t('form234.lgridLabel')}{isRequired('lgridCodeId') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
                         <TouchableOpacity
                           style={styles.timeButton}
                           onPress={() => { if (readOnly) return; setLgridPickerOpen(o => !o); setFmaPickerOpen(false); }}
@@ -4009,7 +4023,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                         Blocked for 88/89/90 (Rule 608); visible implies required here. */}
                     {subformId === 91 && fmaId !== null && DFO_FMA_STAT_SECT_REQUIRED.has(fmaId) && (
                       <View style={styles.fieldRow}>
-                        <Text style={styles.label}>{t('form234.statSectLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+                        <Text style={styles.label}>{t('form234.statSectLabel')}{isRequired('statSectId') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
                         <TouchableOpacity
                           style={styles.timeButton}
                           onPress={() => { if (readOnly) return; setStatSectPickerOpen(o => !o); setFmaPickerOpen(false); }}
@@ -4052,7 +4066,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                         Visible implies required → label always carries *. Long list is expected. */}
                     {subformId === 88 && fmaId !== null && fmaId in DFO_FMA_GRID_MAP && (
                       <View style={styles.fieldRow}>
-                        <Text style={styles.label}>{t('form234.gridLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+                        <Text style={styles.label}>{t('form234.gridLabel')}{isRequired('gridId') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
                         <TouchableOpacity
                           style={styles.timeButton}
                           onPress={() => { if (readOnly) return; setGridSearch(''); setGridPickerNodeTarget(null); setGridPickerTarget(-1); setGridPickerOpen(true); setFmaPickerOpen(false); }}
@@ -4073,15 +4087,15 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               for QC/GLF/MAR (Subforms row 93). isVisible-gated so 88/89/90 screens are
               pixel-identical to pre-S110 (S110 Phase 2). */}
           {isVisible('nbSpcmnKept') &&
-            renderField(t('form234.nbSpcmnKeptLabel'), nbSpcmnKept, setNbSpcmnKept, '0', false, false, 'numeric', true)}
-          {/* NB_VNTCH / NB_VNTCH_YOU: QC(88) only, mandatory in the Rule 623/625 FMA lists, blocked elsewhere */}
+            renderField(t('form234.nbSpcmnKeptLabel'), nbSpcmnKept, setNbSpcmnKept, '0', false, false, 'numeric', isRequired('nbSpcmnKept'))}
+          {/* NB_VNTCH / NB_VNTCH_YOU: QC(88) only, mandatory in the Rule 624/626 FMA lists, blocked elsewhere */}
           {subformId === 88 && fmaId != null && DFO_FMA_NB_VNTCH.has(fmaId) &&
-            renderField(t('form234.nbVntchLabel'), vNotchCount, setVNotchCount, '0', false, false, 'numeric', true)}
+            renderField(t('form234.nbVntchLabel'), vNotchCount, setVNotchCount, '0', false, false, 'numeric', isRequired('vNotchCount'))}
           {subformId === 88 && fmaId != null && DFO_FMA_NB_VNTCH_YOU.has(fmaId) &&
-            renderField(t('form234.nbVntchYouLabel'), nbVntchYou, setNbVntchYou, '0', false, false, 'numeric', true)}
+            renderField(t('form234.nbVntchYouLabel'), nbVntchYou, setNbVntchYou, '0', false, false, 'numeric', isRequired('nbVntchYou'))}
           {/* NB_SPCMN_BRD: MAR(90) FMA 38b only — mandatory there (Rule 654), blocked elsewhere (Rule 655) */}
           {isVisible('nbSpcmnBrd') && fmaId === DFO_FMA_38B &&
-            renderField(t('form234.nbSpcmnBrdLabel'), nbSpcmnBrd, setNbSpcmnBrd, '0', false, false, 'numeric', true)}
+            renderField(t('form234.nbSpcmnBrdLabel'), nbSpcmnBrd, setNbSpcmnBrd, '0', false, false, 'numeric', isRequired('nbSpcmnBrd'))}
           {/* TRP_SZ_ID: NL(91) only — mandatory (Subforms_requirements row 79), blocked for 88/89/90.
               Values from DFO_TRAP_SIZE_LIST (39682 Standard / 39683 Large; Rule 611). */}
           {isVisible('trapSize') && (
@@ -4132,8 +4146,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                   style={styles.captureGpsBtn}
                   onPress={async () => {
                     setGpsCapturing(true);
-                    await captureGps(setGpsLat, setGpsLng, { alertOnFail: true });
-                    setGpsSrc('gps'); // §11.3: GPS-read coordinates → MODE="G"
+                    // S140 P2 defect 48: 'gps' only on success.
+                    const ok = await captureGps(setGpsLat, setGpsLng, { alertOnFail: true });
+                    if (ok) setGpsSrc('gps'); // §11.3: GPS-read coordinates → MODE="G"
                     setGpsCapturing(false);
                   }}
                   disabled={gpsCapturing}
@@ -4145,8 +4160,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                   </Text>
                 </TouchableOpacity>
               )}
-              {renderField(t('form234.latitudeLabel'), gpsLat, (v: string) => { setGpsLat(v); setGpsSrc('manual'); }, '0.0000', false, false, 'numeric')}
-              {renderField(t('form234.longitudeLabel'), gpsLng, (v: string) => { setGpsLng(v); setGpsSrc('manual'); }, '0.0000', false, false, 'numeric')}
+              {renderField(t('form234.latitudeLabel'), gpsLat, (v: string) => { setGpsLat(v); setGpsSrc('manual'); }, '0.0000', false, false, 'numeric', isRequired('gpsCoords'))}
+              {renderField(t('form234.longitudeLabel'), gpsLng, (v: string) => { setGpsLng(v); setGpsSrc('manual'); }, '0.0000', false, false, 'numeric', isRequired('gpsCoords'))}
             </>
           )}
             </>)}
@@ -4511,9 +4526,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               sarDate, sarTime, 'sarTime',
               true // S135 bare: no inner container — the block chrome IS the card
             )}
-                {renderField(t('form234.sarNbSpcmnLabel'), sarNbSpcmn, setSarNbSpcmn, '0', false, false, 'numeric', true)}
+                {renderField(t('form234.sarNbSpcmnLabel'), sarNbSpcmn, setSarNbSpcmn, '0', false, false, 'numeric', isRequired('sarNbSpcmn'))}
                 <View style={styles.fieldRow}>
-                  <Text style={styles.label}>{t('form234.sarCondLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text></Text>
+                  <Text style={styles.label}>{t('form234.sarCondLabel')}{isRequired('sarCondId') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
                   <TouchableOpacity
                     style={styles.timeButton}
                     onPress={() => { if (readOnly) return; setSarCondPickerOpen(o => !o); }}
@@ -4589,7 +4604,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             })}
             {useCrInd === 'Y' && (
               <View style={styles.incidentBlock}>
-                {renderField(t('form234.carrierVrnLabel'), carrierVrn, setCarrierVrn, '0', false, false, 'numeric', true)}
+                {renderField(t('form234.carrierVrnLabel'), carrierVrn, setCarrierVrn, '0', false, false, 'numeric', isFieldRequired('carrierVrn', { subformId, fmaId }, { useCrInd }))}
               </View>
             )}
             {/* PRTNSHP_ID — MV_PARTNERSHIP_TYPE picker */}
@@ -4613,10 +4628,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             })}
             {transferYes === true && (
               <View style={styles.incidentBlock}>
-                {renderField(t('form234.transferTimeLabel'), transferTime, setTransferTime, 'HH:MM', false, false, 'numbers-and-punctuation', true)}
-                {renderField(t('form234.transferWtLabel'), transferWt, setTransferWt, '0', false, false, 'numeric', true)}
-                {renderField(t('form234.transferToVrnLabel'), transferToVrn, (v: string) => { setTransferToVrn(v); if (v) setTransferToPndNum(''); }, '0', false, false, 'numeric')}
-                {renderField(t('form234.transferToPndNumLabel'), transferToPndNum, (v: string) => { setTransferToPndNum(v); if (v) setTransferToVrn(''); }, '', false, false, 'default')}
+                {renderField(t('form234.transferTimeLabel'), transferTime, setTransferTime, 'HH:MM', false, false, 'numbers-and-punctuation', isRequired('transferTime'))}
+                {renderField(t('form234.transferWtLabel'), transferWt, setTransferWt, '0', false, false, 'numeric', isRequired('transferWt'))}
+                {/* Rule 252: exactly ONE of the TO pair — both members marked (S140 P2) */}
+                {renderField(t('form234.transferToVrnLabel'), transferToVrn, (v: string) => { setTransferToVrn(v); if (v) setTransferToPndNum(''); }, '0', false, false, 'numeric', isRequired('transferToVrn'))}
+                {renderField(t('form234.transferToPndNumLabel'), transferToPndNum, (v: string) => { setTransferToPndNum(v); if (v) setTransferToVrn(''); }, '', false, false, 'default', isRequired('transferToPndNum'))}
                 <Text style={styles.emptyHint}>{t('form234.transferToHint')}</Text>
               </View>
             )}
@@ -4640,6 +4656,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             </View>
             <View {...closedBodyProps('dgClosePconsPersonal')}>
             {renderNoteInput('personalUse', remarks.personalUse ?? '', (v) => setNote('personalUse', v))}
+            {/* S140 P2 ruling 3: deliberately UNMARKED — this field IS the "is the group
+                used" signal, and Rule 1051 forbids forcing an unused section; a star would
+                read as an obligation. The table's personalUse entry serves the close gate
+                (P3) once the group is used, not a mark. The one site that does not ask the
+                table for a star. */}
             {renderField(t('form234.personalUseLabel'), personalUse, setPersonalUse, '0', false, false, 'numeric')}
             </View>
             {renderCloseControl('dgClosePconsPersonal', 'form234.personalUseSection', personalUse.trim().length > 0)}
@@ -4661,8 +4682,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           {renderField(t('form234.confirmNoLabel'), hlinConfirmNo, setHlinConfirmNo, t('form234.confirmNoPlaceholder'), false, false, 'default', isRequired('hlinConfirmNo'))}
           {/* Rules 660/661: mandatory with a 38b effort (asterisked — shown ⇔ mandatory),
               entry BLOCKED on a 41-only log (hidden, the S110 blocked-means-hide precedent). */}
-          {hail38b && renderField(t('form234.etaLabel'), hlinEta, setHlinEta, t('form234.etaPlaceholder'), false, false, 'default', true)}
-          {hail38b && renderField(t('form234.totalWeightLabel'), hlinTotalWeight, setHlinTotalWeight, '0', false, false, 'numeric', true)}
+          {/* Rules 660/661 key on "any effort fishes 38b" — hail38b IS that fact, translated
+              into the table's context shape (S140 P2). */}
+          {hail38b && renderField(t('form234.etaLabel'), hlinEta, setHlinEta, t('form234.etaPlaceholder'), false, false, 'default', isFieldRequired('hlinEta', { subformId, effortFmaIds: hail38b ? [DFO_FMA_38B] : [] }))}
+          {hail38b && renderField(t('form234.totalWeightLabel'), hlinTotalWeight, setHlinTotalWeight, '0', false, false, 'numeric', isFieldRequired('hlinTotalWeight', { subformId, effortFmaIds: hail38b ? [DFO_FMA_38B] : [] }))}
           </View>
           {renderCloseControl('dgCloseHlin', 'form234.hlinSection', !!(hlinCompany || hlinConfirmNo))}
         </View>
@@ -4738,6 +4761,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
 
               <Text style={styles.sheetLabel}>
                 {sheetMode === 'bait' ? t('form234.baitTypeLabel') : t('form234.speciesLabel')}
+                {isFieldRequired(sheetMode === 'bait' ? 'type' : 'species', { subformId, fmaId }, {}, sheetMode === 'bait' ? 'baitRow' : 'bycatchRow') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}
               </Text>
               <TouchableOpacity style={styles.dropdownBtn} onPress={() => setSheetDropdownOpen(o => !o)}>
                 <Text style={[styles.dropdownBtnText, !sheetSelectedType && styles.dropdownPlaceholder]}>
@@ -4790,7 +4814,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 baitConditionState(subformId, sheetSelectedCodeId) === 'mandatory' && (
                 <>
                   <Text style={[styles.sheetLabel, { marginTop: 14 }]}>
-                    {t('form234.baitConditionLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>
+                    {t('form234.baitConditionLabel')}{isFieldRequired('condition', { subformId, fmaId }, { baitTypeCodeId: String(sheetSelectedCodeId) }, 'baitRow') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}
                   </Text>
                   <TouchableOpacity style={styles.dropdownBtn} onPress={() => setSheetConditionOpen(o => !o)}>
                     <Text style={[styles.dropdownBtnText, sheetCondition == null && styles.dropdownPlaceholder]}>
@@ -4818,7 +4842,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 </>
               )}
 
-              <Text style={[styles.sheetLabel, { marginTop: 14 }]}>{t('form234.weightLbsLabel')}</Text>
+              <Text style={[styles.sheetLabel, { marginTop: 14 }]}>{t('form234.weightLbsLabel')}{isFieldRequired('lbs', { subformId, fmaId }, {}, sheetMode === 'bait' ? 'baitRow' : 'bycatchRow') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
               <TextInput
                 style={styles.input}
                 value={sheetLbs}
@@ -4850,7 +4874,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               {sheetMode === 'bycatch' && subformId === 90 && (
                 <>
                   <Text style={[styles.sheetLabel, { marginTop: 14 }]}>
-                    {t('form234.usageLabel')}<Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>
+                    {t('form234.usageLabel')}{isFieldRequired('usage', { subformId, fmaId }, {}, 'bycatchRow') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}
                   </Text>
                   <View style={{ gap: 6, marginTop: 4 }}>
                     {BYCATCH_USAGE_OPTIONS.map(opt => (
