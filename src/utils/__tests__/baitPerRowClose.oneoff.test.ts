@@ -1,7 +1,10 @@
 // S134 — per-occurrence closure on BAIT_USED (§5: "close each occurrence of a data group
 // independently"; DFO ruling, Lisa Doyle, Aug 17 2026). Each bait row may carry its OWN
-// closeDt and note; the card-level dgCloseBaitUsed / rem.bait are the FALLBACK (Ruling D3 —
-// the SAR pattern, no data rewrite), so a pre-S134 log emits byte-identically.
+// closeDt and note; the card-level dgCloseBaitUsed is the STAMP fallback (Ruling D3 — the
+// SAR pattern, no data rewrite).
+// S142 (defect 44) — the card-level rem.bait NOTE fallback is GONE. rem.bait lost its edit
+// box in S134, so it could only ever fill a REM slot the harvester had left empty. A row
+// with no note of its own now emits no REM at all. Case 2 below is the guard.
 import { generateElogXml } from '../dfoXmlGenerator';
 import { unclosedUsedGroupKeys, baitRowsAllClosed, stampOpenBaitRows, DfoLog } from '../dfoLogStorage';
 import { EMPTY_PROFILE, CaptainProfile } from '../captainStorage';
@@ -146,12 +149,16 @@ test('adding to a LEGACY card-stamped log: the stamp is adopted into existing ro
   expect(blocks[2]).not.toContain('<DG_CLOSE_DT>');
 });
 
-// ── Case 2: a LEGACY-shape log (card stamp + card note only) emits byte-identically to HEAD ──
-// Expected bytes captured at HEAD (d7e084b) from this exact fixture BEFORE the S134 change,
-// via a throwaway capture test (run on this machine — localToUtcIso is timezone-local).
-test('legacy-shape log (card-level stamp + card-level note, no per-row fields) emits byte-identically to HEAD', () => {
+// ── Case 2: a LEGACY-shape log — the card STAMP still carries; the card NOTE no longer does ──
+// Was: "emits byte-identically to HEAD", against bytes captured at HEAD (d7e084b) before the
+// S134 change. S142 (defect 44) deliberately broke that byte-identity for the REM line only:
+// rem.bait is retired (no edit box since S134) and the generator no longer falls back to it,
+// so these two rows — which have no note of their own — now emit NO REM. The two
+// <REM>Shared bait note</REM> lines that stood after each <DG_CLOSE_DT> were removed from the
+// golden below; every other byte is unchanged, which is the point of keeping the golden.
+test('legacy-shape log: the card-level STAMP still carries to every row, and the retired card-level note no longer emits', () => {
   const log = mar90();
-  log.remarks = { bait: 'Shared bait note' };
+  log.remarks = { bait: 'Shared bait note' }; // retired key — must NOT reach the XML
   log.data.dgCloseBaitUsed = '2026-06-10T15:00:00.000Z';
   log.data.baitEntries = JSON.stringify([
     { type: 'Mackerel, Atlantic', lbs: '100' },
@@ -178,13 +185,11 @@ test('legacy-shape log (card-level stamp + card-level note, no per-row fields) e
       <BT_TYP_ID>1315</BT_TYP_ID>
       <BT_WT>45.36</BT_WT>
       <DG_CLOSE_DT>20260610150000</DG_CLOSE_DT>
-      <REM>Shared bait note</REM>
     </BAIT_USED>
     <BAIT_USED>
       <BT_TYP_ID>3392</BT_TYP_ID>
       <BT_WT>22.68</BT_WT>
       <DG_CLOSE_DT>20260610150000</DG_CLOSE_DT>
-      <REM>Shared bait note</REM>
     </BAIT_USED>
     <EFFORT>
       <START_DT>202606100900</START_DT>
@@ -219,4 +224,6 @@ test('legacy-shape log (card-level stamp + card-level note, no per-row fields) e
   </TRIP>
 </ELOG>`;
   expect(generateElogXml(log, profile)).toBe(expected);
+  // S142 (defect 44), stated as its own claim so a future restore of the fallback fails loudly
+  expect(generateElogXml(log, profile)).not.toContain('Shared bait note');
 });

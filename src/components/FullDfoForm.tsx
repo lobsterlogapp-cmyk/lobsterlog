@@ -72,6 +72,8 @@ import {
   stampOpenSarBlocks,
   isNoteLocked,
   effortDeleteRefused,
+  LOG_REMARK_KEYS,
+  seedRemarksFromLog,
 } from '../utils/dfoLogStorage';
 import { triggerBackup } from '../utils/dfoBackup';
 import { isFieldRequired, missingInContainer, MissingField, FieldValues, EFFORT_LEVEL_KEYS } from '../utils/dfoRequirements';
@@ -118,11 +120,13 @@ interface FullDfoFormProps {
 
 // S134: closeDt/note are OPTIONAL additions — each bait row is its own BAIT_USED occurrence
 // and closes independently (§5 per-occurrence closure). Legacy rows without them parse
-// unchanged and fall back to the card-level dgCloseBaitUsed stamp / rem.bait note at emit.
+// unchanged and fall back to the card-level dgCloseBaitUsed STAMP at emit. S142 (defect 44):
+// there is no longer a note fallback — a row with no note of its own emits no REM.
 type BaitEntry = { type: string; lbs: string; condition?: number; closeDt?: string; note?: string; };
 // S134 Phase 3: closeDt/note are OPTIONAL additions — each bycatch row is its own PCONS
 // occurrence and closes independently (the bait pattern). Legacy rows parse unchanged and
-// fall back to the card-level dgClosePconsBycatch stamp / rem.pcons note at emit.
+// fall back to the card-level dgClosePconsBycatch STAMP at emit. S142 (defect 44): there is
+// no longer a note fallback — a row with no note of its own emits no REM.
 type BycatchEntry = { species: string; lbs: string; usage?: string; closeDt?: string; note?: string; };
 
 // S124 Phase 3: the dgClose* data-map keys the generator reads for DG_CLOSE_DT, one per
@@ -668,19 +672,19 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           setHloutCompany(d.hloutCompany || '');
           setHloutConfirmNo(d.hloutConfirmNo || '');
           // Per-section REM notes — restore existing; Catch & Effort uses haul+catch together.
-          const r = log.remarks ?? {};
-          const ce = r.catch ?? r.haul ?? '';
-          const seeded: LogRemarks = {
-            trip: r.trip ?? '', landing: r.landing ?? '', catch: ce, haul: ce,
-            bait: r.bait ?? '', pcons: r.pcons ?? '', transfer: r.transfer ?? '',
-            hlin: r.hlin ?? '', hlout: r.hlout ?? '', sar: r.sar ?? '',
-          };
+          // S142 (defect 44): this used to be a hand-written list of names that had drifted
+          // from LogRemarks — `personalUse` was missing, so a Personal Use note was dropped on
+          // reopen and then erased by the next save. Both the values and the open flags now
+          // derive from LOG_REMARK_KEYS, the one list that TypeScript keeps in step with the
+          // type, so a note can never again be lost by being left off a list here.
+          const seeded = seedRemarksFromLog(log);
           setRemarks(seeded);
-          setNoteOpen({
-            trip: !!seeded.trip, landing: !!seeded.landing, catch: !!ce, bait: !!seeded.bait,
-            pcons: !!seeded.pcons, transfer: !!seeded.transfer, hlin: !!seeded.hlin, hlout: !!seeded.hlout,
-            // S135: no card-level sar entry — the SAR note affordance is per block now
-          });
+          // Open the box for any note that has text, so a restored note is VISIBLE rather than
+          // hidden behind "Add a note". Keys with no note box of their own (bait, pcons, sar —
+          // per-row/per-block since S134/S135) get an inert entry that nothing reads.
+          setNoteOpen(
+            Object.fromEntries(LOG_REMARK_KEYS.map(k => [k, !!seeded[k]])) as Record<string, boolean>
+          );
   };
 
   useEffect(() => {
@@ -4473,9 +4477,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         {isVisible('baitEntries') && (
         <View style={styles.section}>
           {/* S134: the card-level Add-a-note affordance is REMOVED — bait notes are per row
-              now (Ruling B), entered in the add/edit sheet. A legacy card-level rem.bait is
-              untouched in storage and still emits as the fallback for rows without their own
-              note (Ruling D3), but has no edit surface. */}
+              now (Ruling B), entered in the add/edit sheet. S142 (defect 44): the legacy
+              card-level rem.bait is untouched in storage but is RETIRED — no edit surface and
+              no longer emitted, so it can never speak for a row whose note box is empty. */}
           <View style={styles.sectionHeader}>
             <View style={[styles.sectionIcon, { backgroundColor: '#FEE2E2' }]}><Fish size={16} color="#B91C1C" /></View>
             <Text style={styles.sectionTitle}>{t('form234.baitReportingSection')}{isRequired('baitEntries') && <Text style={{ color: REQUIRED_ASTERISK_COLOR, fontSize: 13 }}> *</Text>}</Text>
@@ -4557,10 +4561,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             <View style={[styles.sectionIcon, { backgroundColor: '#FEF3C7' }]}><Anchor size={16} color="#B45309" /></View>
             <Text style={styles.sectionTitle}>{t('form234.interactionsSection')}</Text>
             {/* S134 Phase 3 (B4): the shared card-header note is GONE — bycatch notes are
-                per row and Personal Use has its own note. A legacy rem.pcons is untouched
-                in storage and still emits as the fallback, with no edit surface. Accepted
-                consequence: on 88/89/91 this header has no note button at all (Personal
-                Use is MAR-only). */}
+                per row and Personal Use has its own note. S142 (defect 44): a legacy
+                rem.pcons is untouched in storage but is RETIRED — no edit surface and no
+                longer emitted, so it can no longer be substituted into a bycatch row or into
+                the Personal Use record. Accepted consequence: on 88/89/91 this header has no
+                note button at all (Personal Use is MAR-only). */}
           </View>
 
           {/* Bycatch */}

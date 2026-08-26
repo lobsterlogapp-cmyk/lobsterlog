@@ -21,25 +21,62 @@ export type DfoLogStatus = 'draft' | 'complete';
 
 // Per-section REM (note) text, grouped at the human-section level. Each key fans out to
 // one or more XSD REM nodes in dfoXmlGenerator.ts (T1 Logbook test):
-//   trip -> TRIP | bait -> BAIT_USED (legacy fallback; bait notes are per-row since S134) |
-//   haul -> EFFORT + EFFORT_BY_GEAR + EFFORT_DETAIL | catch -> CATCH | landing -> LANDING |
-//   hlin -> HLIN | hlout -> HLOUT | pcons -> legacy shared PCONS fallback (bycatch notes are
-//   per-row and Personal Use has its own key since S134 Phase 3) |
+//   trip -> TRIP | haul -> EFFORT + EFFORT_BY_GEAR + EFFORT_DETAIL | catch -> CATCH |
+//   landing -> LANDING | hlin -> HLIN | hlout -> HLOUT |
 //   personalUse -> the Personal Use PCONS node | transfer -> TRANSFER + TRANSFER_DTL (QC-88) |
-//   sar -> SAR
+//   sar -> SAR (legacy shared fallback for a block without its own note, S135)
+// S142 (defect 44): 'bait' and 'pcons' are RETIRED. They lost their edit boxes in S134 when
+// bait and bycatch notes went per row, and S142 removed the generator fallbacks that were
+// still reading them — so nothing on any screen writes them and nothing in the emit reads
+// them. The fields stay on the type so stored logs still parse and round-trip unchanged.
 // All optional, free text, type string_2000 (max 2000 chars) in the XSD.
 export interface LogRemarks {
   trip?: string;
-  bait?: string;
+  bait?: string;        // RETIRED (S142) — no edit box, no emit; parsed for round-trip only
   haul?: string;
   catch?: string;
   landing?: string;
   hlin?: string;
   hlout?: string;
-  pcons?: string;
+  pcons?: string;       // RETIRED (S142) — no edit box, no emit; parsed for round-trip only
   personalUse?: string;
   transfer?: string;
   sar?: string;
+}
+
+// --- S142 (defect 44): ONE key list for LogRemarks, and it cannot drift from the type ---
+// The defect this kills: FullDfoForm's loader carried a SECOND, hand-written list of note
+// names. S134 Phase 3 added `personalUse` to the type, the lock map, the screen and the
+// generator — and not to that list. The note was saved correctly, dropped on the way back
+// in, and then erased by the next save.
+//
+// REMARK_KEY_PRESENCE is typed Record<keyof LogRemarks, true>, so TypeScript REFUSES to
+// compile if a field is added to LogRemarks and not added here. There is now no second
+// list to forget it in.
+const REMARK_KEY_PRESENCE: Record<keyof LogRemarks, true> = {
+  trip: true, bait: true, haul: true, catch: true, landing: true, hlin: true,
+  hlout: true, pcons: true, personalUse: true, transfer: true, sar: true,
+};
+export const LOG_REMARK_KEYS = Object.keys(REMARK_KEY_PRESENCE) as (keyof LogRemarks)[];
+
+// Rebuild a log's note state for the form, one entry per LogRemarks key. Absent → ''.
+// Used by FullDfoForm.hydrateFromLog on BOTH load paths (opening a saved log, and the S95
+// crash-safety restore), so neither path can drift from the other or from the type.
+//
+// CARVE-OUT — 'catch' and 'haul' are the ONE non-uniform pair, and deliberately so. The
+// screen has a SINGLE Catch & Effort NOTE box that writes both keys with the same text
+// (FullDfoForm's effort note field), because the generator reads 'haul' for EFFORT +
+// EFFORT_BY_GEAR + EFFORT_DETAIL and 'catch' for CATCH — one note, four XSD slots. Seeding
+// both from one value keeps that invariant true on the way back in; preferring 'catch' then
+// 'haul' means a log saved by any past version returns with the pair agreeing.
+export function seedRemarksFromLog(log: DfoLog): LogRemarks {
+  const r = log.remarks ?? {};
+  const out: LogRemarks = {};
+  for (const k of LOG_REMARK_KEYS) out[k] = r[k] ?? '';
+  const ce = r.catch ?? r.haul ?? '';
+  out.catch = ce;
+  out.haul = ce;
+  return out;
 }
 
 // S121 multi-grid: one ADDITIONAL catch-effort block (EFFORT_DETAIL 2..n + its CATCH).
@@ -616,12 +653,14 @@ export function unclosedUsedGroupKeys(log: Pick<DfoLog, 'subformId' | 'data'>): 
 // and is intentionally absent from the map.
 // S134: 'bait' is absent too — bait notes are PER ROW now (each row's note rides the row,
 // locked by that row's own close). The legacy card-level rem.bait has no edit surface any
-// more (the bait card's Add-a-note affordance was removed), so it needs no lock entry; it
-// still EMITS as the fallback for legacy rows without their own note.
+// more (the bait card's Add-a-note affordance was removed), so it needs no lock entry.
 // S134 Phase 3: 'pcons' is absent for the same reason — bycatch notes are per row, and the
-// Interactions & Other header note affordance was removed; the legacy shared rem.pcons
-// still emits as the fallback. Personal Use gained its OWN note ('personalUse'), locked by
-// the Personal Use close (it stays a single occurrence with a single card-level close).
+// Interactions & Other header note affordance was removed. Personal Use gained its OWN note
+// ('personalUse'), locked by the Personal Use close (it stays a single occurrence with a
+// single card-level close).
+// S142 (defect 44): neither 'bait' nor 'pcons' EMITS any more either — the generator
+// fallbacks that read them are gone. Nothing writes them and nothing reads them; they need
+// no lock entry because there is nothing left to lock.
 // S135 Phase 2: 'sar' is absent too — SAR notes are PER BLOCK now (block 1's rides the flat
 // sarNote key, blocks 2+ ride their extraSars item; each locks with its own block's close).
 // The legacy shared rem.sar has no edit surface any more and still emits as the fallback.

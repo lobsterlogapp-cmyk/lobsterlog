@@ -82,6 +82,9 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   // several XSD nodes (haul → EFFORT/EFFORT_BY_GEAR/EFFORT_DETAIL; transfer → TRANSFER/
   // TRANSFER_DTL). tag() drops empty/blank values, so an absent note emits NOTHING — this
   // keeps the mandatory-only (T2) output byte-identical when no remarks are present.
+  // S142 (defect 44): rem.bait and rem.pcons are RETIRED and are read NOWHERE below. Bait
+  // and bycatch notes ride their own rows (S134) and Personal Use has its own key; a row or
+  // a card with no note of its own now emits no REM rather than borrowing a retired one.
   const rem = log.remarks ?? {};
   const inLbs = captainProfile.units === 'lbs';
   const subformId = log.subformId ?? 90;
@@ -114,9 +117,8 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   try {
     const baitList = getDfoBaitTypeList(subformId);
     // S134: rows may carry their OWN closeDt/note (per-occurrence closure, §5 — DFO ruling
-    // Aug 17). Both are optional additions; legacy rows without them fall back to the
-    // card-level dgCloseBaitUsed stamp and the card-level rem.bait note (the SAR pattern,
-    // :404-407), so a pre-S134 log emits byte-identically.
+    // Aug 17). The STAMP still falls back to the card-level dgCloseBaitUsed for legacy rows
+    // without their own. The NOTE does not — see the REM line below.
     const entries: { type: string; lbs: string; condition?: number; closeDt?: string; note?: string }[] = JSON.parse(d.baitEntries || '[]');
     // S125 Phase 9: DG_CLOSE_DT ONLY from a real stored stamp — no now() fallback. Absent → tag()
     // drops the element (used-but-unclosed is refused before the send by unclosedUsedGroupKeys).
@@ -136,7 +138,11 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
              tag('BT_WT',       wtKg, '      ') +
              tag('BT_COND_ID',  condStr, '      ') +
              tag('DG_CLOSE_DT', e.closeDt ? toCloseTimestamp(e.closeDt) : baitCloseDt, '      ') +
-             tag('REM',         e.note || (rem.bait ?? ''), '      ') +
+             // S142 (defect 44): the row's OWN note, or nothing. The old `|| rem.bait`
+             // fallback is REMOVED — rem.bait is retired (no edit box since S134), so it
+             // could only ever speak for a note box the harvester had left empty. Do not
+             // restore it: nothing should fill a remark slot from a value no screen owns.
+             tag('REM',         e.note ?? '', '      ') +
              `    </BAIT_USED>\n`;
     }).join('');
   } catch { /* noop */ }
@@ -145,9 +151,9 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   try {
     const pconsList = getDfoPconsSpeciesList(subformId);
     // S134 Phase 3: bycatch rows may carry their OWN closeDt/note (per-occurrence closure,
-    // §5 — the bait pattern). Optional additions; legacy rows fall back to the card-level
-    // dgClosePconsBycatch stamp and the card-level rem.pcons note, so a pre-S134 log emits
-    // byte-identically.
+    // §5 — the bait pattern). The STAMP still falls back to the card-level
+    // dgClosePconsBycatch for legacy rows without their own. The NOTE does not — see the
+    // REM lines below.
     const bycatch: { species: string; lbs: string; usage?: string; closeDt?: string; note?: string }[] = JSON.parse(d.bycatchEntries || '[]');
     // S124 Phase 2: PCONS closes per occurrence — one for the bycatch block, one for personal
     // use (Rule 1505, §5.2.1). S125 Phase 9: each DG_CLOSE_DT comes ONLY from its real stored
@@ -169,7 +175,7 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
       // resolution. Lobster 826 / non-lobster 10670 value logic unchanged for the 89 case.
       const szLine = subformId === 89 ? `      <SPECIE_SZ_ID>${szId}</SPECIE_SZ_ID>\n` : '';
       const usgLine = subformId === 90 && e.usage ? `      <USG_ID>${xmlEscape(e.usage)}</USG_ID>\n` : '';
-      // S134 Phase 3: the row's own stamp/note WIN; the card-level values are the fallback.
+      // S134 Phase 3: the row's own stamp wins; the card-level stamp is the fallback.
       const rowClose = e.closeDt ? toCloseTimestamp(e.closeDt) : bycatchClose;
       parts.push(
         `    <PCONS>\n` +
@@ -179,7 +185,10 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
         `      <WT>${wt}</WT>\n` +
         usgLine +
         (rowClose ? `      <DG_CLOSE_DT>${rowClose}</DG_CLOSE_DT>\n` : '') +
-        tag('REM', e.note || (rem.pcons ?? ''), '      ') +
+        // S142 (defect 44): the row's OWN note, or nothing. The old `|| rem.pcons` fallback
+        // is REMOVED — rem.pcons is retired (no edit box since S134 Phase 3). Do not
+        // restore it: nothing should fill a remark slot from a value no screen owns.
+        tag('REM', e.note ?? '', '      ') +
         `    </PCONS>\n`
       );
     }
@@ -198,9 +207,12 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
         `      <WT>${personalUseWt}</WT>\n` +
         `      <USG_ID>37822</USG_ID>\n` +
         (personalClose ? `      <DG_CLOSE_DT>${personalClose}</DG_CLOSE_DT>\n` : '') +
-        // S134 Phase 3 (B4): Personal Use has its OWN note; the legacy shared rem.pcons is
-        // the fallback so pre-split logs emit byte-identically.
-        tag('REM', rem.personalUse || (rem.pcons ?? ''), '      ') +
+        // S134 Phase 3 (B4): Personal Use has its OWN note.
+        // S142 (defect 44): the old `|| rem.pcons` fallback is REMOVED. It was putting the
+        // retired Interactions/bycatch note into the Personal Use record on any log that
+        // carried one — two such files were already sent. Personal Use now transmits its own
+        // note or nothing at all. Do not restore the fallback.
+        tag('REM', rem.personalUse ?? '', '      ') +
         `    </PCONS>\n`
       );
     }

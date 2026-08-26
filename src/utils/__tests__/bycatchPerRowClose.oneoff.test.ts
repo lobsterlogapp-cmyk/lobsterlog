@@ -1,8 +1,11 @@
 // S134 Phase 3 — per-occurrence closure on PCONS(bycatch), copying the shipped bait
 // pattern (95f0d32): each bycatch row may carry its OWN closeDt and note; the card-level
-// dgClosePconsBycatch / rem.pcons are the LEGACY fallback, so a pre-S134 log emits
-// byte-identically. Personal Use gains its OWN note (remarks.personalUse), falling back to
-// the legacy shared rem.pcons.
+// dgClosePconsBycatch is the LEGACY STAMP fallback. Personal Use has its OWN note
+// (remarks.personalUse).
+// S142 (defect 44) — the shared rem.pcons NOTE fallback is GONE from BOTH sites. It lost its
+// edit box in S134 Phase 3, and while it survived in the emit it was filling the Personal Use
+// record with the retired Interactions/bycatch text on any log that carried one (two such
+// files were already sent). A row or card with no note of its own now emits no REM.
 import { generateElogXml } from '../dfoXmlGenerator';
 import { unclosedUsedGroupKeys, rowsAllClosed, stampOpenRows, DfoLog } from '../dfoLogStorage';
 import { EMPTY_PROFILE, CaptainProfile } from '../captainStorage';
@@ -141,12 +144,19 @@ test('the personal-use note emits into the personal-use PCONS node only', () => 
   expect(blocks[1]).not.toContain('Crab note');
 });
 
-// ── A LEGACY-shape log (card stamps + shared card note) emits byte-identically to HEAD ──
-// Expected bytes captured at HEAD (95f0d32) from this exact fixture BEFORE the Phase-3
-// change, via a throwaway capture test (machine-local — localToUtcIso is timezone-local).
-test('legacy-shape log (card-level stamps + shared pcons note, no per-row fields) emits byte-identically to HEAD', () => {
+// ── A LEGACY-shape log — the card STAMPS still carry; the shared card NOTE no longer does ──
+// Was: "emits byte-identically to HEAD", against bytes captured at HEAD (95f0d32) before the
+// Phase-3 change. S142 (defect 44) deliberately broke that byte-identity for the REM lines
+// only: rem.pcons is retired (no edit box since S134 Phase 3) and the generator no longer
+// falls back to it — not on a bycatch row, and not on the Personal Use record. All THREE
+// <REM>Shared pcons note</REM> lines were removed from the golden below (two bycatch rows and
+// the personal-use node); every other byte is unchanged, which is the point of the golden.
+//
+// The third one is the defect's whole point: the personal-use PCONS was carrying the
+// Interactions/bycatch note as if the harvester had written it about his own table lobster.
+test('legacy-shape log: the card-level STAMPS still carry, and the retired shared note no longer emits — not on a bycatch row, not on Personal Use', () => {
   const log = mar90();
-  log.remarks = { pcons: 'Shared pcons note' };
+  log.remarks = { pcons: 'Shared pcons note' }; // retired key — must NOT reach the XML
   log.data.bycatchEntries = JSON.stringify([
     { species: 'Crab, Jonah', lbs: '40', usage: '37818' },
     { species: 'Crab, Rock', lbs: '20' },
@@ -181,14 +191,12 @@ const EXPECTED_HEAD = `<?xml version="1.0" encoding="UTF-8"?>
       <WT>18.14</WT>
       <USG_ID>37818</USG_ID>
       <DG_CLOSE_DT>20260610150000</DG_CLOSE_DT>
-      <REM>Shared pcons note</REM>
     </PCONS>
     <PCONS>
       <SPECIE_ID>1287</SPECIE_ID>
       <SPECIE_FRM_ID>4691</SPECIE_FRM_ID>
       <WT>9.07</WT>
       <DG_CLOSE_DT>20260610150000</DG_CLOSE_DT>
-      <REM>Shared pcons note</REM>
     </PCONS>
     <PCONS>
       <SPECIE_ID>1312</SPECIE_ID>
@@ -196,7 +204,6 @@ const EXPECTED_HEAD = `<?xml version="1.0" encoding="UTF-8"?>
       <WT>4.54</WT>
       <USG_ID>37822</USG_ID>
       <DG_CLOSE_DT>20260610153000</DG_CLOSE_DT>
-      <REM>Shared pcons note</REM>
     </PCONS>
     <EFFORT>
       <START_DT>202606100900</START_DT>

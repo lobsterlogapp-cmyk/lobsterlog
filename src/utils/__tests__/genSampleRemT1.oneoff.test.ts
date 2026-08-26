@@ -6,6 +6,12 @@
 // catch×1, hlin×1, hlout×1, landing×1, transfer×2 (TRANSFER / TRANSFER_DTL — one note
 // fans across both, QC-88 only).
 //
+// S142 (defect 44) — WHICH VALUE FEEDS EACH SITE CHANGED, the site count did not. The bait
+// site is fed by the bait ROW's own note, the bycatch PCONS by the bycatch ROW's own note,
+// and the personal-use PCONS by remarks.personalUse. The retired shared remarks.bait and
+// remarks.pcons feed NOTHING any more — this fixture sets both to sentinels and asserts they
+// never appear, so a restored fallback fails here.
+//
 // HLIN/HLOUT (FMA 28599/1595 → MAR-90) and TRANSFER (QC-88 only) are mutually exclusive
 // in a legitimate log, so coverage is split across two fixtures:
 //   Fixture A (MAR-90, FMA 28599): 11 sites — trip, bait, pcons×2, haul×3, catch, hlin,
@@ -84,9 +90,11 @@ test('T1/A MAR-90: REM emitted at 11 sites (trip, bait, pcons×2, haul×3, catch
   log.data.gpsLng = '-66.5432';
   log.data.gpsSrc = 'gps';
   log.data.nbSpcmnBrd = '3';
-  // bait → BAIT_USED; bycatch + personalUse → two PCONS nodes
-  log.data.baitEntries = JSON.stringify([{ type: 'Mackerel, Atlantic', lbs: '100' }]);
-  log.data.bycatchEntries = JSON.stringify([{ species: 'Crab, Jonah', lbs: '40' }]); // codeId 1286
+  // bait → BAIT_USED; bycatch + personalUse → two PCONS nodes.
+  // S142 (defect 44): these three sites are fed by the row's / the card's OWN note now —
+  // the retired shared rem.bait / rem.pcons fallbacks are gone, so the notes ride here.
+  log.data.baitEntries = JSON.stringify([{ type: 'Mackerel, Atlantic', lbs: '100', note: 'Bait remark' }]);
+  log.data.bycatchEntries = JSON.stringify([{ species: 'Crab, Jonah', lbs: '40', note: 'Bycatch remark' }]); // codeId 1286
   // hlin/hlout → valid company labels so *_CIE_ID is a real codeId (not 0, which fails integer_10)
   log.data.hlinCompany = 'Resmar';                  // 11682
   log.data.hlinConfirmNo = 'HLIN-001';
@@ -95,13 +103,18 @@ test('T1/A MAR-90: REM emitted at 11 sites (trip, bait, pcons×2, haul×3, catch
 
   const remarks: LogRemarks = {
     trip: 'Trip-level remark',
-    bait: 'Bait remark',
     haul: HAUL_NOTE,       // fans across EFFORT / EFFORT_BY_GEAR / EFFORT_DETAIL
     catch: 'Catch remark',
     landing: 'Landing remark',
     hlin: 'Hail-in remark',
     hlout: 'Hail-out remark',
-    pcons: 'PCONS remark', // fans across both PCONS nodes (bycatch + personal-use)
+    personalUse: 'Personal use remark', // the Personal Use PCONS node's OWN note (S134 Phase 3)
+    // S142 (defect 44): the two RETIRED keys are set to sentinels on purpose. They have had no
+    // edit box since S134 and the generator no longer falls back to them, so neither may appear
+    // anywhere in the output. If a future session restores either fallback, the two
+    // not-toContain assertions below fail loudly.
+    bait: 'RETIRED bait remark — must not emit',
+    pcons: 'RETIRED pcons remark — must not emit',
     // transfer intentionally omitted — TRANSFER is not reachable on MAR-90
   };
   log.remarks = remarks;
@@ -119,8 +132,19 @@ test('T1/A MAR-90: REM emitted at 11 sites (trip, bait, pcons×2, haul×3, catch
   expect(between(xml, '<EFFORT_BY_GEAR>', '<EFFORT_DETAIL>')).toContain(`<REM>${HAUL_NOTE_XML}</REM>`);
   expect(between(xml, '<EFFORT_DETAIL>', '<CATCH>')).toContain(`<REM>${HAUL_NOTE_XML}</REM>`);
 
-  // pcons note fans across both PCONS nodes
-  expect(countOcc(xml, '<REM>PCONS remark</REM>')).toBe(2);
+  // S142 (defect 44): the two PCONS nodes carry their OWN notes — the bycatch row's and
+  // Personal Use's — and they are DIFFERENT text. One shared value can no longer fill both.
+  const pcons = xml.match(/<PCONS>[\s\S]*?<\/PCONS>/g) ?? [];
+  expect(pcons).toHaveLength(2);
+  expect(pcons[0]).toContain('<REM>Bycatch remark</REM>');   // bycatch row
+  expect(pcons[0]).not.toContain('Personal use remark');
+  expect(pcons[1]).toContain('<USG_ID>37822</USG_ID>');      // personal-use node
+  expect(pcons[1]).toContain('<REM>Personal use remark</REM>');
+  expect(pcons[1]).not.toContain('Bycatch remark');
+
+  // S142 (defect 44): NEITHER retired shared note reaches the file, from any node.
+  expect(xml).not.toContain('RETIRED bait remark');
+  expect(xml).not.toContain('RETIRED pcons remark');
 
   // single-node notes, each inside its own parent
   expect(between(xml, '<BAIT_USED>', '</BAIT_USED>')).toContain('<REM>Bait remark</REM>');
