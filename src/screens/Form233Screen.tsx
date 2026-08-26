@@ -27,7 +27,9 @@ import {
 // S125 7b: send moved off the form onto the list card — the screen no longer imports the
 // generate/validate/envelope/submit/backup surface (now in sendFormEntry.ts, called from the list).
 import { loadCaptainProfile, CaptainProfile, EMPTY_PROFILE } from '../utils/captainStorage';
-import { loadLastLog } from '../utils/dfoLogStorage';
+// S142 (defect 58): loadLastLog is gone from this screen — it existed ONLY to prefill
+// LOGBOOK_UID_REFERED, which no longer happens. The 222 keeps its own prefill (different
+// element, mandatory, different rule); this file no longer reads the logbook store at all.
 import { REQUIRED_ASTERISK_COLOR } from '../styles/GlobalStyles';
 import { isFieldRequired, missingInContainer, MissingField } from '../utils/dfoRequirements';
 
@@ -94,8 +96,10 @@ export default function Form233Screen({ onClose, registerClose, entryUid }: Prop
   const [lockedCloseDt, setLockedCloseDt] = useState<string | null>(null);
 
   // S125 7a draft lifecycle refs:
-  //  prefillRef  — the logbookUidRefered value auto-prefilled on mount; the empty-check counts
-  //                the reference field as content only when it DIFFERS from this (a user fix).
+  //  prefillRef  — S142 (defect 58): this field is NO LONGER prefilled, so this stays '' for the
+  //                life of the screen. The empty-check below reads it, and against '' it means
+  //                exactly the right thing: the reference field counts as content the moment the
+  //                harvester types anything at all.
   //  draftUidRef — uid this screen instance owns: the hydrated draft's uid, else minted on first
   //                park. Reusing it makes save/park an upsert (one draft per session).
   const prefillRef = useRef<string>('');
@@ -106,12 +110,7 @@ export default function Form233Screen({ onClose, registerClose, entryUid }: Prop
     (async () => {
       // S125 7c: hydrate the SPECIFIC entry the list asked for (entryUid), else start fresh.
       // No more auto-restore-newest — that was the trap (couldn't start a new form or delete one).
-      const [last, draft] = await Promise.all([
-        loadLastLog(),
-        entryUid ? loadForm233EntryByUid(entryUid) : Promise.resolve(null),
-      ]);
-      const prefill = last?.lgbkUid ?? '';
-      prefillRef.current = prefill;
+      const draft = entryUid ? await loadForm233EntryByUid(entryUid) : null;
       if (draft) {
         draftUidRef.current = draft.uid;
         // 7d ruling 2: derive the lock from stored closeDt. A closed entry opened via Review
@@ -125,11 +124,15 @@ export default function Form233Screen({ onClose, registerClose, entryUid }: Prop
           reportDtlRemarks: draft.reportDtlRemarks ?? '',
           logbookUidRefered: draft.logbookUidRefered ?? '',
         });
-      } else if (prefill) {
-        // LOGBOOK_UID_REFERED prefill (mirrors the Form 222 LGBK_NUM_REF prefill — never
-        // overwrites typed text) on a fresh form.
-        setForm(prev => prev.logbookUidRefered ? prev : { ...prev, logbookUidRefered: prefill });
       }
+      // S142 (defect 58): a FRESH form starts with LOGBOOK_UID_REFERED EMPTY. It used to be
+      // prefilled with loadLastLog()?.lgbkUid — the most recently CREATED complete log, which
+      // bears no relation to the period the report covers (a report for Aug 23–25 arrived
+      // carrying an Aug-14 UID). The element is optional, and DFO's own dictionary says:
+      // "If this inactivity is not related to any particular logbook, leave this field blank."
+      // A prefilled optional field is opt-out, and only if the harvester notices. DO NOT
+      // restore the prefill as a helpful touch. (It also made the box arrive full against a
+      // 6-character cap, so typing into it was a silent no-op — that trap goes with it.)
     })();
   }, []);
 
@@ -395,7 +398,8 @@ export default function Form233Screen({ onClose, registerClose, entryUid }: Prop
 
         {/* Related logbook → REPORT.LOGBOOK_UID_REFERED (string_6, optional) — S116.
             Identifier, not a remark: plain TextInput, own card (one concept per card).
-            Prefilled from the most recent complete log's lgbkUid; fully editable.
+            S142 (defect 58): starts EMPTY and stays empty unless the harvester types a
+            reference — it is NOT prefilled (see the mount effect for why).
             No optional-marker on the header: unmarked-means-optional is the screen
             convention (required fields carry the asterisk); the "(Optional)" class is
             cleared in one later pass per the S113 ruling. */}
