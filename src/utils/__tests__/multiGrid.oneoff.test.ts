@@ -398,6 +398,15 @@ test('MAR-90 (38b) two-grid log emits two EFFORT_DETAIL with sequential GEAR_GRP
     gpsLat: '44.2000', gpsLng: '-66.6000', gpsSrc: 'manual',
     nbSpcmnBrd: '2',
   }]);
+  // S142 defect 52: this test asserts the document VALIDATES, and a 38b log must carry both
+  // hail groups (Rules 2024/2025). Set here rather than on the shared makeLog(90) fixture so
+  // PRE_S121_BASELINE_90 — a deliberate byte pin — stays byte-for-byte untouched.
+  log.data.hlinCompany = 'Atlantic Catch Data Ltd.';
+  log.data.hlinConfirmNo = 'HI-1001';
+  log.data.dgCloseHlin = '2026-06-10T15:00:00.000Z';
+  log.data.hloutCompany = 'Atlantic Catch Data Ltd.';
+  log.data.hloutConfirmNo = 'HO-1001';
+  log.data.dgCloseHlout = '2026-06-10T15:00:00.000Z';
   const xml = generateElogXml(closeAllGroups(log), profile);
   expect(count(xml, '<EFFORT_DETAIL>')).toBe(2);
   expect(count(xml, '</EFFORT_DETAIL>')).toBe(2);

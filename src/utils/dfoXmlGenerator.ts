@@ -7,7 +7,7 @@
 import forge from 'node-forge';
 import { DfoLog, ExtraSarDetail, ExtraEffortNode, sarBlocksFromData, effortsFromData, fishesHailArea } from './dfoLogStorage';
 import { CaptainProfile } from './captainStorage';
-import { getDfoBaitTypeList, baitConditionState, getDfoPconsSpeciesList, DFO_SPECIE_FRM_ID, DFO_PCONS_OTHER_SIZE_ID, DFO_GEAR_ID, DFO_SOFT_VER, DFO_CIE_ID, DFO_FORM_VER_ID, DFO_HLIN_COMPANY_LIST, DFO_HLOUT_COMPANY_LIST, DFO_SUBFORM_REGISTRY, DFO_FMA_38B, DFO_FMA_NB_VNTCH, DFO_FMA_NB_VNTCH_YOU, DFO_FMA_STAT_SECT_REQUIRED, DFO_STAT_SECT_BY_FMA, DFO_FMA_GRID_MAP, DFO_GRID_BLOCKED_FMA, clampCoord4, effortCoordsEntryAllowed } from './dfoConstants';
+import { getDfoBaitTypeList, baitConditionState, getDfoPconsSpeciesList, DFO_SPECIE_FRM_ID, DFO_PCONS_OTHER_SIZE_ID, DFO_GEAR_ID, DFO_SOFT_VER, DFO_CIE_ID, DFO_FORM_VER_ID, DFO_HLIN_COMPANY_LIST, DFO_HLOUT_COMPANY_LIST, DFO_FMA_HLIN_REQUIRED, DFO_SUBFORM_REGISTRY, DFO_FMA_38B, DFO_FMA_NB_VNTCH, DFO_FMA_NB_VNTCH_YOU, DFO_FMA_STAT_SECT_REQUIRED, DFO_STAT_SECT_BY_FMA, DFO_FMA_GRID_MAP, DFO_GRID_BLOCKED_FMA, clampCoord4, effortCoordsEntryAllowed } from './dfoConstants';
 import { MV_PARTNERSHIP_TYPE, MV_GRID } from '../data/reftables';
 
 export function generateReportUid(): string {
@@ -447,11 +447,17 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   // 38b/41 effort was the second one.
   if (fishesHailArea(d)) {
     if (d.hlinCompany || d.hlinConfirmNo) {
-      // HLIN_CIE_ID: integer company code via label→codeId lookup (Rule 27);
-      // '0' when unmatched — TODO open question 4 (companies name→code confirmation)
+      // HLIN_CIE_ID: integer company code via label→codeId lookup (Rule 27).
+      // S142 defect 52 (F2): an unmatched company emits NOTHING, never the old '0'. There is
+      // no company '0' in Mv_service_provider, so '0' was a false statement that DFO's schema
+      // happily accepted and transmitted. An omitted element is the truth — and because the
+      // spec below has HLIN_CIE_ID at min:1, validateElogXml already refuses the file. The
+      // fisherman is DECLINING to name a company (the picker is on the card, starred, and
+      // stores the EN label on tap), so there is nothing to substitute: Rule 27's list has no
+      // "none" code and — unlike Rule 93's HLOUT list — no DFO IVR entry to borrow either.
       const hlinCie = DFO_HLIN_COMPANY_LIST.find(c => c.label === d.hlinCompany);
       body += `    <HLIN>\n`;
-      body += tag('HLIN_CIE_ID',  hlinCie ? String(hlinCie.codeId) : '0', '      ');
+      body += tag('HLIN_CIE_ID',  hlinCie ? String(hlinCie.codeId) : '', '      ');
       body += tag('HLIN_NUM',     d.hlinConfirmNo ?? '', '      ');
       body += tag('ETA_DT',       toDate12(d.hlinEta ?? ''), '      ');
       body += tag('TOT_WT_ONBRD', kgStr(d.hlinTotalWeight ?? '', inLbs), '      ');
@@ -460,9 +466,11 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
       body += `    </HLIN>\n`;
     }
     if (d.hloutCompany || d.hloutConfirmNo) {
+      // HLOUT_CIE_ID: Rule 93's four codes. Same '' fallback and the same reasoning as HLIN
+      // above — deliberately identical, so a blank company behaves the same on both hails.
       const hloutCie = DFO_HLOUT_COMPANY_LIST.find(c => c.label === d.hloutCompany);
       body += `    <HLOUT>\n`;
-      body += tag('HLOUT_CIE_ID', hloutCie ? String(hloutCie.codeId) : '0', '      ');
+      body += tag('HLOUT_CIE_ID', hloutCie ? String(hloutCie.codeId) : '', '      ');
       body += tag('HLOUT_NUM',    d.hloutConfirmNo ?? '', '      ');
       body += tag('DG_CLOSE_DT',  d.dgCloseHlout ? toCloseTimestamp(d.dgCloseHlout) : '', '      ');
       body += tag('REM',          rem.hlout ?? '', '      ');
@@ -792,6 +800,21 @@ function validateSequence(node: XmlNode, specs: ChildSpec[], path: string, error
   }
 }
 
+// S142 defect 52: turn validateElogXml's hail errors into the two close keys the send screen
+// names in deck words. Only the ACTIONABLE ones qualify — a missing group (Rules 2024/2025)
+// or a mandatory child missing inside a group that IS present (which is what the '0'
+// company fix now surfaces: an unmatched company emits no HLIN_CIE_ID at all). The blocked
+// direction is deliberately excluded: "this group should not be here" is not a card the
+// harvester can go and finish, so it stays in the raw validation list.
+export function hailGateSections(errors: string[]): string[] {
+  const groups = [['HLIN', 'dgCloseHlin'], ['HLOUT', 'dgCloseHlout']] as const;
+  return groups
+    .filter(([group]) => errors.some(e =>
+      e.includes(`: ${group} is required on a MAR(90) logbook`) ||
+      (e.includes(`.${group}[`) && e.includes('missing required <'))))
+    .map(([, closeKey]) => closeKey);
+}
+
 export function validateElogXml(xml: string, subformId: number): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
@@ -1029,6 +1052,45 @@ export function validateElogXml(xml: string, subformId: number): { valid: boolea
           });
         });
       });
+    });
+
+    // ── Rules 2024/2025 (S142 defect 52): the hail groups on a MAR-90 38b/41 logbook ──
+    // "If the logbook is Subform_id: 90 MAR_Lobster and includes a fishing effort made in
+    //  fishing area 38b (Effort.Fma_id=28599) or in fishing area 41 (Effort.Fma_id=1595)
+    //  then the logbook must include at least one occurrence of the data group HLIN
+    //  [HLOUT]. Otherwise, data group HLIN [HLOUT] must be blocked."
+    //    — FS-NAT-234-12-EN L243-252 / FS-NAT-234-12-FR L257-268
+    //
+    // The close gate has enforced this since 247f9c5 — specifically the whole-log Close &
+    // Save All door at FullDfoForm.tsx:3611-3618, which on a MAR-90 log with hailRequired
+    // (= fishesHailArea) runs missingInContainer('hlin'/'hlout') and refuses on blank
+    // fields. (requiredGroups() in the shared table answers the same question for the
+    // COMPLETION METER, dfoLogStorage.ts:800 — it is not what the close door calls.)
+    // This is that door's send-side twin: the close gate reads the app's data map, so a log
+    // that reached the send by any other route was never asked the question. The XSD cannot
+    // catch it either — HLIN/HLOUT are minOccurs="0" there (mirrored in TRIP_SPEC), because
+    // a schema has no way to say "unless the log fished 38b".
+    //
+    // The condition is single-sourced with the close gate at the level of the FMA SET:
+    // fishesHailArea() takes the data map and cannot be called on parsed XML, so both gates
+    // share DFO_FMA_HLIN_REQUIRED instead — ONE definition of {28599, 1595}, never a local
+    // comparison. Note this is the 38b-OR-41 set: fishes38b (38b only) serves Rules 660/661
+    // and would let an LFA-41-only trip through.
+    const hailFma = efforts.some(ef =>
+      DFO_FMA_HLIN_REQUIRED.has(Number(get(ef, 'FMA_ID')[0]?.text ?? 0)));
+    const hailRequired = subformId === 90 && hailFma;
+    ([['HLIN', 'Rule 2024'], ['HLOUT', 'Rule 2025']] as const).forEach(([group, rule]) => {
+      const count = get(trip, group).length;
+      if (hailRequired && count === 0) {
+        errors.push(`${p}: ${group} is required on a MAR(90) logbook with a fishing effort in FMA 38b or 41 (${rule})`);
+      }
+      // The blocked direction of the same sentence: no qualifying effort (or a non-MAR
+      // subform, where the requirements matrix marks both groups Blocked) means the group
+      // must not appear at all. The generator's own gate already prevents this; the
+      // validator says so about the bytes.
+      if (!hailRequired && count > 0) {
+        errors.push(`${p}: ${group} is blocked on subform ${subformId} without a fishing effort in FMA 38b or 41 (${rule})`);
+      }
     });
 
     // A completed fishing day with effort + catch must record a landing. The generator

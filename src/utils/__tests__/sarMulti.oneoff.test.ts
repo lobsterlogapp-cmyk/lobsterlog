@@ -37,6 +37,20 @@ function makeSarLog(): any {
   };
 }
 
+// S142 defect 52: a 38b log must carry both hail groups (Rules 2024/2025), so any test that
+// asserts the document VALIDATES adds them through here. Kept OFF the shared fixture so
+// PRE_S121_SAR_BASELINE — a deliberate byte pin — stays byte-for-byte untouched.
+// 'Atlantic Catch Data Ltd.' (25095) is valid under both Rule 27 (HLIN) and Rule 93 (HLOUT).
+function withHail(log: any): any {
+  log.data.hlinCompany = 'Atlantic Catch Data Ltd.';
+  log.data.hlinConfirmNo = 'HI-1001';
+  log.data.dgCloseHlin = '2026-06-10T15:00:00.000Z';
+  log.data.hloutCompany = 'Atlantic Catch Data Ltd.';
+  log.data.hloutConfirmNo = 'HO-1001';
+  log.data.dgCloseHlout = '2026-06-10T15:00:00.000Z';
+  return log;
+}
+
 const count = (xml: string, frag: string): number => xml.split(frag).length - 1;
 
 const PRE_S121_SAR_BASELINE = `<?xml version="1.0" encoding="UTF-8"?>
@@ -121,7 +135,7 @@ test('single-SAR log emits BYTE-IDENTICAL XML to the pre-multi-SAR generator', (
 });
 
 test('two-SAR log emits two complete SAR nodes in order and validates', () => {
-  const log = makeSarLog();
+  const log = withHail(makeSarLog());
   log.data.extraSars = JSON.stringify([{
     species: '35110', lat: '44.3000', lng: '-66.8000', gpsSrc: 'manual',
     date: '2026-06-10', time: '11:40', nbSpcmn: '2', condId: '38997',

@@ -21,7 +21,7 @@ import { useTimer } from '../context/TimerContext';
 import { triggerBackup } from '../utils/dfoBackup';
 import { SentLogCard, SentLogDetailModal, indexSuccessRecords, indexFailureRecords } from '../components/SentLogCard';
 import { FormSentCard } from '../components/FormSentCard';
-import { generateElogXml, generateSoapEnvelope, generateReportUid, validateElogXml, generateUniqueDfoXmlFileName, findEffortOverlap, DFO_SOAP_ACTION_SAVE, DFO_UAT_ENDPOINT } from '../utils/dfoXmlGenerator';
+import { generateElogXml, generateSoapEnvelope, generateReportUid, validateElogXml, hailGateSections, generateUniqueDfoXmlFileName, findEffortOverlap, DFO_SOAP_ACTION_SAVE, DFO_UAT_ENDPOINT } from '../utils/dfoXmlGenerator';
 import { parseDfoSoapResponse, isValidFormVrn } from '../utils/submitDfoXml';
 // S125 7b: send a CLOSED-unsent form from its list card (send moved off the form).
 import { sendForm222Entry, sendForm233Entry } from '../utils/sendFormEntry';
@@ -274,6 +274,19 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
       xml = generateElogXml(log, captainProfile);
 
       const validation = validateElogXml(xml, log.subformId ?? 90);
+      // S142 defect 52: the validator now refuses a 38b/41 MAR log with no hail (Rules
+      // 2024/2025) and a hail group whose company code is missing. Both are the same job
+      // from the deck — finish the hail card — so they share ONE message in the harvester's
+      // own words, named by the card headings, instead of the developer-worded error list.
+      const hailSections = hailGateSections(validation.errors).map(k => t(CLOSE_SECTION_NAME_KEY[k]));
+      if (hailSections.length > 0) {
+        Alert.alert(
+          t('logs.hailRequiredTitle'),
+          t('logs.hailRequiredBody', { sections: hailSections.join(', ') }),
+          [{ text: tc('nav.ok') }]
+        );
+        return;
+      }
       if (!validation.valid) {
         Alert.alert(
           t('logs.validationFailedTitle'),

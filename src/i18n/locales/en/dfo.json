@@ -406,7 +406,9 @@
     "deleteLogBody": "Log {{logId}} ({{dateFished}}) will be deleted for good. It hasn't been sent to DFO. You can't undo this.",
     "editReviewButton": "Edit / Review",
     "unclosedGroupsTitle": "Finish closing this log",
-    "unclosedGroupsBody": "These sections still need to be closed before you can send: {{sections}}. Open the log, close them, then send."
+    "unclosedGroupsBody": "These sections still need to be closed before you can send: {{sections}}. Open the log, close them, then send.",
+    "hailRequiredTitle": "This trip needs a hail",
+    "hailRequiredBody": "DFO requires a hail-in and a hail-out on any trip that fished Area 38b or LFA 41. Open the log, fill in {{sections}} with the company and the confirmation number, close them, then send."
   },
   "form233": {
     "headerTitle": "Form 233 · Inactivity",

@@ -65,6 +65,15 @@ function makeMar90Log(): any {
   log.data.gpsSrc = 'gps';
   log.data.nbSpcmnBrd = '3';
   log.data.baitEntries = JSON.stringify([{ type: 'Mackerel, Atlantic', lbs: '100' }]);
+  // S142 defect 52: FMA 38b also makes both hail groups mandatory (Rules 2024/2025), now
+  // enforced by validateElogXml. 'Atlantic Catch Data Ltd.' (25095) is valid under both
+  // Rule 27 (HLIN) and Rule 93 (HLOUT), so one name serves both groups.
+  log.data.hlinCompany = 'Atlantic Catch Data Ltd.';
+  log.data.hlinConfirmNo = 'HI-1001';
+  log.data.dgCloseHlin = '2026-06-10T15:00:00.000Z';
+  log.data.hloutCompany = 'Atlantic Catch Data Ltd.';
+  log.data.hloutConfirmNo = 'HO-1001';
+  log.data.dgCloseHlout = '2026-06-10T15:00:00.000Z';
   return log;
 }
 

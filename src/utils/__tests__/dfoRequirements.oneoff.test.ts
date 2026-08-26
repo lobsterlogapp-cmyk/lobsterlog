@@ -550,6 +550,31 @@ describe('agreement (234): where the validator has a direction, the table matche
       { useCrInd: 'N', transferTime: '15:00', transferWt: '50' })
       .map(m => m.reason)).toEqual(['pair-none']);
   });
+
+  // S142 defect 52 — THE RE-CUT PIN. Until this build, this test lived in the KNOWN-GAPS
+  // block below and asserted the OPPOSITE of its second line: that a 38b log with blank
+  // hail fields produced NO HLIN/HLOUT error, i.e. that the validator had zero hail
+  // enforcement while the table was deliberately ahead. Closing the gap fired that test ON
+  // PURPOSE. It now asserts agreement in both directions, and has moved into this block —
+  // where the already-closed rules (654, 252, 985…) live. Written down because a test that
+  // goes red because something was FIXED looks identical to one that goes red because
+  // something BROKE; this note is the only thing that tells them apart.
+  test('hail presence: Rules 2024/2025 — the validator now requires both groups on a 38b log, and the table agrees', () => {
+    const { errors } = validateElogXml(gen(makeLog(90)), 90); // 38b fixture, hail fields blank
+    expect(errors.some(e => e.includes('HLIN is required') && e.includes('Rule 2024'))).toBe(true);
+    expect(errors.some(e => e.includes('HLOUT is required') && e.includes('Rule 2025'))).toBe(true);
+    expect(requiredGroups(ctx(90, undefined, [28599]))).toEqual(['hlin', 'hlout']);
+  });
+
+  test('hail presence: neither gate asks for a hail on a MAR log with no 38b/41 effort', () => {
+    const mar = makeLog(90);
+    mar.data.fmaId = '1589'; // LFA 34 — outside the Rules 2024/2025 set
+    delete mar.data.gpsLat; delete mar.data.gpsLng; delete mar.data.gpsSrc; // non-38b: blocked
+    delete mar.data.nbSpcmnBrd;
+    const { errors } = validateElogXml(gen(mar), 90);
+    expect(errors.filter(e => e.includes('HLIN') || e.includes('HLOUT'))).toEqual([]);
+    expect(requiredGroups(ctx(90, undefined, [1589]))).toEqual([]);
+  });
 });
 
 describe('agreement (234): the validator\'s KNOWN deferred gaps stay gaps (ruling 5) — the table is deliberately ahead', () => {
@@ -572,11 +597,6 @@ describe('agreement (234): the validator\'s KNOWN deferred gaps stay gaps (rulin
     expect(isFieldRequired('catchWeight', ctx(90, 28599))).toBe(true);
   });
 
-  test('hail presence: table requires both groups on a 38b log; the validator (still) has zero hail enforcement', () => {
-    const { errors } = validateElogXml(gen(makeLog(90)), 90); // 38b fixture, hail fields blank
-    expect(errors.filter(e => e.includes('HLIN') || e.includes('HLOUT'))).toEqual([]);
-    expect(requiredGroups(ctx(90, undefined, [28599]))).toEqual(['hlin', 'hlout']);
-  });
 });
 
 describe('agreement (222/233): the form validators', () => {

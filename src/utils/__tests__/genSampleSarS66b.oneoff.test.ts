@@ -44,7 +44,13 @@ function baseMar90(): any {
       baitEntries: JSON.stringify([{ type: 'Mackerel, Atlantic', lbs: '100' }]),
       mmYes: 'false',
       lostGearYes: 'false',
-      hlinCompany: '', hlinConfirmNo: '', hloutCompany: '', hloutConfirmNo: '',
+      // S142 defect 52: this is a 38b log, and Rules 2024/2025 make both hail groups
+      // mandatory there — validateElogXml now enforces that, so the fixture carries a real
+      // hail. 'Atlantic Catch Data Ltd.' (25095) is valid under BOTH Rule 27 (HLIN) and
+      // Rule 93 (HLOUT), so one name serves both groups.
+      hlinCompany: 'Atlantic Catch Data Ltd.', hlinConfirmNo: 'HI-1001',
+      hloutCompany: 'Atlantic Catch Data Ltd.', hloutConfirmNo: 'HO-1001',
+      dgCloseHlin: '2026-06-10T15:00:00.000Z', dgCloseHlout: '2026-06-10T15:00:00.000Z',
     },
   };
 }

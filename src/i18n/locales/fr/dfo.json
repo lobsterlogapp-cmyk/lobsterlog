@@ -407,7 +407,9 @@
     "deleteLogBody": "Le journal {{logId}} ({{dateFished}}) sera supprimé définitivement. Il n’a pas été envoyé au MPO. Cette action est irréversible.",
     "editReviewButton": "Voir / Modifier",
     "unclosedGroupsTitle": "Terminez la fermeture de ce journal",
-    "unclosedGroupsBody": "Ces sections doivent être fermées avant la transmission: {{sections}}. Ouvrez le journal, fermez-les, puis transmettez."
+    "unclosedGroupsBody": "Ces sections doivent être fermées avant la transmission: {{sections}}. Ouvrez le journal, fermez-les, puis transmettez.",
+    "hailRequiredTitle": "Ce voyage exige un appel",
+    "hailRequiredBody": "Le MPO exige un appel en mer et un appel de sortie en mer pour tout voyage ayant pêché dans la zone 38b ou la ZPH 41. Ouvrez le journal, remplissez {{sections}} avec la compagnie et le numéro de confirmation, fermez-les, puis transmettez."
   },
   "form233": {
     "headerTitle": "Formulaire 233 · Inactivité",

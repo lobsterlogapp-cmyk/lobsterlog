@@ -105,6 +105,16 @@ const FIXTURES: { name: string; file: string; log: any }[] = [
     log.data.gpsSrc = 'gps';
     log.data.nbSpcmnBrd = '3';
     log.data.baitEntries = JSON.stringify([{ type: 'Mackerel, Atlantic', lbs: '100' }]);
+    // S142 defect 52: FMA 38b also makes both hail groups mandatory (Rules 2024/2025). This
+    // fixture is the MAR-90 xmllint sample, so it must be a conformant logbook — without the
+    // hail it wrote a sample DFO's own rule says must not exist. Company 25095 (Atlantic
+    // Catch Data Ltd.) is valid under Rule 27 (HLIN) AND Rule 93 (HLOUT).
+    log.data.hlinCompany = 'Atlantic Catch Data Ltd.';
+    log.data.hlinConfirmNo = 'HI-1001';
+    log.data.dgCloseHlin = '2026-06-10T15:00:00.000Z';
+    log.data.hloutCompany = 'Atlantic Catch Data Ltd.';
+    log.data.hloutConfirmNo = 'HO-1001';
+    log.data.dgCloseHlout = '2026-06-10T15:00:00.000Z';
     return { name: 'MAR-90', file: '/tmp/sample_mar90.xml', log };
   })(),
   (() => {
