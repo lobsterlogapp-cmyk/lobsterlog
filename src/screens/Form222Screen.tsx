@@ -1002,12 +1002,14 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
               </View>
             </View>
 
-            {/* Remarks */}
+            {/* S142 (defect 50): EVENT_DSC has its OWN card, directly above Remarks. It is
+                Rule-593 MANDATORY when the interaction answer is Yes (starred, and close-gated
+                since S141), so it cannot sit under a header that says "(Optional)". Nothing
+                else on the form moves; the field, its star and its i18n keys are unchanged. */}
             <View style={styles.card}>
-              <Text style={styles.cardHeader}>{t('form222.remarksCard')}</Text>
-
-              {/* EVENT_DSC (string_150, optional) — narrative description of the event */}
-              <View style={styles.inputGroup}>
+              <Text style={styles.cardHeader}>{t('form222.eventDscCard')}</Text>
+              {/* EVENT_DSC (string_150) — narrative description of the event */}
+              <View style={styles.lastInputGroup}>
                 <Text style={styles.label}>{t('form222.eventDscLabel')}{req('eventDsc') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
                 <TextInput
                   style={[styles.input, styles.remarksInput]}
@@ -1021,6 +1023,16 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
                   textAlignVertical="top"
                 />
               </View>
+            </View>
+
+            {/* Remarks — S142 (defect 50): both remaining boxes are now LABELLED. They are two
+                DIFFERENT DFO elements, not a duplicate: DOC_REM (a note about what documentation
+                exists) and MM_INTER.REM (DFO's own name for it is "Comments" — the same name the
+                233 already uses for the same element). Everything left in this card really is
+                optional, so the "(Optional)" header is now true. */}
+            <View style={styles.card}>
+              <Text style={styles.cardHeader}>{t('form222.remarksCard')}</Text>
+
               {/* DOC_REM (string_150, optional) — remark about available documentation */}
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>{t('form222.docRemLabel')}</Text>
@@ -1036,8 +1048,11 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
                   textAlignVertical="top"
                 />
               </View>
-              {/* Existing general Comments (REM, string_2000) — untouched */}
+              {/* MM_INTER.REM (string_2000, optional) — the general comments box. It had NO
+                  label at all before S142, so it read as a second unexplained box under the
+                  REMARK label above it. */}
               <View style={styles.lastInputGroup}>
+                <Text style={styles.label}>{t('form222.remarksLabel')}</Text>
                 <TextInput
                   style={[styles.input, styles.remarksInput]}
                   value={form.remarks}
