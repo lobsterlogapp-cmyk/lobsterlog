@@ -566,6 +566,51 @@ export function missingInContainer(
   return out;
 }
 
+/** Fields that live at the EFFORT level (asked once per fishing effort); everything else in
+ *  the effort container repeats per trap group. Shared by the close gates, the footer
+ *  close-all and the completion meter so the three can never disagree about the split. */
+export const EFFORT_LEVEL_KEYS = new Set([
+  'fmaId', 'haulStartTime', 'haulEndTime', 'sarInd', 'mmInterInd', 'gearSubtypeId',
+]);
+
+/** Question 4 — what the completion meter needs: of this container's MANDATORY fields in
+ *  this context, how many are filled (and valid)? Pairs count as ONE unit, filled when
+ *  exactly one member holds a value. App-supplied fields never count. `skip`/`only` let a
+ *  caller split one container across repetitions (per-trap-group vs per-effort fields) or
+ *  count a single member (the QC carrier VRN outside a recorded transfer). */
+export function containerProgress(
+  container: DfoContainerId,
+  ctx: RequirementContext,
+  values: FieldValues,
+  opts?: { skip?: Set<string>; only?: Set<string> },
+): { filled: number; total: number } {
+  let filled = 0;
+  let total = 0;
+  const entries = DFO_REQUIREMENTS_TABLE.filter(e => e.container === container &&
+    (!opts?.skip || !opts.skip.has(e.fieldKey)) &&
+    (!opts?.only || opts.only.has(e.fieldKey)));
+  const pairDone = new Set<string>();
+  for (const e of entries) {
+    if (e.kind === 'app-supplied') continue;
+    if (e.kind === 'exactly-one-of-a-pair') {
+      if (pairDone.has(e.fieldKey)) continue;
+      const partner = entries.find(p => p.fieldKey === e.pairWith);
+      pairDone.add(e.fieldKey);
+      if (partner) pairDone.add(partner.fieldKey);
+      if (e.state(ctx, values) !== 'mandatory') continue;
+      total += 1;
+      if ([e, partner].filter(x => x && isFilled(x, values)).length === 1) filled += 1;
+      continue;
+    }
+    if (e.state(ctx, values) !== 'mandatory') continue;
+    total += 1;
+    // A filled-but-invalid value does not count as done — the close doors refuse it, so a
+    // meter that counted it would read 100% on a log the buttons reject.
+    if (isFilled(e, values) && !e.isInvalid?.(values)) filled += 1;
+  }
+  return { filled, total };
+}
+
 /** Question 3 — which whole groups must exist on the logbook: today, the two hail groups on
  *  a MAR log with a 38b/41 effort (Rules 2024/2025). */
 export function requiredGroups(ctx: RequirementContext): DfoContainerId[] {

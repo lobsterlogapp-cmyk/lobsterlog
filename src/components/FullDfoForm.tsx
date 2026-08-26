@@ -44,7 +44,6 @@ import {
   loadLogById,
   generateNewLogMeta,
   loadLastLog,
-  getRequiredFields,
   saveActiveDraft,
   loadActiveDraft,
   clearActiveDraft,
@@ -75,13 +74,12 @@ import {
   effortDeleteRefused,
 } from '../utils/dfoLogStorage';
 import { triggerBackup } from '../utils/dfoBackup';
-import { isFieldRequired, missingInContainer, MissingField, FieldValues } from '../utils/dfoRequirements';
+import { isFieldRequired, missingInContainer, MissingField, FieldValues, EFFORT_LEVEL_KEYS } from '../utils/dfoRequirements';
 import { applySarCaptureChoice, SarBlockWriter, SarCaptureDeps } from '../utils/sarCapture';
 import { REQUIRED_ASTERISK_COLOR } from '../styles/GlobalStyles';
 import {
   DFO_FMA_LIST,
   DFO_LGRID_BY_FMA,
-  DFO_FMA_LGRID_REQUIRED,
   DFO_STAT_SECT_BY_FMA,
   DFO_FMA_STAT_SECT_REQUIRED,
   DFO_FMA_GRID_MAP,
@@ -1752,8 +1750,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     if (!e || e.closeDt) return;
     {
       // S140 P3: the gate — this node's full set with its OWN fishing area.
-      const rows = nodeMissingRows(e);
-      if (rows.length) { showCloseBlocked(rows); return; }
+      const { rows, mixed } = nodeMissingRows(e);
+      if (rows.length) { showCloseBlocked(rows, mixed); return; }
     }
     Alert.alert(
       t('form234.closeEffortConfirmTitle'),
@@ -1789,13 +1787,20 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       // S140 P3 all-or-nothing (ruled): any incomplete open effort → NOTHING closes; one
       // message lists every missing field grouped by effort ("Fishing Effort N — Field").
       const allRows: string[] = [];
+      let anyMixed = false;
       if (effortYes && !closes['dgCloseEffort']) {
-        allRows.push(...effort1MissingRows().map(r => `${t('form234.effortNodeTitle', { n: 1 })} — ${r}`));
+        const r1 = effort1MissingRows();
+        anyMixed = anyMixed || r1.mixed;
+        allRows.push(...r1.rows.map(r => `${t('form234.effortNodeTitle', { n: 1 })} — ${r}`));
       }
       extraEffortNodes.forEach((e, i) => {
-        if (!e.closeDt) allRows.push(...nodeMissingRows(e).map(r => `${t('form234.effortNodeTitle', { n: i + 2 })} — ${r}`));
+        if (!e.closeDt) {
+          const rn = nodeMissingRows(e);
+          anyMixed = anyMixed || rn.mixed;
+          allRows.push(...rn.rows.map(r => `${t('form234.effortNodeTitle', { n: i + 2 })} — ${r}`));
+        }
       });
-      if (allRows.length) { showCloseBlocked(allRows); return; }
+      if (allRows.length) { showCloseBlocked(allRows, anyMixed); return; }
     }
     Alert.alert(
       t('form234.closeConfirmTitle', { section: t('form234.catchEffortSection') }),
@@ -2854,16 +2859,25 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     return t(m.labelKey);
   };
 
-  const showCloseBlocked = (rows: string[]) => {
+  // S141 P4 amendment (W-2): a bullet is "mixed" when it reports a value that is WRONG
+  // rather than missing — an invalid range/format, or the exactly-one pair with BOTH sides
+  // filled. The refusal body must admit it: all-blank keeps the S140 sentence byte-identical;
+  // any mixed bullet switches to the "still blank or incorrect" variant.
+  const bulletIsMixed = (m: MissingField): boolean =>
+    m.reason === 'invalid' || m.reason === 'pair-both';
+
+  // One refusal shape for all twelve close doors (W-1: the whole-log door passes its own
+  // title key — its bullets can span several sections, so "this section" would misname it).
+  const showCloseBlocked = (rows: string[], mixed = false, titleKey = 'form234.closeBlockedTitle') => {
     Alert.alert(
-      t('form234.closeBlockedTitle'),
-      `${t('form234.closeBlockedBody')}\n• ${rows.join('\n• ')}`,
+      t(titleKey),
+      `${t(mixed ? 'form234.closeBlockedBodyMixed' : 'form234.closeBlockedBody')}\n• ${rows.join('\n• ')}`,
       [{ text: tc('nav.ok') }],
     );
   };
 
-  // Effort-level table keys (checked once per effort; trap groups carry the rest).
-  const EFFORT_LEVEL_KEYS = new Set(['fmaId', 'haulStartTime', 'haulEndTime', 'sarInd', 'mmInterInd', 'gearSubtypeId']);
+  // Effort-level vs per-trap-group split: the shared EFFORT_LEVEL_KEYS (dfoRequirements) —
+  // one definition for the close gates, the footer close-all and the completion meter.
 
   const groupValues = (g: ExtraEffortDetail): FieldValues => ({
     catchWeight: g.catchWeight ?? '', trapHauls: g.trapHauls ?? '', soakDuration: g.soakDuration ?? '',
@@ -2875,9 +2889,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
 
   // Rows for ONE fishing effort: effort-level fields once, then every trap group with its
   // own values (per-block context). Group prefix only when the effort has several groups.
-  const effortMissingRows = (ctxFma: number | null, effortLevel: FieldValues, groups: FieldValues[]): string[] => {
+  const effortMissingRows = (ctxFma: number | null, effortLevel: FieldValues, groups: FieldValues[]): { rows: string[]; mixed: boolean } => {
     const ctx = { subformId, fmaId: ctxFma };
     const rows: string[] = [];
+    let mixed = false;
     const list = groups.length ? groups : [{} as FieldValues];
     list.forEach((g, gi) => {
       for (const m of missingInContainer('effort', ctx, { ...effortLevel, ...g })) {
@@ -2885,13 +2900,14 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         const prefix = list.length > 1 && !EFFORT_LEVEL_KEYS.has(m.fieldKey)
           ? `${t('form234.catchEffortBlock', { n: gi + 1 })} — ` : '';
         rows.push(prefix + closeBulletText(m));
+        if (bulletIsMixed(m)) mixed = true;
       }
     });
-    return rows;
+    return { rows, mixed };
   };
 
   // Effort 1 = the flat block (effort level + trap group 1) plus extraEfforts (groups 2+).
-  const effort1MissingRows = (): string[] => {
+  const effort1MissingRows = (): { rows: string[]; mixed: boolean } => {
     const lvlAndG1: FieldValues = {
       fmaId: fmaId != null ? String(fmaId) : '',
       haulStartTime: timeStartedHauling, haulEndTime: timeStoppedHauling,
@@ -2905,7 +2921,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     return effortMissingRows(fmaId, lvlAndG1, [lvlAndG1, ...extraEfforts.map(groupValues)]);
   };
 
-  const nodeMissingRows = (e: ExtraEffortNode): string[] => {
+  const nodeMissingRows = (e: ExtraEffortNode): { rows: string[]; mixed: boolean } => {
     const lvl: FieldValues = {
       fmaId: e.fmaId ?? '', haulStartTime: e.haulStartTime ?? '', haulEndTime: e.haulEndTime ?? '',
       sarInd: e.sarYes === 'true' ? 'Y' : e.sarYes === 'false' ? 'N' : '',
@@ -2940,34 +2956,36 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     });
 
   // The generic closeSection serves five stamps — each maps to its table container.
-  const sectionMissingRows = (dataKey: string): string[] => {
+  const rowsOf = (ms: MissingField[]): { rows: string[]; mixed: boolean } =>
+    ({ rows: ms.map(closeBulletText), mixed: ms.some(bulletIsMixed) });
+  const sectionMissingRows = (dataKey: string): { rows: string[]; mixed: boolean } => {
     const ctx = { subformId, fmaId };
     switch (dataKey) {
       case 'dgCloseLanding':
-        return missingInContainer('landing', ctx, { portId: portLanded, landingTime: timeOfLanding }).map(closeBulletText);
+        return rowsOf(missingInContainer('landing', ctx, { portId: portLanded, landingTime: timeOfLanding }));
       case 'dgCloseTransfer':
-        return missingInContainer('transfer', ctx, {
+        return rowsOf(missingInContainer('transfer', ctx, {
           transferTime, transferWt, transferToVrn, transferToPndNum, carrierVrn, useCrInd,
-        }).map(closeBulletText);
+        }));
       case 'dgCloseHlin':
-        return missingInContainer('hlin', { subformId, effortFmaIds: hail38b ? [DFO_FMA_38B] : [] }, {
+        return rowsOf(missingInContainer('hlin', { subformId, effortFmaIds: hail38b ? [DFO_FMA_38B] : [] }, {
           hlinCompany, hlinConfirmNo, hlinEta, hlinTotalWeight,
-        }).map(closeBulletText);
+        }));
       case 'dgCloseHlout':
-        return missingInContainer('hlout', ctx, { hloutCompany, hloutConfirmNo }).map(closeBulletText);
+        return rowsOf(missingInContainer('hlout', ctx, { hloutCompany, hloutConfirmNo }));
       case 'dgClosePconsPersonal':
         // Formality by construction: the close button only renders when the field is filled.
-        return missingInContainer('personalUse', ctx, { personalUse }).map(closeBulletText);
+        return rowsOf(missingInContainer('personalUse', ctx, { personalUse }));
       default:
-        return [];
+        return { rows: [], mixed: false };
     }
   };
 
   const closeSection = (dataKey: string, sectionTitleKey: string) => {
     if (readOnly || isClosed(dataKey)) return;
     {
-      const rows = sectionMissingRows(dataKey);
-      if (rows.length) { showCloseBlocked(rows); return; }
+      const { rows, mixed } = sectionMissingRows(dataKey);
+      if (rows.length) { showCloseBlocked(rows, mixed); return; }
     }
     Alert.alert(
       t('form234.closeConfirmTitle', { section: t(sectionTitleKey) }),
@@ -2995,8 +3013,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const closeEffortNode = () => {
     if (readOnly || isClosed('dgCloseEffort')) return;
     {
-      const rows = effort1MissingRows();
-      if (rows.length) { showCloseBlocked(rows); return; }
+      const { rows, mixed } = effort1MissingRows();
+      if (rows.length) { showCloseBlocked(rows, mixed); return; }
     }
     Alert.alert(
       t('form234.closeEffortConfirmTitle'),
@@ -3048,8 +3066,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     const e = bycatchEntries[index];
     if (!e || bycatchRowClosed(e)) return;
     {
-      const rows = bycatchRowMissing(e).map(closeBulletText);
-      if (rows.length) { showCloseBlocked(rows); return; }
+      const ms = bycatchRowMissing(e);
+      if (ms.length) { showCloseBlocked(ms.map(closeBulletText), ms.some(bulletIsMixed)); return; }
     }
     Alert.alert(
       t('form234.closeBycatchRowConfirmTitle'),
@@ -3080,12 +3098,15 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     if (lockCount === 0) return;
     {
       const allRows: string[] = [];
+      let anyMixed = false;
       bycatchEntries.forEach((en, i) => {
         if (bycatchRowClosed(en)) return;
-        bycatchRowMissing(en).forEach(m =>
-          allRows.push(`${en.species?.trim() || t('form234.bycatchRowTitle', { n: i + 1 })} — ${closeBulletText(m)}`));
+        bycatchRowMissing(en).forEach(m => {
+          if (bulletIsMixed(m)) anyMixed = true;
+          allRows.push(`${en.species?.trim() || t('form234.bycatchRowTitle', { n: i + 1 })} — ${closeBulletText(m)}`);
+        });
       });
-      if (allRows.length) { showCloseBlocked(allRows); return; }
+      if (allRows.length) { showCloseBlocked(allRows, anyMixed); return; }
     }
     Alert.alert(
       t('form234.closeConfirmTitle', { section: t('form234.bycatchSubsection') }),
@@ -3145,8 +3166,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     {
       // Normally a no-op — the add-sheet makes blank rows unconstructable; armour for
       // legacy/hydrated drafts (which have S134 edit-in-place as their fix path).
-      const rows = baitRowMissing(e).map(closeBulletText);
-      if (rows.length) { showCloseBlocked(rows); return; }
+      const ms = baitRowMissing(e);
+      if (ms.length) { showCloseBlocked(ms.map(closeBulletText), ms.some(bulletIsMixed)); return; }
     }
     Alert.alert(
       t('form234.closeBaitRowConfirmTitle'),
@@ -3181,12 +3202,15 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     if (lockCount === 0) return;
     {
       const allRows: string[] = [];
+      let anyMixed = false;
       baitEntries.forEach((en, i) => {
         if (baitRowClosed(en)) return;
-        baitRowMissing(en).forEach(m =>
-          allRows.push(`${en.type?.trim() || t('form234.baitRowTitle', { n: i + 1 })} — ${closeBulletText(m)}`));
+        baitRowMissing(en).forEach(m => {
+          if (bulletIsMixed(m)) anyMixed = true;
+          allRows.push(`${en.type?.trim() || t('form234.baitRowTitle', { n: i + 1 })} — ${closeBulletText(m)}`);
+        });
       });
-      if (allRows.length) { showCloseBlocked(allRows); return; }
+      if (allRows.length) { showCloseBlocked(allRows, anyMixed); return; }
     }
     Alert.alert(
       t('form234.closeConfirmTitle', { section: t('form234.baitReportingSection') }),
@@ -3218,8 +3242,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     const b = sarBlocksFromData(liveSarData())[uiIdx];
     if (!b || sarBlockClosedStamp(b)) return;
     {
-      const rows = missingInContainer('sar', { subformId, fmaId }, sarBlockValues(uiIdx)).map(closeBulletText);
-      if (rows.length) { showCloseBlocked(rows); return; }
+      const ms = missingInContainer('sar', { subformId, fmaId }, sarBlockValues(uiIdx));
+      if (ms.length) { showCloseBlocked(ms.map(closeBulletText), ms.some(bulletIsMixed)); return; }
     }
     Alert.alert(
       t('form234.closeSarBlockConfirmTitle'),
@@ -3259,12 +3283,16 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     {
       // All-or-nothing (ruled): grouped by block ("Species at Risk N — Field").
       const allRows: string[] = [];
+      let anyMixed = false;
       sarBlocksFromData(liveSarData()).forEach((b, i) => {
         if (sarBlockClosedStamp(b)) return;
         missingInContainer('sar', { subformId, fmaId }, sarBlockValues(i))
-          .forEach(m => allRows.push(`${t('form234.sarBlockTitle', { n: i + 1 })} — ${closeBulletText(m)}`));
+          .forEach(m => {
+            if (bulletIsMixed(m)) anyMixed = true;
+            allRows.push(`${t('form234.sarBlockTitle', { n: i + 1 })} — ${closeBulletText(m)}`);
+          });
       });
-      if (allRows.length) { showCloseBlocked(allRows); return; }
+      if (allRows.length) { showCloseBlocked(allRows, anyMixed); return; }
     }
     Alert.alert(
       t('form234.closeConfirmTitle', { section: t('form234.sarSubsection') }),
@@ -3496,221 +3524,127 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       Alert.alert(t('form234.missingFieldsTitle'), t('form234.missingBait'), [{ text: tc('nav.ok') }]);
       return;
     }
-    // Mandatory-once-used: bait is optional, but once an entry EXISTS the BAIT_USED node's own
-    // mandatory elements must be present — BT_TYP_ID + BT_WT always, BT_COND_ID where Rule 3060
-    // (MAR) / 984 (QC-GLF) escalates condition to mandatory. The add-sheet enforces this at
-    // creation (handleSheetConfirm :937/:941/:955); this backstops hydrated/legacy drafts, with
-    // validateElogXml as the send-time backstop. Reuses the add-sheet prompt strings.
-    {
-      const baitList = getDfoBaitTypeList(subformId);
-      for (const e of baitEntries) {
-        if (!e.type?.trim()) {
-          Alert.alert(t('form234.missingFieldsTitle'), t('form234.pleaseSelectBait'), [{ text: tc('nav.ok') }]);
-          return;
-        }
-        if (!e.lbs?.trim()) {
-          Alert.alert(t('form234.missingFieldsTitle'), t('form234.pleaseEnterWeight'), [{ text: tc('nav.ok') }]);
-          return;
-        }
-        const codeId = baitList.find(b => b.label === e.type)?.codeId ?? 0;
-        if (baitConditionState(subformId, codeId) === 'mandatory' && e.condition == null) {
-          Alert.alert(t('form234.missingFieldsTitle'), t('form234.pleaseSelectBaitCondition'), [{ text: tc('nav.ok') }]);
-          return;
-        }
-      }
-    }
-    if (bycatchYes === null) {
-      Alert.alert(t('form234.missingFieldsTitle'), t('form234.missingBycatchAnswer'), [{ text: tc('nav.ok') }]);
-      return;
-    }
-    if (bycatchYes === true && bycatchEntries.length === 0) {
-      Alert.alert(t('form234.missingFieldsTitle'), t('form234.missingBycatchEntries'), [{ text: tc('nav.ok') }]);
-      return;
-    }
-    if (subformId === 88 && transferYes === null) {
-      Alert.alert(t('form234.missingFieldsTitle'), t('form234.missingTransferAnswer'), [{ text: tc('nav.ok') }]);
-      return;
-    }
-    // TRANSFER companion fields (QC-88): when a transfer is being recorded, the transfer
-    // time (TRNSF_DT), weight, and a destination (vessel VRN or pound number) are all
-    // mandatory for the TRANSFER/TRANSFER_DTL node (Rules 248/251/252). Block early with a
-    // friendly per-field prompt — mirrors the SAR detail gate below — so a blank transfer
-    // time can't reach the generator and launder to midnight (Session 76).
-    if (subformId === 88 && transferYes === true &&
-        (!transferTime.trim() || !transferWt.trim() || (!transferToVrn.trim() && !transferToPndNum.trim()))) {
-      Alert.alert(t('form234.missingFieldsTitle'), t('form234.missingTransferFields'), [{ text: tc('nav.ok') }]);
-      return;
-    }
-    // SAR_IND / MM_INTER_IND are mandatory Y/N on EFFORT for ALL four subforms (XSD
-    // effort_type, minOccurs=1) — no subform condition. validateElogXml is the send-time
-    // backstop; this catches it early with a clear message instead of a cryptic one.
-    // (LOST_GEAR_IND dropped from this gate — Blocked in 234.12, no longer answered.)
-    // S124 Phase 6: SAR_IND / MM_INTER_IND live in EFFORT — a no-haul log omits them, so this
-    // gate (and the SAR-detail gates below) only apply when a haul is declared.
-    // S136 Phase 4: the indicators are per-EFFORT — every effort (1 and 2+) must answer both.
-    if (effortYes && (mmYes === null || sarYes === null ||
-        extraEffortNodes.some(e => (e.sarYes !== 'true' && e.sarYes !== 'false') ||
-                                   (e.mmYes !== 'true' && e.mmYes !== 'false')))) {
-      Alert.alert(t('form234.missingFieldsTitle'), t('form234.missingIndicatorsAnswer'), [{ text: tc('nav.ok') }]);
-      return;
-    }
-    // SAR detail (S66b): when SAR_IND='Y' the sar_type children SAR_DT/LAT/LONG/SPECIE_ID/
-    // NB_SPCMN/SPCMN_COND_ID are all mandatory (XSD sar_type, minOccurs=1). Block early with a
-    // clear message; validateElogXml is the send-time backstop once the node is emitted.
-    // S136 P4: the SAR pool exists when ANY effort answered Yes.
-    const anySarYes = sarYes === true || extraEffortNodes.some(e => e.sarYes === 'true');
-    if (effortYes && anySarYes && (!sarSpecies || !sarNbSpcmn.trim() || !sarCondId ||
-        !sarLat.trim() || !sarLng.trim() || !sarDate || !sarTime)) {
-      Alert.alert(t('form234.missingFieldsTitle'), t('form234.missingSarFields'), [{ text: tc('nav.ok') }]);
-      return;
-    }
-    // S121 multi-SAR: every additional encounter must satisfy the same mandatory set
-    if (effortYes && anySarYes && extraSars.some(s => !s.species || !s.nbSpcmn?.trim() || !s.condId ||
-        !s.lat?.trim() || !s.lng?.trim() || !s.date || !s.time)) {
-      Alert.alert(t('form234.missingFieldsTitle'), t('form234.missingSarFields'), [{ text: tc('nav.ok') }]);
-      return;
-    }
-
-    const fieldCheckMap: Record<string, string> = {
-      startDt:     dateFished,
-      fmaId:       fmaId ? String(fmaId) : '',
-      lgridCodeId: DFO_FMA_LGRID_REQUIRED.has(fmaId ?? 0) ? (lgridDisplay || '') : 'ok',
-      statSectId:  DFO_FMA_STAT_SECT_REQUIRED.has(fmaId ?? 0) ? (statSectDisplay || '') : 'ok',
-      gridId:      (fmaId != null && fmaId in DFO_FMA_GRID_MAP) ? (gridDisplay || '') : 'ok',
-      catchWeight,
-      trapHauls,
-      lgbkUid,
-      firstEntryDt,
-      crewNb:      crewMembers.length > 0 ? 'ok' : '',
-      portId:      portLanded,
-      trapSize,
-      gearSubtypeId,
-      // S110 Phase 2: NL-only NB_SPCMN_KEPT (Rule 976) — listed in FULL_DFO_REQUIRED_FIELDS[91] only.
-      nbSpcmnKept,
-      operName:    'ok',
-      // S110 G1: EFFORT_DETAIL LAT/LONG Mandatory for QC(88)/GLF(89) (Subforms rows 82/83).
-      // Listed in FULL_DFO_REQUIRED_FIELDS for 88/89 only, so MAR/NL gates are unchanged.
-      gpsCoords:   gpsLat.trim() && gpsLng.trim() ? 'ok' : '',
-      sailTime:      timeSailed,
-      haulStartTime: timeStartedHauling,
-      haulEndTime:   timeStoppedHauling,
-      landingTime:   timeOfLanding,
-    };
-    const fieldLabels: Record<string, string> = {
-      startDt:     'Date Fished',
-      fmaId:       'Fishing Area (LFA)',
-      lgridCodeId: 'Lobster Settlement Grid',
-      statSectId:  'Statistical Section',
-      gridId:      'Grid',
-      catchWeight: 'Lobster Catch Weight',
-      trapHauls:   'Trap Hauls',
-      lgbkUid:     'Log Book UID',
-      firstEntryDt:'First Entry Date',
-      crewNb:      'Crew Registry',
-      portId:      'Port Landed',
-      trapSize:    'Trap Size',
-      gearSubtypeId: 'Gear Subtype',
-      nbSpcmnKept: 'Number of specimens kept',
-      operName:    'Operator Name (Captain Profile)',
-      gpsCoords:   'GPS Coordinates (Latitude/Longitude)',
-      sailTime:      'Time Sailed',
-      haulStartTime: 'Time Started Hauling',
-      haulEndTime:   'Time Stopped Hauling',
-      landingTime:   'Time of Landing',
-      // S137 hail conformance (Rules 2024/2025) — used by the appended hail gate below.
-      hlinCompany:   'Hail-In Company',
-      hlinConfirmNo: 'Hail-In Confirmation Number',
-      hloutCompany:  'Hail-Out Company',
-      hloutConfirmNo:'Hail-Out Confirmation Number',
-      hlinEta:       'Estimated Date/Time of Arrival',
-      hlinTotalWeight:'Total Weight Onboard',
-    };
-    // S124 Phase 6: on a no-haul day the EFFORT-group fields don't apply (the EFFORT node is
-    // omitted). TRIP / LANDING / GENERAL fields (date, crew, port landed, times, operator) stay.
-    const EFFORT_GROUP_REQUIRED = new Set(['fmaId', 'lgridCodeId', 'statSectId', 'gridId',
-      'catchWeight', 'trapHauls', 'trapSize', 'gearSubtypeId', 'nbSpcmnKept', 'gpsCoords',
-      'haulStartTime', 'haulEndTime']);
-    const required = getRequiredFields(subformId);
+    // ── S141 P4: THE TWELFTH CLOSE DOOR ASKS THE SHARED TABLE ──────────────────────────
+    // This button closes every open section and marks the log complete, permanently — the
+    // last close door, not a mere save. It now asks dfoRequirements.ts through the SAME
+    // helpers every other close door uses, so the marks, the eleven section closes and this
+    // door make one claim. The old private list (FULL_DFO_REQUIRED_FIELDS), its
+    // fieldCheckMap/fieldLabels twins and the hand-written per-gate alerts are retired.
+    // R-A (ruled, reasons on record): three old entries leave the gate as app-supplied —
+    //   Log Book UID / First Entry Date: the app writes both at form open; no screen can
+    //   blank them; the send validator still refuses a missing LGBK_UID.
+    //   Operator Name: the old check value was the constant 'ok' — it could never block;
+    //   the pre-send profile gate (isProfileComplete) is the real enforcement.
+    // §14 amendment: the refusal takes the eleven doors' voice — same permanence body (the
+    // W-2 mixed variant when any bullet is a wrong-not-blank value), the W-1 whole-log
+    // title, and the R-B group checks fold in as bullets (the CHECKS are unchanged — only
+    // their wrapper; "is there a row / an answer?" stays app chrome outside the table).
     const missing: string[] = [];
-    for (const field of required) {
-      if (!effortYes && EFFORT_GROUP_REQUIRED.has(field)) continue;
-      const val = fieldCheckMap[field] ?? '';
-      if (!val || val.trim() === '') missing.push(fieldLabels[field] ?? field);
+    let anyMixed = false;
+    const push = (m: MissingField, prefix = '') => {
+      if (bulletIsMixed(m)) anyMixed = true;
+      missing.push(prefix + closeBulletText(m));
+    };
+
+    // TRIP — dates/times, region-gated departure port and crew, the bycatch toggle.
+    missingInContainer('trip', { subformId, fmaId }, {
+      startDt: dateFished,
+      sailTime: timeSailed,
+      departurePort,
+      crewNb: crewMembers.length > 0 ? String(crewMembers.length) : '',
+      bycatchAnswered: indToValue(bycatchYes),
+    }).forEach(m => push(m));
+    // R-B bullet (W-3): Yes to bycatch obliges at least one declared row (species + weight).
+    if (bycatchYes === true && bycatchEntries.length === 0) {
+      missing.push(t('form234.bycatchNoRowsBullet'));
     }
 
-    // S121: every additional catch-effort block must satisfy the same per-block required
-    // fields as block 1 (same FMA gates), plus soak where the validator mandates SOAKED_DUR
-    // (88/89/91) so the user gets a friendly prompt instead of a raw validator error.
-    extraEfforts.forEach((e, i) => {
-      const blockMissing: string[] = [];
-      if (!e.catchWeight?.trim()) blockMissing.push(fieldLabels.catchWeight);
-      if (!e.trapHauls?.trim()) blockMissing.push(fieldLabels.trapHauls);
-      if (subformId !== 90 && !e.soakDuration?.trim()) blockMissing.push(t('form234.soakDurationLabel'));
-      if ((subformId === 88 || subformId === 89) && !(e.gpsLat?.trim() && e.gpsLng?.trim())) blockMissing.push(fieldLabels.gpsCoords);
-      if (subformId === 90 && DFO_FMA_LGRID_REQUIRED.has(fmaId ?? 0) && !e.lgridDisplay) blockMissing.push(fieldLabels.lgridCodeId);
-      if (subformId === 88 && fmaId != null && fmaId in DFO_FMA_GRID_MAP && !e.gridDisplay) blockMissing.push(fieldLabels.gridId);
-      if (subformId === 91) {
-        if (DFO_FMA_STAT_SECT_REQUIRED.has(fmaId ?? 0) && !e.statSectDisplay) blockMissing.push(fieldLabels.statSectId);
-        if (!e.trapSize) blockMissing.push(fieldLabels.trapSize);
-        if (!e.nbSpcmnKept?.trim()) blockMissing.push(fieldLabels.nbSpcmnKept);
-      }
-      blockMissing.forEach(lbl => missing.push(`${t('form234.catchEffortBlock', { n: i + 2 })} — ${lbl}`));
-    });
-
-    // S136 Phase 4: every EXTRA effort must satisfy the same per-effort mandatory set as
-    // effort 1 — its own area, haul window, and per-group fields (the node's OWN FMA gates
-    // the region fields). Errors are labelled "Fishing Effort N — field" (ruling: per-effort
-    // save gate).
-    extraEffortNodes.forEach((e, i) => {
-      const nodeMissing: string[] = [];
-      const nFma = e.fmaId ? Number(e.fmaId) : null;
-      if (!nFma) nodeMissing.push(fieldLabels.fmaId);
-      if (!e.haulStartTime?.trim()) nodeMissing.push(fieldLabels.haulStartTime);
-      if (!e.haulEndTime?.trim()) nodeMissing.push(fieldLabels.haulEndTime);
-      if (subformId === 91 && !e.gearSubtypeId) nodeMissing.push(fieldLabels.gearSubtypeId);
-      (e.details ?? []).forEach((g, j) => {
-        const gm: string[] = [];
-        if (!g.catchWeight?.trim()) gm.push(fieldLabels.catchWeight);
-        if (!g.trapHauls?.trim()) gm.push(fieldLabels.trapHauls);
-        if (subformId !== 90 && !g.soakDuration?.trim()) gm.push(t('form234.soakDurationLabel'));
-        if ((subformId === 88 || subformId === 89) && !(g.gpsLat?.trim() && g.gpsLng?.trim())) gm.push(fieldLabels.gpsCoords);
-        if (subformId === 90 && DFO_FMA_LGRID_REQUIRED.has(nFma ?? 0) && !g.lgridDisplay) gm.push(fieldLabels.lgridCodeId);
-        if (subformId === 88 && nFma != null && nFma in DFO_FMA_GRID_MAP && !g.gridDisplay) gm.push(fieldLabels.gridId);
-        if (subformId === 91) {
-          if (DFO_FMA_STAT_SECT_REQUIRED.has(nFma ?? 0) && !g.statSectDisplay) gm.push(fieldLabels.statSectId);
-          if (!g.trapSize) gm.push(fieldLabels.trapSize);
-          if (!g.nbSpcmnKept?.trim()) gm.push(fieldLabels.nbSpcmnKept);
-        }
-        gm.forEach(lbl => nodeMissing.push(`${t('form234.catchEffortBlock', { n: j + 1 })} — ${lbl}`));
+    // EFFORTS — every effort with its OWN FMA; per-trap-group fields per group. On a no-haul
+    // day (S124 Phase 6) the EFFORT node is omitted, so the whole family is skipped. The
+    // SAR/MM indicator answers ride these rows (they are table fields, kind 'answered').
+    if (effortYes) {
+      const multi = extraEffortNodes.length > 0;
+      const r1 = effort1MissingRows();
+      anyMixed = anyMixed || r1.mixed;
+      r1.rows.forEach(r =>
+        missing.push(multi ? `${t('form234.effortNodeTitle', { n: 1 })} — ${r}` : r));
+      extraEffortNodes.forEach((e, i) => {
+        const rn = nodeMissingRows(e);
+        anyMixed = anyMixed || rn.mixed;
+        rn.rows.forEach(r =>
+          missing.push(`${t('form234.effortNodeTitle', { n: i + 2 })} — ${r}`));
       });
-      nodeMissing.forEach(lbl => missing.push(`${t('form234.effortNodeTitle', { n: i + 2 })} — ${lbl}`));
-    });
 
-    // S137 hail conformance (Rules 2024/2025 + matrix rows 42/43/49/50): when ANY effort
-    // fishes 38b or 41 on a MAR-90 log, company and confirmation number are mandatory in
-    // both directions. Appended here (the S121 extra-block pattern) instead of
-    // FULL_DFO_REQUIRED_FIELDS so the draft completion % never counts fields a
-    // non-qualifying log can never show. STOP-1 ruling: save gate only, no send backstop.
-    // (ETA/weight checks land with their Phase 3 render gating.)
-    if (subformId === 90 && hailRequired) {
-      if (!hlinCompany.trim()) missing.push(fieldLabels.hlinCompany);
-      if (!hlinConfirmNo.trim()) missing.push(fieldLabels.hlinConfirmNo);
-      if (!hloutCompany.trim()) missing.push(fieldLabels.hloutCompany);
-      if (!hloutConfirmNo.trim()) missing.push(fieldLabels.hloutConfirmNo);
-      // Phase B (Rules 660/661): ETA + total weight join only on the 38b trigger — a
-      // 41-only log neither renders nor requires them (entry blocked).
-      if (hail38b) {
-        if (!hlinEta.trim()) missing.push(fieldLabels.hlinEta);
-        if (!hlinTotalWeight.trim()) missing.push(fieldLabels.hlinTotalWeight);
+      // SAR blocks — mandatory once ANY effort answered Yes (S136 P4 pool).
+      const anySarYes = sarYes === true || extraEffortNodes.some(e => e.sarYes === 'true');
+      if (anySarYes) {
+        const blocks = 1 + extraSars.length;
+        for (let i = 0; i < blocks; i++) {
+          missingInContainer('sar', { subformId, fmaId }, sarBlockValues(i)).forEach(m =>
+            push(m, blocks > 1 ? `${t('form234.sarBlockTitle', { n: i + 1 })} — ` : ''));
+        }
       }
     }
+
+    // BAIT / BYCATCH rows — mandatory-once-used members. The add-sheet builds complete rows,
+    // so these fire only on hydrated/legacy drafts (the old per-row alert chain, now table
+    // rows with the close-alls' row prefixes).
+    baitEntries.forEach((e, i) =>
+      baitRowMissing(e).forEach(m =>
+        push(m, `${e.type?.trim() || t('form234.baitRowTitle', { n: i + 1 })} — `)));
+    bycatchEntries.forEach((e, i) =>
+      bycatchRowMissing(e).forEach(m =>
+        push(m, `${e.species?.trim() || t('form234.bycatchRowTitle', { n: i + 1 })} — `)));
+
+    // LANDING — Port Landed is table-mandatory on ALL FOUR regions; the old list omitted it
+    // on 89/90 (the recon's R4 hole, closed here).
+    missingInContainer('landing', { subformId, fmaId }, {
+      portId: portLanded, landingTime: timeOfLanding,
+    }).forEach(m => push(m));
+
+    // HAIL — when any effort fishes 38b/41 on MAR (Rules 2024/2025); ETA + total weight join
+    // on the 38b trigger only (Rules 660/661) — same ctx shape as sectionMissingRows.
+    if (subformId === 90 && hailRequired) {
+      missingInContainer('hlin', { subformId, effortFmaIds: hail38b ? [DFO_FMA_38B] : [] }, {
+        hlinCompany, hlinConfirmNo, hlinEta, hlinTotalWeight,
+      }).forEach(m => push(m));
+      missingInContainer('hlout', { subformId, fmaId }, {
+        hloutCompany, hloutConfirmNo,
+      }).forEach(m => push(m));
+    }
+
+    // TRANSFER (QC 88) — the full container when a transfer is recorded (time, weight, the
+    // exactly-one destination pair, carrier VRN); the carrier VRN ALONE whenever the carrier
+    // question is Yes, transfer or not (Rule 642 doesn't care — LANDING.VRN is mandatory the
+    // moment a carrier is used, and the send validator refuses without it).
+    if (subformId === 88) {
+      // R-B bullet (W-3): the transfer question itself must be answered — app chrome, not a
+      // table field (the table asks "is the row filled?", never "is there an answer?").
+      if (transferYes === null) {
+        missing.push(t('form234.transferAnswerBullet'));
+      }
+      const transferValues = {
+        transferTime, transferWt, transferToVrn, transferToPndNum, carrierVrn, useCrInd,
+      };
+      if (transferYes === true) {
+        missingInContainer('transfer', { subformId, fmaId }, transferValues)
+          .forEach(m => push(m));
+      } else if (useCrInd === 'Y') {
+        missingInContainer('transfer', { subformId, fmaId }, transferValues)
+          .filter(m => m.fieldKey === 'carrierVrn')
+          .forEach(m => push(m));
+      }
+    }
+
+    // PERSONAL USE — mandatory once used, but "used" IS the weight being non-blank, so there
+    // is nothing checkable here (same formality the Personal Use close door records).
 
     if (missing.length > 0) {
-      Alert.alert(
-        t('form234.missingFieldsTitle'),
-        `${t('form234.missingFieldsBody')}${missing.join('\n• ')}`,
-        [{ text: tc('nav.ok') }]
-      );
+      // §14: the same refusal shape as the eleven section doors — permanence line first,
+      // then the bullets — under the whole-log title (W-1). "Missing Fields" / "before
+      // saving" retired: this button doesn't save, it closes permanently, and only the
+      // REQUIRED fields matter.
+      showCloseBlocked(missing, anyMixed, 'form234.closeLogBlockedTitle');
       return;
     }
 
@@ -3834,10 +3768,31 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       }
     };
 
-    if (landingWarn) {
-      Alert.alert(t('form234.landing24hWarningTitle'), t('form234.landing24hWarningBody'), [{ text: tc('nav.ok'), onPress: confirmThenSave }]);
+    // Rule 980 stays a chained, non-blocking warning ahead of the confirm.
+    const proceedThroughLandingWarn = () => {
+      if (landingWarn) {
+        Alert.alert(t('form234.landing24hWarningTitle'), t('form234.landing24hWarningBody'), [{ text: tc('nav.ok'), onPress: confirmThenSave }]);
+      } else {
+        confirmThenSave();
+      }
+    };
+
+    // S141 P4 (R-D ruling): Rule 1052 — DFO's mandated no-effort warning fires on EVERY close
+    // path that can seal landing information with no fishing effort, not only the Landing
+    // card's own close (closeLanding). This close-all stamps dgCloseLanding, so it warns
+    // FIRST — the SAME strings verbatim (the wording is a fence), warn-and-continue, never a
+    // block: a no-effort landing day is a legal day (setting day, gear-retrieval day).
+    if (!effortYes && openUsed.includes('dgCloseLanding')) {
+      Alert.alert(
+        t('form234.rule1052Title'),
+        t('form234.rule1052Warning'),
+        [
+          { text: t('form234.closeConfirmNotYet'), style: 'cancel' },
+          { text: t('form234.rule1052Continue'), onPress: proceedThroughLandingWarn },
+        ],
+      );
     } else {
-      confirmThenSave();
+      proceedThroughLandingWarn();
     }
   };
 

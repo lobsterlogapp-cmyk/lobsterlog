@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { Plus, FileText, Send, Edit3, Eye, Trash2, CheckCircle, User, Shield, RotateCcw, Archive, HelpCircle } from 'lucide-react-native';
 import HelpSupportScreen from './HelpSupportScreen';
-import { loadAllLogs, deleteLog, markSentToDfo, DfoLog, saveTransmissionRecord, TransmissionRecord, saveXmlArchiveEntry, loadTransmissionRegister, transmissionKind, unclosedUsedGroupKeys, logsOwingForm222 } from '../utils/dfoLogStorage';
+import { loadAllLogs, deleteLog, markSentToDfo, DfoLog, saveTransmissionRecord, TransmissionRecord, saveXmlArchiveEntry, loadTransmissionRegister, transmissionKind, unclosedUsedGroupKeys, logsOwingForm222, getCompletionDetails } from '../utils/dfoLogStorage';
 import { useTimer } from '../context/TimerContext';
 import { triggerBackup } from '../utils/dfoBackup';
 import { SentLogCard, SentLogDetailModal, indexSuccessRecords, indexFailureRecords } from '../components/SentLogCard';
@@ -53,46 +53,9 @@ const CLOSE_SECTION_NAME_KEY: Record<string, string> = {
   dgCloseHlout: 'form234.hloutSection',
 };
 
-// --- Completion % ---
-const FULL_REQUIRED = [
-  'dateFished','crewRegistry','departurePort','portLanded',
-  'timeSailed','timeStartedHauling','timeStoppedHauling','timeOfLanding',
-  'soakDuration','gridNumber','catchWeight','trapHauls',
-  'vNotchCount','gpsLat','gpsLng','personalUse',
-];
-const PROPOSAL_REQUIRED = [
-  'dateFished','departurePort','portLanded','crewRegistry',
-  'gridNumber','catchWeight','trapHauls',
-  'timeStartedHauling','timeStoppedHauling',
-];
-
-const getCompletionPercent = (log: DfoLog): number => {
-  const fields = log.mode === 'full' ? FULL_REQUIRED : PROPOSAL_REQUIRED;
-  const data: Record<string, string> = { dateFished: log.dateFished, ...log.data };
-  const filled = fields.filter(f => data[f] && data[f].trim() !== '').length;
-  let arrayTotal = log.mode === 'full' ? 2 : 1;
-  let arrayFilled = 0;
-  try { if (JSON.parse(log.data.bycatchEntries || '[]').length > 0) arrayFilled++; } catch { /* noop */ }
-  if (log.mode === 'full') {
-    try { if (JSON.parse(log.data.baitEntries || '[]').length > 0) arrayFilled++; } catch { /* noop */ }
-  }
-  return Math.round(((filled + arrayFilled) / (fields.length + arrayTotal)) * 100);
-};
-
-const getCompletionDetails = (log: DfoLog): { filled: number; total: number; pct: number } => {
-  const fields = log.mode === 'full' ? FULL_REQUIRED : PROPOSAL_REQUIRED;
-  const data: Record<string, string> = { dateFished: log.dateFished, ...log.data };
-  const filled = fields.filter(f => data[f] && data[f].trim() !== '').length;
-  const arrayTotal = log.mode === 'full' ? 2 : 1;
-  let arrayFilled = 0;
-  try { if (JSON.parse(log.data.bycatchEntries || '[]').length > 0) arrayFilled++; } catch { /* noop */ }
-  if (log.mode === 'full') {
-    try { if (JSON.parse(log.data.baitEntries || '[]').length > 0) arrayFilled++; } catch { /* noop */ }
-  }
-  const total = fields.length + arrayTotal;
-  const filledTotal = filled + arrayFilled;
-  return { filled: filledTotal, total, pct: Math.round((filledTotal / total) * 100) };
-};
+// --- Completion % --- (S141 P4: the screen's own proposal-era field list and its two local
+// meter functions are RETIRED — getCompletionDetails now comes from dfoLogStorage, driven by
+// the shared requirements table, so the bar and the form's Close-&-Save-All button agree.)
 
 // --- 72-hour countdown helper ---
 const getStopHaulTimestamp = (log: DfoLog): number | null => {

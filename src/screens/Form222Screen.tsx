@@ -489,9 +489,13 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
     // form values themselves.
     const missing = missingInContainer('form222', { subformId: profile.subformId ?? 90 }, { ...form });
     if (missing.length) {
+      // S141 P4 amendment (W-2): the body admits a wrong-not-blank value — a future report
+      // date / out-of-order interaction date / out-of-range coordinate is "incorrect", not
+      // "blank"; the all-blank sentence stays byte-identical.
+      const mixed = missing.some(m => m.reason === 'invalid' || m.reason === 'pair-both');
       Alert.alert(
         t('form234.closeBlockedTitle'),
-        `${t('form234.closeBlockedBody')}\n• ${missing.map(closeBulletText).join('\n• ')}`,
+        `${t(mixed ? 'form234.closeBlockedBodyMixed' : 'form234.closeBlockedBody')}\n• ${missing.map(closeBulletText).join('\n• ')}`,
         [{ text: tc('nav.ok') }],
       );
       return;

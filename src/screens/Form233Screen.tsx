@@ -268,13 +268,16 @@ export default function Form233Screen({ onClose, registerClose, entryUid }: Prop
     // licence at close would seal a permanently unsendable report — refused here with a
     // bullet pointing at the Captain Profile (the 222 needs no twin: it reads the
     // profile at send time).
-    const rows = missingInContainer('form233', { subformId: profile.subformId ?? 90 }, { ...form })
-      .map(closeBulletText);
+    const missing = missingInContainer('form233', { subformId: profile.subformId ?? 90 }, { ...form });
+    const rows = missing.map(closeBulletText);
     if (!profile.fishingNumber.trim()) rows.push(t('form233.licenceNoCloseBullet'));
     if (rows.length) {
+      // S141 P4 amendment (W-2): the walk-caught defect — a malformed Referred ELOG UID or
+      // an out-of-order period end is "incorrect", not "blank"; the body now admits it.
+      const mixed = missing.some(m => m.reason === 'invalid' || m.reason === 'pair-both');
       Alert.alert(
         t('form234.closeBlockedTitle'),
-        `${t('form234.closeBlockedBody')}\n• ${rows.join('\n• ')}`,
+        `${t(mixed ? 'form234.closeBlockedBodyMixed' : 'form234.closeBlockedBody')}\n• ${rows.join('\n• ')}`,
         [{ text: tc('nav.ok') }],
       );
       return;

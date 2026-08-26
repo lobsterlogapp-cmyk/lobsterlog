@@ -6,7 +6,15 @@ import {
   DFO_LGRID_BY_FMA,
   DFO_FMA_LGRID_REQUIRED,
   DFO_SUBFORM_REGISTRY,
+  getDfoBaitTypeList,
 } from '../utils/dfoConstants';
+import {
+  containerProgress,
+  requiredGroups,
+  EFFORT_LEVEL_KEYS,
+  RequirementContext,
+  FieldValues,
+} from './dfoRequirements';
 // --- TYPES ---
 export type DfoLogMode = 'full' | 'proposal';
 export type DfoLogStatus = 'draft' | 'complete';
@@ -633,62 +641,183 @@ export function isNoteLocked(noteKey: string, closes: Record<string, string>): b
   return (NOTE_CLOSE_KEYS[noteKey] ?? []).some(k => !!closes[k]);
 }
 
-// --- COMPLETION PERCENTAGE ---
+// --- COMPLETION METER (S141 P4: table-driven) ---
+// The old FULL_DFO_REQUIRED_FIELDS list (the close-all button's private authority) and both
+// getCompletionPercent functions are RETIRED — the shared table (dfoRequirements.ts) is the
+// one authority. The meter counts the table-MANDATORY fields for THIS log's own context
+// (its region, each effort's own FMA, the landing, the answered toggles); a filled-but-
+// invalid value does not count. 100% therefore means the bottom Close-&-Save-All button
+// will accept the log — the bar and the button agree by construction.
+//
+// Per the R-C ruling, used-but-OPTIONAL groups never inflate the denominator: bait rows,
+// bycatch rows and Personal Use add units only while something in them is actually MISSING
+// (an incomplete legacy row keeps the bar honest without penalising a normal complete row),
+// and a Yes on the bycatch question adds one unit until a row exists (the R-B footer check's
+// meter twin).
 
-// Required fields for the Full DFO form — per subform
-export const FULL_DFO_REQUIRED_FIELDS: Record<number, string[]> = {
-  88: ['operName', 'startDt', 'fmaId', 'gridId', 'catchWeight', 'trapHauls', 'lgbkUid', 'firstEntryDt', 'crewNb', 'portId', 'gpsCoords', 'sailTime', 'haulStartTime', 'haulEndTime', 'landingTime'],
-  89: ['operName', 'startDt', 'fmaId', 'catchWeight', 'trapHauls', 'lgbkUid', 'firstEntryDt', 'gpsCoords', 'sailTime', 'haulStartTime', 'haulEndTime', 'landingTime'],
-  90: ['operName', 'startDt', 'fmaId', 'lgridCodeId', 'catchWeight', 'trapHauls', 'lgbkUid', 'firstEntryDt', 'crewNb', 'sailTime', 'haulStartTime', 'haulEndTime', 'landingTime'],
-  91: ['operName', 'startDt', 'fmaId', 'catchWeight', 'trapHauls', 'lgbkUid', 'firstEntryDt', 'portId', 'trapSize', 'gearSubtypeId', 'statSectId', 'nbSpcmnKept', 'sailTime', 'haulStartTime', 'haulEndTime', 'landingTime'],
-};
-
-export function getRequiredFields(subformId: number): string[] {
-  return FULL_DFO_REQUIRED_FIELDS[subformId] ?? FULL_DFO_REQUIRED_FIELDS[90];
-}
-
-// Required fields for the Proposal form (9 text fields + bycatch array = 10 total)
+// Required fields for the legacy Proposal form (9 text fields + bycatch array = 10 total).
+// The proposal form is its own product surface (175 live users) — out of the DFO table's
+// jurisdiction, so its list stays.
 const PROPOSAL_REQUIRED_FIELDS = [
   'dateFished', 'departurePort', 'portLanded', 'crewRegistry',
   'gridNumber', 'catchWeight', 'trapHauls',
   'timeStartedHauling', 'timeStoppedHauling',
 ];
 
-export const getCompletionPercent = (log: DfoLog): number => {
-  const requiredFields = log.mode === 'full'
-    ? getRequiredFields(log.subformId ?? 90)
-    : PROPOSAL_REQUIRED_FIELDS;
+export interface CompletionDetails { filled: number; total: number; pct: number }
 
-  // Merge dateFished into data map for unified lookup
-  const dataWithTop: Record<string, string> = {
-    dateFished: log.dateFished,
-    ...log.data,
-  };
+const crewCountFromJson = (json?: string): number => {
+  try {
+    const arr = JSON.parse(json || '[]');
+    return Array.isArray(arr) ? arr.length : 0;
+  } catch { return 0; }
+};
+
+const indFromStored = (v?: string): string => (v === 'true' ? 'Y' : v === 'false' ? 'N' : '');
+
+export const getCompletionDetails = (log: DfoLog): CompletionDetails => {
+  if (log.mode !== 'full') {
+    // Legacy proposal meter, unchanged in behaviour.
+    const data: Record<string, string> = { dateFished: log.dateFished, ...log.data };
+    const filled = PROPOSAL_REQUIRED_FIELDS.filter(f => data[f] && data[f].trim() !== '').length;
+    let arrayFilled = 0;
+    try { if (JSON.parse(log.data.bycatchEntries || '[]').length > 0) arrayFilled++; } catch { /* noop */ }
+    const total = PROPOSAL_REQUIRED_FIELDS.length + 1;
+    return { filled: filled + arrayFilled, total, pct: Math.round(((filled + arrayFilled) / total) * 100) };
+  }
+
+  const d = log.data ?? {};
+  const subformId = log.subformId ?? 90;
+  const efforts = effortsFromData(d);
+  const effortYes = d.effortYes !== 'false';
+  const effortFmaIds = effortYes
+    ? efforts.map(e => Number(e.fmaId)).filter(n => Number.isFinite(n) && n > 0)
+    : [];
+  const firstFma = effortFmaIds.length ? effortFmaIds[0] : null;
+  const ctx: RequirementContext = { subformId, fmaId: firstFma, effortFmaIds };
 
   let filled = 0;
-  for (const field of requiredFields) {
-    const val = dataWithTop[field];
-    if (val && val.trim() !== '') filled++;
+  let total = 0;
+  const add = (p: { filled: number; total: number }) => { filled += p.filled; total += p.total; };
+  // Missing-only units (see the R-C note above): count the gap, never the filled part.
+  const addMissingOnly = (missingCount: number) => { total += missingCount; };
+
+  // TRIP — dates/times, the region-gated departure port and crew, the bycatch toggle.
+  const crewCount = crewCountFromJson(d.crewRegistry);
+  add(containerProgress('trip', ctx, {
+    startDt: log.dateFished || d.dateFished,
+    sailTime: d.timeSailed,
+    departurePort: d.departurePort,
+    crewNb: crewCount > 0 ? String(crewCount) : '',
+    bycatchAnswered: indFromStored(d.bycatchYes),
+  }));
+
+  // EFFORT(s) — each with its own FMA; effort-level fields once, group fields per trap group.
+  if (effortYes) {
+    efforts.forEach(e => {
+      const eFma = Number(e.fmaId) || null;
+      const eCtx: RequirementContext = { subformId, fmaId: eFma, effortFmaIds };
+      const level: FieldValues = {
+        fmaId: e.fmaId ?? '',
+        haulStartTime: e.haulStartTime ?? '', haulEndTime: e.haulEndTime ?? '',
+        sarInd: indFromStored(e.sarYes), mmInterInd: indFromStored(e.mmYes),
+        gearSubtypeId: e.gearSubtypeId ?? '',
+      };
+      const groups = (e.details?.length ? e.details : [{}]) as Record<string, string | undefined>[];
+      groups.forEach((g, gi) => {
+        const values: FieldValues = {
+          ...level,
+          catchWeight: g.catchWeight ?? '', trapHauls: g.trapHauls ?? '',
+          soakDuration: g.soakDuration ?? '',
+          gpsLat: g.gpsLat ?? '', gpsLng: g.gpsLng ?? '',
+          gridId: g.gridId ?? '', lgridCodeId: g.lgridCodeId ?? '', statSectId: g.statSectId ?? '',
+          vNotchCount: g.vNotchCount ?? '', nbVntchYou: g.nbVntchYou ?? '',
+          nbSpcmnBrd: g.nbSpcmnBrd ?? '', nbSpcmnKept: g.nbSpcmnKept ?? '',
+          trapSize: g.trapSize ?? '',
+        };
+        add(containerProgress('effort', eCtx, values,
+          gi > 0 ? { skip: EFFORT_LEVEL_KEYS } : undefined));
+      });
+    });
+
+    // SAR blocks — mandatory once any effort answered Yes.
+    if (efforts.some(e => e.sarYes === 'true')) {
+      sarBlocksFromData(d).forEach(b => {
+        add(containerProgress('sar', ctx, {
+          sarDate: b.date ?? '', sarTime: b.time ?? '', sarSpecies: b.species ?? '',
+          sarNbSpcmn: b.nbSpcmn ?? '', sarCondId: b.condId ?? '',
+          sarLat: b.lat ?? '', sarLng: b.lng ?? '',
+        }));
+      });
+    }
   }
 
-  // Array fields: bait (full only) + bycatch (both)
-  const arrayTotal = log.mode === 'full' ? 2 : 1;
-  let arrayFilled = 0;
+  // LANDING — port landed is mandatory on all four regions (the old list's known hole).
+  add(containerProgress('landing', ctx, {
+    portId: d.portLanded, landingTime: d.timeOfLanding,
+  }));
 
+  // HAIL — only when the logbook must carry the groups (MAR with a 38b/41 effort).
+  if (requiredGroups(ctx).includes('hlin')) {
+    add(containerProgress('hlin', ctx, {
+      hlinCompany: d.hlinCompany, hlinConfirmNo: d.hlinConfirmNo,
+      hlinEta: d.hlinEta, hlinTotalWeight: d.hlinTotalWeight,
+    }));
+    add(containerProgress('hlout', ctx, {
+      hloutCompany: d.hloutCompany, hloutConfirmNo: d.hloutConfirmNo,
+    }));
+  }
+
+  // TRANSFER (QC 88) — counted only when a transfer is being recorded; the carrier VRN
+  // alone is counted whenever the carrier question is Yes (it is mandatory regardless of
+  // whether a transfer rides the trip — Rule 642).
+  const transferValues: FieldValues = {
+    transferTime: d.transferTime, transferWt: d.transferWt,
+    transferToVrn: d.transferToVrn, transferToPndNum: d.transferToPndNum,
+    carrierVrn: d.carrierVrn, useCrInd: d.useCrInd,
+  };
+  if (subformId === 88) {
+    if (d.transferYes === 'true') {
+      add(containerProgress('transfer', ctx, transferValues));
+    } else if (d.useCrInd === 'Y') {
+      add(containerProgress('transfer', ctx, transferValues, { only: new Set(['carrierVrn']) }));
+    }
+  }
+
+  // Bycatch Yes with no rows yet: one open unit (the footer refuses this — R-B).
+  let bycatchRows: Record<string, string | undefined>[] = [];
   try {
-    const bycatch = JSON.parse(log.data.bycatchEntries || '[]');
-    if (bycatch.length > 0) arrayFilled++;
+    const parsed = JSON.parse(d.bycatchEntries || '[]');
+    if (Array.isArray(parsed)) bycatchRows = parsed;
   } catch { /* noop */ }
+  if (d.bycatchYes === 'true' && bycatchRows.length === 0) addMissingOnly(1);
 
-  if (log.mode === 'full') {
-    try {
-      const bait = JSON.parse(log.data.baitEntries || '[]');
-      if (bait.length > 0) arrayFilled++;
-    } catch { /* noop */ }
-  }
+  // Row-based optional groups: only what is MISSING counts (see the R-C note above).
+  bycatchRows.forEach(r => {
+    const p = containerProgress('bycatchRow', ctx, {
+      species: r.species ?? '', lbs: r.lbs ?? '', usage: r.usage ?? '',
+    });
+    addMissingOnly(p.total - p.filled);
+  });
+  let baitRows: Record<string, string | undefined>[] = [];
+  try {
+    const parsed = JSON.parse(d.baitEntries || '[]');
+    if (Array.isArray(parsed)) baitRows = parsed;
+  } catch { /* noop */ }
+  baitRows.forEach(r => {
+    // The bait-condition formula keys on the row's bait-type codeId; resolve it from the
+    // stored label the same way the footer does.
+    const codeId = getDfoBaitTypeList(subformId).find(b => b.label === r.type)?.codeId ?? 0;
+    const p = containerProgress('baitRow', ctx, {
+      type: r.type ?? '', lbs: r.lbs ?? '',
+      condition: r.condition != null ? String(r.condition) : '',
+      baitTypeCodeId: String(codeId),
+    });
+    addMissingOnly(p.total - p.filled);
+  });
 
-  const total = requiredFields.length + arrayTotal;
-  return Math.round(((filled + arrayFilled) / total) * 100);
+  const pct = total === 0 ? 100 : Math.round((filled / total) * 100);
+  return { filled, total, pct };
 };
 
 // --- LAST LOG HELPER ---
