@@ -575,28 +575,42 @@ describe('agreement (234): where the validator has a direction, the table matche
     expect(errors.filter(e => e.includes('HLIN') || e.includes('HLOUT'))).toEqual([]);
     expect(requiredGroups(ctx(90, undefined, [1589]))).toEqual([]);
   });
-});
 
-describe('agreement (234): the validator\'s KNOWN deferred gaps stay gaps (ruling 5) — the table is deliberately ahead', () => {
-  test('settlement grid: table mandates on a Rule-619 LFA; the validator (still) has no mandatory direction', () => {
+  // ── S143 — THE RE-CUT PINS ────────────────────────────────────────────────────────────
+  // The two tests below, and the KNOWN-GAPS describe block they used to live in, are gone.
+  // Until this build that block held exactly these two tests and nothing else, and both
+  // asserted the OPPOSITE of their second line: that the validator produced NO error while
+  // the table was deliberately ahead. Closing defects 53 and 54 fired both ON PURPOSE, so
+  // they moved here — where the already-closed rules (654, 252, 985, 2024/2025…) live — and
+  // their assertions inverted. The block itself was retired rather than left empty, because a
+  // describe block titled "the KNOWN deferred gaps stay gaps" containing nothing is a lie
+  // about the state of the validator. Same reasoning as the S142 defect 52 note above: a test
+  // that goes red because something was FIXED looks identical to one that goes red because
+  // something BROKE, and only this note tells them apart.
+  //
+  // NOT closed here — NF-1 (the blocked direction of Rule 619 on MAR FMAs outside the 13:
+  // LFA 40/41 and 38b). Deferred to its own session by ruling: closing it invalidates fixtures
+  // in seven suites, two of which are deliberate byte pins. Not a live leak — DFO_LGRID_BY_FMA
+  // holds exactly the 13 codes, so the app's grid picker cannot offer one outside them.
+
+  test('settlement grid: Rule 619 — the validator now mandates it on a Rule-619 LFA, and the table agrees', () => {
     const mar = makeLog(90);
     mar.data.fmaId = '1589'; // LFA 34 — in the Rule-619 list
     delete mar.data.lgridCodeId;
     delete mar.data.gpsLat; delete mar.data.gpsLng; delete mar.data.gpsSrc; // non-38b: blocked
     delete mar.data.nbSpcmnBrd;
     const { errors } = validateElogXml(gen(mar), 90);
-    expect(errors.filter(e => e.includes('LGRID'))).toEqual([]); // the P5-deferred gap
-    expect(isFieldRequired('lgridCodeId', ctx(90, 1589))).toBe(true); // the table is ahead
+    expect(errors.some(e => e.includes('LGRID_ID is mandatory') && e.includes('Rule 619'))).toBe(true);
+    expect(isFieldRequired('lgridCodeId', ctx(90, 1589))).toBe(true);
   });
 
-  test('kept weight: table mandates (Rule 631, lobster); the validator (still) has no direction', () => {
+  test('kept weight: Rules 631/2020 — the validator now mandates it on a lobster catch, and the table agrees', () => {
     const mar = makeLog(90);
     delete mar.data.catchWeight;
     const { errors } = validateElogXml(gen(mar), 90);
-    expect(errors.filter(e => e.includes('KEPT_WT'))).toEqual([]);
+    expect(errors.some(e => e.includes('KEPT_WT is mandatory') && e.includes('Rules 631/2020'))).toBe(true);
     expect(isFieldRequired('catchWeight', ctx(90, 28599))).toBe(true);
   });
-
 });
 
 describe('agreement (222/233): the form validators', () => {

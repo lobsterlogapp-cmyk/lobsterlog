@@ -7,7 +7,7 @@
 import forge from 'node-forge';
 import { DfoLog, ExtraSarDetail, ExtraEffortNode, sarBlocksFromData, effortsFromData, fishesHailArea } from './dfoLogStorage';
 import { CaptainProfile } from './captainStorage';
-import { getDfoBaitTypeList, baitConditionState, getDfoPconsSpeciesList, DFO_SPECIE_FRM_ID, DFO_PCONS_OTHER_SIZE_ID, DFO_GEAR_ID, DFO_SOFT_VER, DFO_CIE_ID, DFO_FORM_VER_ID, DFO_HLIN_COMPANY_LIST, DFO_HLOUT_COMPANY_LIST, DFO_FMA_HLIN_REQUIRED, DFO_SUBFORM_REGISTRY, DFO_FMA_38B, DFO_FMA_NB_VNTCH, DFO_FMA_NB_VNTCH_YOU, DFO_FMA_STAT_SECT_REQUIRED, DFO_STAT_SECT_BY_FMA, DFO_FMA_GRID_MAP, DFO_GRID_BLOCKED_FMA, clampCoord4, effortCoordsEntryAllowed } from './dfoConstants';
+import { getDfoBaitTypeList, baitConditionState, getDfoPconsSpeciesList, DFO_SPECIE_FRM_ID, DFO_PCONS_OTHER_SIZE_ID, DFO_GEAR_ID, DFO_SOFT_VER, DFO_CIE_ID, DFO_FORM_VER_ID, DFO_HLIN_COMPANY_LIST, DFO_HLOUT_COMPANY_LIST, DFO_FMA_HLIN_REQUIRED, DFO_FMA_LGRID_REQUIRED, DFO_SUBFORM_REGISTRY, DFO_FMA_38B, DFO_FMA_NB_VNTCH, DFO_FMA_NB_VNTCH_YOU, DFO_FMA_STAT_SECT_REQUIRED, DFO_STAT_SECT_BY_FMA, DFO_FMA_GRID_MAP, DFO_GRID_BLOCKED_FMA, clampCoord4, effortCoordsEntryAllowed } from './dfoConstants';
 import { MV_PARTNERSHIP_TYPE, MV_GRID } from '../data/reftables';
 
 export function generateReportUid(): string {
@@ -945,10 +945,25 @@ export function validateElogXml(xml: string, subformId: number): { valid: boolea
           if (subformId !== 91 && hasTrpSz) {
             errors.push(`${dp}: TRP_SZ_ID is blocked for subform ${subformId}`);
           }
-          // LGRID_ID: Optional for MAR(90) ONLY; Blocked for QC(88)/GLF(89)/NL(91) per
-          // Subforms_requirements_234.xlsx row 85 (Session 59). The generator emits it
-          // only for 90 when populated; optional there, so no mandatory check.
-          if (subformId !== 90 && get(ed, 'LGRID_ID').length > 0) {
+          // LGRID_ID — S143 defect 54: the MANDATORY direction of Rule 619. The lobster
+          // settlement grid is mandatory when the effort FMA is one of the 13 codes 1581-1593
+          // (LFA 27-38; LFA 34 = 1589). The close gate has demanded this since S140 P3
+          // (dfoRequirements.ts lgridCodeId) but the send gate had no mandatory direction at all,
+          // so a Rule-619 log with no grid transmitted.
+          //
+          // NOT CLOSED HERE — NF-1, deferred to its own session by ruling: Rule 619 also BLOCKS
+          // the grid on every FMA outside the 13, including the MAR areas LFA 40 (1594), LFA 41
+          // (1595) and 38b (28599). The blocked direction below is still scoped by SUBFORM
+          // (Subforms row 85), so those three MAR areas still pass. Closing it invalidates
+          // fixtures in seven suites, two of which are deliberate byte pins
+          // (multiGrid PRE_S121_BASELINE_90, sarMulti's pre-multi-SAR baseline).
+          // Not a live leak: DFO_LGRID_BY_FMA holds exactly the 13 codes, so the app's own grid
+          // picker cannot offer a settlement grid outside them.
+          const lgrid = get(ed, 'LGRID_ID').length > 0;
+          if (subformId === 90 && DFO_FMA_LGRID_REQUIRED.has(efFma) && !lgrid) {
+            errors.push(`${dp}: LGRID_ID is mandatory for this FMA (Rule 619)`);
+          }
+          if (subformId !== 90 && lgrid) {
             errors.push(`${dp}: LGRID_ID is blocked for subform ${subformId}`);
           }
           // GRID_ID (Rules 1011 / 1012 / 613x-614x): QC(88) only, FMA-gated (mirrors the emit).
@@ -1027,6 +1042,18 @@ export function validateElogXml(xml: string, subformId: number): { valid: boolea
             }
             if (!brdAllowed && brd) {
               errors.push(`${dp}.CATCH[${ci + 1}]: NB_SPCMN_BRD is blocked outside lobster/MAR FMA 38b (Rules 653/655)`);
+            }
+            // KEPT_WT (Rules 631 + 2020): MANDATORY on a lobster CATCH. Rule 631 makes the kept
+            // weight mandatory whenever the species caught is lobster (1312); Rule 2020 closes
+            // the no-catch case — "the fisher must enter 0 in the quantity kept" — so a zero is
+            // typed, never an absence. S143 defect 53: the close gate has demanded this since
+            // S140 P3 but the send gate had no direction at all.
+            // Keyed on the SPECIES, deliberately NOT on CATCH_SPEC's min: Rule 978a BLOCKS
+            // KEPT_WT for non-lobster/non-crab species on subforms 88 and 91, so a blanket
+            // min:1 would be wrong the moment a non-lobster CATCH node exists. Same shape as
+            // the Rule 654 check above.
+            if (specie === '1312' && get(c, 'KEPT_WT').length === 0) {
+              errors.push(`${dp}.CATCH[${ci + 1}]: KEPT_WT is mandatory for a lobster catch (Rules 631/2020)`);
             }
             // NB_SPCMN_KEPT / NB_SPCMN_DISC: blocked for MAR(90) per subforms
             // requirements v234.11 (Kane, Session 56); the generator never emits them.
