@@ -306,12 +306,34 @@ describe('Tier 1: the seven "no door is safe" fields', () => {
     ]);
   });
 
-  test('5+6. the two v-notch counts — FMA-gated on QC (Rules 624/625/626, 28-FMA list)', () => {
-    for (const f of ['vNotchCount', 'nbVntchYou']) {
-      expect(isFieldRequired(f, ctx(88, 25656))).toBe(true);   // LFA 19a1 — in the list
-      expect(fieldRequirement(f)!.state(ctx(88, 25640), {})).toBe('blocked'); // 17b — outside
-      expect(fieldRequirement(f)!.state(ctx(90, 25656), {})).toBe('blocked'); // not QC
-    }
+  // S145 defect 51 SPLIT THIS LOOP. The two v-notch counts no longer behave identically:
+  // vNotchCount answers Rule 624 alone (one 28-FMA list, both directions), while nbVntchYou
+  // answers Rules 625 AND 626 over two different lists and so has a third state, 'optional'.
+  // The dropped case — nbVntchYou on subform 90 at a QC FMA — asserted 'blocked' because the
+  // old code asked the region first. It is now 'mandatory', because the 28-FMA list is QC-only
+  // by construction and the region question adds nothing. The combination is unreachable in the
+  // app (a MAR logbook is never offered QC fishing areas), and re-introducing a subformId test
+  // purely to keep the assertion alive would rebuild the defect this session removed.
+  test('5. NB_VNTCH — FMA-gated on QC (Rule 624, one 28-FMA list, both directions)', () => {
+    expect(isFieldRequired('vNotchCount', ctx(88, 25656))).toBe(true);   // LFA 19a1 — in the list
+    expect(fieldRequirement('vNotchCount')!.state(ctx(88, 25640), {})).toBe('blocked'); // 17b — outside
+    expect(fieldRequirement('vNotchCount')!.state(ctx(90, 25656), {})).toBe('blocked'); // not QC
+  });
+
+  test('6. NB_VNTCH_YOU — three states across two lists (Rules 625/626)', () => {
+    // Mandatory on Rule 626's 28 QC FMAs.
+    expect(isFieldRequired('nbVntchYou', ctx(88, 25656))).toBe(true);    // LFA 19a1
+    // OPTIONAL on the 19 NL FMAs: inside Rule 625's 47, outside Rule 626's 28.
+    expect(fieldRequirement('nbVntchYou')!.state(ctx(91, 2071), {})).toBe('optional');  // LFA 01
+    expect(fieldRequirement('nbVntchYou')!.state(ctx(91, 1652), {})).toBe('optional');  // LFA 02
+    expect(fieldRequirement('nbVntchYou')!.state(ctx(91, 2097), {})).toBe('optional');  // LFA 14c
+    expect(isFieldRequired('nbVntchYou', ctx(91, 2071))).toBe(false);    // optional ⇒ no asterisk
+    // Blocked outside Rule 625's 47 — QC LFA 17b and every MAR FMA.
+    expect(fieldRequirement('nbVntchYou')!.state(ctx(88, 25640), {})).toBe('blocked'); // 17b
+    expect(fieldRequirement('nbVntchYou')!.state(ctx(90, 1589), {})).toBe('blocked');  // LFA 34
+  });
+
+  test('5+6. both v-notch counts are demanded together on a Rule 624/626 QC FMA', () => {
     const missing = missingInContainer('effort', ctx(88, 25656), {
       fmaId: '25656', haulStartTime: '06:00', haulEndTime: '13:30', trapHauls: '250',
       catchWeight: '500', soakDuration: '2', gpsLat: '48.4488', gpsLng: '-68.5236',
@@ -592,6 +614,14 @@ describe('agreement (234): where the validator has a direction, the table matche
   // LFA 40/41 and 38b). Deferred to its own session by ruling: closing it invalidates fixtures
   // in seven suites, two of which are deliberate byte pins. Not a live leak — DFO_LGRID_BY_FMA
   // holds exactly the 13 codes, so the app's grid picker cannot offer one outside them.
+  //
+  // S145 defect 51 — SAME CLASS, closed. One assertion was DELETED rather than inverted: test 5+6
+  // above used to loop over both v-notch counts and assert that nbVntchYou on subform 90 at QC
+  // FMA 25656 was 'blocked'. Making the field FMA-gated turns that case 'mandatory', so the
+  // assertion had to go. It went because it is unreachable (a MAR logbook is never offered QC
+  // fishing areas) and because the only way to keep it was to re-add the region test that caused
+  // the defect. A reader who finds this test file thinner than git history suggests should look
+  // here first: the case was removed by a fix, not lost.
 
   test('settlement grid: Rule 619 — the validator now mandates it on a Rule-619 LFA, and the table agrees', () => {
     const mar = makeLog(90);

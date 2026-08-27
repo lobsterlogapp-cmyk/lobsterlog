@@ -1491,8 +1491,13 @@ export const DFO_FMA_NB_VNTCH = new Set<number>([
   25635, 25634,                                                   // LFA 21a/21b
 ]);
 
-// Rules 625/626: LFAs 01-14c plus the Rule 623 set, where NB_VNTCH_YOU is
-// MANDATORY; blocked in every other FMA.
+// Rule 625: the 47 FMAs where NB_VNTCH_YOU is PERMITTED — the 19 NL LFAs 01-14c plus the
+// 28 QC FMAs of the Rule 624 set above. Outside this list the entry is BLOCKED.
+// It is NOT mandatory across all 47: Rule 626 mandates it on the 28 QC FMAs only, which
+// leaves the 19 NL FMAs OPTIONAL — permitted by 625, not compelled by 626. Confirmed by
+// Subforms_requirements_234.xlsx row 88 (QC Optional / GLF Blocked / MAR Blocked / NL
+// Optional). Use this set for the BLOCKED direction and DFO_FMA_NB_VNTCH for the MANDATORY
+// one; they are different sets and one test cannot answer both (S145 defect 51).
 export const DFO_FMA_NB_VNTCH_YOU = new Set<number>([
   2071, 1652, 1653, 2073, 1654, 1655, 2075, 2077, 2079,           // LFA 01-08
   39674, 39675, 2083, 2085, 2087, 2089, 2091, 2093, 2095, 2097,   // LFA 09a-14c

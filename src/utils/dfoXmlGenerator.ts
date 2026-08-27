@@ -322,11 +322,15 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
     const soakMin = isNaN(soakDays) || soakDays <= 0 ? '' : String(Math.round(soakDays * 1440));
     effort += tag('SOAKED_DUR', soakMin, '          ');
   }
-  // NB_VNTCH / NB_VNTCH_YOU: QC(88) only, mandatory/blocked by FMA (Rules 623-626)
+  // NB_VNTCH — Rule 624 carries both directions over one 28-FMA list: mandatory there, blocked
+  // everywhere else. Correct as written; NOT part of the S145 defect-51 fix.
   if (subformId === 88 && DFO_FMA_NB_VNTCH.has(efFma)) {
     effort += tag('NB_VNTCH', det.vNotchCount ?? '', '          ');
   }
-  if (subformId === 88 && DFO_FMA_NB_VNTCH_YOU.has(efFma)) {
+  // NB_VNTCH_YOU — Rule 625 permits it across 47 FMAs (28 QC + 19 NL); Rule 626 mandates it on
+  // the 28. On the 19 NL FMAs it is OPTIONAL, so a blank is the normal case there — tag() drops
+  // an empty value, so nothing is emitted and the element is simply absent (XSD minOccurs=0).
+  if (DFO_FMA_NB_VNTCH_YOU.has(efFma)) {
     effort += tag('NB_VNTCH_YOU', det.nbVntchYou ?? '', '          ');
   }
   effort += tag('NB_GEAR_HLD',  det.trapHauls ?? '', '          ');
@@ -1006,15 +1010,25 @@ export function validateElogXml(xml: string, subformId: number): { valid: boolea
               errors.push(`${dp}: STAT_SECT_ID ${statSectNode.text} is not valid for this FMA (Rule 622)`);
             }
           }
-          // Rules 623-626: NB_VNTCH / NB_VNTCH_YOU — QC FMA-conditional
+          // Rules 623-626: NB_VNTCH / NB_VNTCH_YOU — FMA-conditional (the lists carry the region).
           const vntch = get(ed, 'NB_VNTCH').length > 0;
           const vntchYou = get(ed, 'NB_VNTCH_YOU').length > 0;
+          // NB_VNTCH — Rule 624 states BOTH directions over ONE 28-FMA list, so mandatory and
+          // blocked are true complements and one expression answers both. Unchanged by S145.
           const vntchFma = subformId === 88 && DFO_FMA_NB_VNTCH.has(efFma);
-          const vntchYouFma = subformId === 88 && DFO_FMA_NB_VNTCH_YOU.has(efFma);
           if (vntchFma && !vntch) errors.push(`${dp}: NB_VNTCH is mandatory for this FMA (Rule 624)`);
           if (!vntchFma && vntch) errors.push(`${dp}: NB_VNTCH is blocked for this FMA/subform (Rule 623)`);
-          if (vntchYouFma && !vntchYou) errors.push(`${dp}: NB_VNTCH_YOU is mandatory for this FMA (Rule 626)`);
-          if (!vntchYouFma && vntchYou) errors.push(`${dp}: NB_VNTCH_YOU is blocked for this FMA/subform (Rule 625)`);
+          // NB_VNTCH_YOU — S145 defect 51: mandatory and permitted are DIFFERENT sets here, so the
+          // two directions need two tests against two lists. Rule 626 mandates it on its 28 FMAs
+          // (DFO_FMA_NB_VNTCH, the QC set); Rule 625 blocks it outside its 47 (DFO_FMA_NB_VNTCH_YOU).
+          // The 19 FMAs between the two — NL LFA 01-14c — are OPTIONAL: neither test fires, so the
+          // element may be present or absent and this validator says nothing either way. One
+          // expression cannot answer both questions once the sets diverge; it would be wrong in one
+          // direction whichever way it was written.
+          const vntchYouMandatory = DFO_FMA_NB_VNTCH.has(efFma);
+          const vntchYouPermitted = DFO_FMA_NB_VNTCH_YOU.has(efFma);
+          if (vntchYouMandatory && !vntchYou) errors.push(`${dp}: NB_VNTCH_YOU is mandatory for this FMA (Rule 626)`);
+          if (!vntchYouPermitted && vntchYou) errors.push(`${dp}: NB_VNTCH_YOU is blocked for this FMA (Rule 625)`);
           // Rule 3059: MAR(90) — LAT/LONG mandatory in FMA 38b (28599), blocked otherwise
           const hasLat = get(ed, 'LAT').length > 0;
           const hasLong = get(ed, 'LONG').length > 0;

@@ -1984,7 +1984,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               nodeGroupField(nodeIdx, gIdx, t('form234.soakDurationLabel'), 'soakDuration', 'decimal-pad', isRequired('soakDuration'))}
             {subformId === 88 && nodeFma != null && DFO_FMA_NB_VNTCH.has(nodeFma) &&
               nodeGroupField(nodeIdx, gIdx, t('form234.nbVntchLabel'), 'vNotchCount', 'numeric', isFieldRequired('vNotchCount', { subformId, fmaId: nodeFma }))}
-            {subformId === 88 && nodeFma != null && DFO_FMA_NB_VNTCH_YOU.has(nodeFma) &&
+            {nodeFma != null && DFO_FMA_NB_VNTCH_YOU.has(nodeFma) &&
               nodeGroupField(nodeIdx, gIdx, t('form234.nbVntchYouLabel'), 'nbVntchYou', 'numeric', isFieldRequired('nbVntchYou', { subformId, fmaId: nodeFma }))}
             {subformId === 91 &&
               nodeGroupField(nodeIdx, gIdx, t('form234.nbSpcmnKeptLabel'), 'nbSpcmnKept', 'numeric', isFieldRequired('nbSpcmnKept', { subformId, fmaId: nodeFma }))}
@@ -2381,10 +2381,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             {/* SOAKED_DUR: blocked for MAR(90); per-EFFORT_DETAIL for 88/89/91 */}
             {subformId !== 90 &&
               extraField(i, t('form234.soakDurationLabel'), 'soakDuration', 'decimal-pad', isRequired('soakDuration'))}
-            {/* NB_VNTCH / NB_VNTCH_YOU: QC(88) FMA-gated (Rules 623-626) */}
+            {/* NB_VNTCH: Rule 624's 28-FMA list (QC). NB_VNTCH_YOU: Rule 625's 47 — the same 28
+                plus 19 NL FMAs where it is OPTIONAL (shown, unstarred). Both gated by FMA alone. */}
             {subformId === 88 && fmaId != null && DFO_FMA_NB_VNTCH.has(fmaId) &&
               extraField(i, t('form234.nbVntchLabel'), 'vNotchCount', 'numeric', isRequired('vNotchCount'))}
-            {subformId === 88 && fmaId != null && DFO_FMA_NB_VNTCH_YOU.has(fmaId) &&
+            {fmaId != null && DFO_FMA_NB_VNTCH_YOU.has(fmaId) &&
               extraField(i, t('form234.nbVntchYouLabel'), 'nbVntchYou', 'numeric', isRequired('nbVntchYou'))}
             {/* NL: specimens kept + trap size */}
             {subformId === 91 &&
@@ -4266,10 +4267,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               pixel-identical to pre-S110 (S110 Phase 2). */}
           {isVisible('nbSpcmnKept') &&
             renderField(t('form234.nbSpcmnKeptLabel'), nbSpcmnKept, setNbSpcmnKept, '0', false, false, 'numeric', isRequired('nbSpcmnKept'))}
-          {/* NB_VNTCH / NB_VNTCH_YOU: QC(88) only, mandatory in the Rule 624/626 FMA lists, blocked elsewhere */}
+          {/* NB_VNTCH: mandatory in Rule 624's 28-FMA list (QC), blocked elsewhere.
+              NB_VNTCH_YOU: shown across Rule 625's 47 FMAs — starred on Rule 626's 28, shown
+              unstarred on the 19 NL FMAs where it is optional, absent elsewhere. FMA-gated only. */}
           {subformId === 88 && fmaId != null && DFO_FMA_NB_VNTCH.has(fmaId) &&
             renderField(t('form234.nbVntchLabel'), vNotchCount, setVNotchCount, '0', false, false, 'numeric', isRequired('vNotchCount'))}
-          {subformId === 88 && fmaId != null && DFO_FMA_NB_VNTCH_YOU.has(fmaId) &&
+          {fmaId != null && DFO_FMA_NB_VNTCH_YOU.has(fmaId) &&
             renderField(t('form234.nbVntchYouLabel'), nbVntchYou, setNbVntchYou, '0', false, false, 'numeric', isRequired('nbVntchYou'))}
           {/* NB_SPCMN_BRD: MAR(90) FMA 38b only — mandatory there (Rule 654), blocked elsewhere (Rule 655) */}
           {isVisible('nbSpcmnBrd') && fmaId === DFO_FMA_38B &&

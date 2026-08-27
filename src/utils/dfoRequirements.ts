@@ -250,10 +250,15 @@ export const DFO_REQUIREMENTS_TABLE: FieldRequirement[] = [
       'must be typed (Rule 789). Tier-1 field.' },
   { fieldKey: 'nbVntchYou', container: 'effort', labelKey: 'form234.nbVntchYouLabel',
     kind: 'by-fishing-area',
-    state: ctx => (ctx.subformId === 88 && DFO_FMA_NB_VNTCH_YOU.has(ctx.fmaId ?? 0)
-      ? 'mandatory' : 'blocked'),
-    note: 'EFFORT_DETAIL.NB_VNTCH_YOU — Rules 625/626. Matches today’s app: the NL-optional ' +
-      'reading (S139B A1.3) is its own future session by ruling 7. Tier-1 field.' },
+    state: ctx => (DFO_FMA_NB_VNTCH.has(ctx.fmaId ?? 0) ? 'mandatory'
+      : DFO_FMA_NB_VNTCH_YOU.has(ctx.fmaId ?? 0) ? 'optional' : 'blocked'),
+    note: 'EFFORT_DETAIL.NB_VNTCH_YOU — Rules 625/626, the only three-state field in this ' +
+      'table. Rule 625 BLOCKS it outside its 47-FMA list; Rule 626 makes it MANDATORY on its ' +
+      '28 (the QC set, identical to Rule 624’s). The 19 FMAs inside 625 but outside 626 — NL ' +
+      'LFA 01–14c — are therefore OPTIONAL: no rule forbids the entry and none compels it. ' +
+      'Confirmed independently by Subforms_requirements_234.xlsx row 88, which marks NL(91) ' +
+      '“Optional” in words. Gated by FMA alone (S145): both lists already carry the region, ' +
+      'so asking subformId as well would only re-introduce defect 51. Tier-1 field.' },
   { fieldKey: 'nbSpcmnBrd', container: 'effort', labelKey: 'form234.nbSpcmnBrdLabel',
     kind: 'by-fishing-area',
     state: (ctx, values) => (ctx.subformId === 90 && ctx.fmaId === DFO_FMA_38B &&
