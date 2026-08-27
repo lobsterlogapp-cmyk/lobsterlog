@@ -3608,13 +3608,23 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
 
     // HAIL — when any effort fishes 38b/41 on MAR (Rules 2024/2025); ETA + total weight join
     // on the 38b trigger only (Rules 660/661) — same ctx shape as sectionMissingRows.
+    // S144 defect 65: these two ALWAYS name their section first. HLIN and HLOUT share the
+    // same two field labels (COMPANY / CONFIRMATION NO.), so bare bullets put the same word
+    // in this one list twice with nothing telling the harvester which card is short — and on
+    // 38b the hail-in ETA/total-weight bullets sit BETWEEN the two identical pairs, so even
+    // reading by position fails. Unlike the numbered series (efforts, SAR blocks), these are
+    // two differently-named sections that are always both required together, so there is no
+    // one-of case to suppress the prefix for: it is unconditional. The section names come
+    // from the same two keys the send-time hail refusal already uses to name these cards
+    // (CLOSE_SECTION_NAME_KEY, DfoLogsListScreen) — the two refusals about the same two cards
+    // now say the same words. No new strings.
     if (subformId === 90 && hailRequired) {
       missingInContainer('hlin', { subformId, effortFmaIds: hail38b ? [DFO_FMA_38B] : [] }, {
         hlinCompany, hlinConfirmNo, hlinEta, hlinTotalWeight,
-      }).forEach(m => push(m));
+      }).forEach(m => push(m, `${t('form234.hlinSection')} — `));
       missingInContainer('hlout', { subformId, fmaId }, {
         hloutCompany, hloutConfirmNo,
-      }).forEach(m => push(m));
+      }).forEach(m => push(m, `${t('form234.hloutSection')} — `));
     }
 
     // TRANSFER (QC 88) — the full container when a transfer is recorded (time, weight, the
