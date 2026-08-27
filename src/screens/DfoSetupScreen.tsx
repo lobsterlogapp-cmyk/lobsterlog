@@ -24,9 +24,19 @@ interface Props {
   canActivateDfoFree?: boolean;
 }
 
-// Rule 260 — valid FIN formats: 9 digits | C/D + 7 digits | 5–6 digits | DFOCC + 9 digits
+// FIN formats accepted at entry. Rule 260 (FS-NAT-234-12-FR L467-471 / EN L430-434) specifies
+// exactly TWO, both nine characters:
+//   \d{9}        nine digits                                     e.g. 999999999
+//   \d[CD]\d{7}  a digit, then an uppercase C or D, then seven    e.g. 9D9999999
+// S143 defect 39: the second was written [CD]\d{7} — letter FIRST, eight characters — so the app
+// REJECTED 1D1400466, a Gulf FIN in DFO's own reserved test file and the exact shape Rule 260
+// gives as its worked example. The correct branch is added below.
+// The other three branches are NOT in Rule 260 and are KEPT BY RULING, not by oversight:
+// DFOCC\d{9} appears in every region block of Test_values_LobsterLog.txt, so dropping it would
+// lock out a DFO-issued test identity. Whether to narrow to Rule 260 exactly is deferred to its
+// own recon session. NOTE: this function is duplicated in CaptainProfileScreen — change both.
 const isValidFin = (s: string): boolean =>
-  /^(\d{9}|[CD]\d{7}|\d{5,6}|DFOCC\d{9})$/.test(s);
+  /^(\d{9}|\d[CD]\d{7}|[CD]\d{7}|\d{5,6}|DFOCC\d{9})$/.test(s);
 
 // S128 Phase 2(a): a DFO licence number is CHAR(18) — alphanumeric, 1–18 chars (XML data
 // dictionary LIC_NO). A stray character (e.g. a dash) would break the §3.10 file name.
@@ -50,6 +60,11 @@ export default function DfoSetupScreen({ onActivated, onClose, canActivateDfoFre
   const [finError, setFinError] = useState('');
   const [licenceError, setLicenceError] = useState('');
 
+  // S143: the FIN error was a hardcoded English literal at three sites on this screen, with no
+  // FR twin — a francophone harvester saw an English error here while the Captain Profile screen
+  // showed French off the same validator. All three now read the one keyed string. The explicit
+  // 'common:' namespace is required because this screen's useTranslation is scoped to 'dfo'.
+
   const handleActivate = async () => {
     if (!licenceNo.trim()) {
       Alert.alert('Missing', 'Please enter your Licence Number.');
@@ -64,7 +79,7 @@ export default function DfoSetupScreen({ onActivated, onClose, canActivateDfoFre
       return;
     }
     if (!isValidFin(fin.trim())) {
-      setFinError('Invalid FIN — must be 9 digits, 5–6 digits, C/D + 7 digits, or DFOCC + 9 digits.');
+      setFinError(t('common:profile.finError'));
       return;
     }
 
@@ -113,7 +128,7 @@ export default function DfoSetupScreen({ onActivated, onClose, canActivateDfoFre
       return;
     }
     if (!isValidFin(fin.trim())) {
-      setFinError('Invalid FIN — must be 9 digits, 5–6 digits, C/D + 7 digits, or DFOCC + 9 digits.');
+      setFinError(t('common:profile.finError'));
       return;
     }
     setLoading(true);
@@ -209,7 +224,7 @@ export default function DfoSetupScreen({ onActivated, onClose, canActivateDfoFre
               value={fin}
               onChangeText={v => {
                 setFin(v);
-                setFinError(v.trim() && !isValidFin(v.trim()) ? 'Invalid FIN — must be 9 digits, 5–6 digits, C/D + 7 digits, or DFOCC + 9 digits.' : '');
+                setFinError(v.trim() && !isValidFin(v.trim()) ? t('common:profile.finError') : '');
               }}
               placeholder={t('setup.finPlaceholder')}
               placeholderTextColor="#CBD5E1"

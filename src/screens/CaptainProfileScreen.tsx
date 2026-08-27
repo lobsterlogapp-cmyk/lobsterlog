@@ -30,9 +30,19 @@ import BackupExplainerModal from './BackupExplainerModal';
 import { changeLanguage } from '../i18n';
 import { REQUIRED_ASTERISK_COLOR } from '../styles/GlobalStyles';
 
-// Rule 260 — valid FIN formats: 9 digits | C/D + 7 digits | 5–6 digits | DFOCC + 9 digits
+// FIN formats accepted at entry. Rule 260 (FS-NAT-234-12-FR L467-471 / EN L430-434) specifies
+// exactly TWO, both nine characters:
+//   \d{9}        nine digits                                     e.g. 999999999
+//   \d[CD]\d{7}  a digit, then an uppercase C or D, then seven    e.g. 9D9999999
+// S143 defect 39: the second was written [CD]\d{7} — letter FIRST, eight characters — so the app
+// REJECTED 1D1400466, a Gulf FIN in DFO's own reserved test file and the exact shape Rule 260
+// gives as its worked example. The correct branch is added below.
+// The other three branches are NOT in Rule 260 and are KEPT BY RULING, not by oversight:
+// DFOCC\d{9} appears in every region block of Test_values_LobsterLog.txt, so dropping it would
+// lock out a DFO-issued test identity. Whether to narrow to Rule 260 exactly is deferred to its
+// own recon session. NOTE: this function is duplicated in DfoSetupScreen — change both.
 const isValidFin = (s: string): boolean =>
-  /^(\d{9}|[CD]\d{7}|\d{5,6}|DFOCC\d{9})$/.test(s);
+  /^(\d{9}|\d[CD]\d{7}|[CD]\d{7}|\d{5,6}|DFOCC\d{9})$/.test(s);
 
 // VRN validation for the Captain Profile field, which feeds the 234 LOGBOOK path: the
 // logbook XSD types VRN as string_12 (max 12 chars, alphanumeric) and has NO Rule 528,
