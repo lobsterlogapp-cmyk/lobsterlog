@@ -768,6 +768,10 @@ export const getCompletionDetails = (log: DfoLog): CompletionDetails => {
         // close doors and the emit (dfoXmlGenerator :274/:275).
         haulStartDate: e.haulStartDate ?? '', haulEndDate: e.haulEndDate ?? '',
         dateFished: log.dateFished || d.dateFished,
+        // S147 Phase 3: the trip half, matching the close doors exactly — containerProgress
+        // discounts an invalid field, so a meter given less than the door sees would read 100%
+        // on a log the door refuses.
+        sailDate: d.sailDate, sailTime: d.timeSailed,
         sarInd: indFromStored(e.sarYes), mmInterInd: indFromStored(e.mmYes),
         gearSubtypeId: e.gearSubtypeId ?? '',
       };
@@ -805,6 +809,7 @@ export const getCompletionDetails = (log: DfoLog): CompletionDetails => {
     // S147 Phase 1: landingDate + the fallback base beside the time (generator :98).
     portId: d.portLanded, landingTime: d.timeOfLanding,
     landingDate: d.landingDate, dateFished: log.dateFished || d.dateFished,
+    sailDate: d.sailDate, sailTime: d.timeSailed,  // S147 Phase 3 — Rule 45
   }));
 
   // HAIL — only when the logbook must carry the groups (MAR with a 38b/41 effort).
@@ -826,6 +831,7 @@ export const getCompletionDetails = (log: DfoLog): CompletionDetails => {
     // the same pair the close doors do, so it cannot count a field the door would refuse.
     transferTime: d.transferTime, transferDate: d.transferDate,
     dateFished: log.dateFished || d.dateFished,
+    sailDate: d.sailDate, sailTime: d.timeSailed,  // S147 Phase 3 — Rule 248
     transferWt: d.transferWt,
     transferToVrn: d.transferToVrn, transferToPndNum: d.transferToPndNum,
     carrierVrn: d.carrierVrn, useCrInd: d.useCrInd,

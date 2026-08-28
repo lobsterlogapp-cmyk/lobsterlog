@@ -86,6 +86,11 @@ export interface FieldRequirement {
   isInvalid?: (values: FieldValues) => boolean;
   /** Plain-language description of the value check, for messages and tests. */
   checkDescribe?: string;
+  /** S147: which message explains an 'invalid' for THIS values set. One field can fail for more
+   *  than one reason — a haul start can be in the future OR before the sail — and the bullet has
+   *  to say which, so the ENTRY chooses rather than the screen guessing from the fieldKey.
+   *  Returns an i18n key, or null when the generic label is enough. */
+  invalidKey?: (values: FieldValues) => string | null;
   /** DFO basis / quirks worth keeping next to the entry. */
   note?: string;
 }
@@ -98,6 +103,9 @@ export interface MissingField {
   reason: 'blank' | 'invalid' | 'pair-none' | 'pair-both';
   /** For pair reasons: the other member's label key. */
   pairLabelKey?: string;
+  /** S147: the entry's own explanation for an 'invalid', when it supplied one (invalidKey).
+   *  The close doors render this instead of the bare label. */
+  detailKey?: string;
 }
 
 // ─── Value checks (send-validator ranges/formats, verbatim — nothing new) ───
@@ -131,6 +139,61 @@ const ref233Ok = (v: string) => /^[A-Z]{6}$/.test(v.trim());
 
 const simpleInvalid = (fieldKey: string, ok: (v: string) => boolean) =>
   (values: FieldValues) => !blank(values[fieldKey]) && !ok(String(values[fieldKey]));
+
+// ─── S147: the clock comparisons (Rules 30/32/29/45/248) ────────────────────
+//
+// These are the SIX send-time date rules moved to the close doors, where the losing half can
+// still be edited. They are ordinary `isInvalid` entries — the same mechanism the table already
+// uses for the three date checks it shipped with (reportDate, interactionDate, periodEndDate).
+
+/** One stored date+time as a comparable instant, resolved EXACTLY as the generator resolves it:
+ *  the field's OWN companion date, falling back to the trip's nominal date
+ *  (dfoXmlGenerator :97 / :274 / :275 / :98 / :512). Epoch milliseconds, so the ordering here is
+ *  the ordering on the wire even across a daylight-saving change — the same shape
+ *  findEffortOverlap already uses for Rule 33.
+ *
+ *  Returns null when either half is missing or malformed. That is CG-8: a comparison that
+ *  cannot be made is not made, and no message is shown. A blank mandatory time already has its
+ *  own asterisk and its own blank refusal; saying it twice would be noise. */
+const stampMs = (v: FieldValues, dateKey: string, timeKey: string): number | null => {
+  const time = String(v[timeKey] ?? '').trim();
+  const date = String(v[dateKey] ?? '').trim() || String(v.dateFished ?? '').trim();
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const [y, mo, d] = date.split('-').map(Number);
+  const [h, mi] = time.split(':').map(Number);
+  const ms = new Date(y, mo - 1, d, h, mi, 0, 0).getTime();
+  return Number.isFinite(ms) ? ms : null;
+};
+
+/** The haul start carries TWO rules, so the entry must say which one failed: Rule 30 (not in the
+ *  future) is checked before Rule 29 (not before the trip start), because a haul stamped next
+ *  month is a wrong date, not an ordering problem, and naming the sail time would mislead. */
+const haulStartProblem = (v: FieldValues): string | null => {
+  const start = stampMs(v, 'haulStartDate', 'haulStartTime');
+  if (start === null) return null;
+  if (start > Date.now()) return 'form234.haulStartFutureError';        // Rule 30
+  const trip = stampMs(v, 'sailDate', 'sailTime');
+  if (trip !== null && start < trip) return 'form234.haulStartOrderError'; // Rule 29
+  return null;
+};
+
+/** Rule 32 — the haul cannot end before it started. Both halves are on the same card, so this is
+ *  the one clock rule whose refusal never has to send the harvester anywhere else. */
+const haulEndProblem = (v: FieldValues): string | null => {
+  const end = stampMs(v, 'haulEndDate', 'haulEndTime');
+  const start = stampMs(v, 'haulStartDate', 'haulStartTime');
+  return end !== null && start !== null && end < start ? 'form234.haulEndOrderError' : null;
+};
+
+/** Rules 45 and 248 — a landing, and a QC transfer, cannot precede the trip start. Both compare
+ *  against the trip half, which never seals (TRIP has no close door), so the harvester always has
+ *  an editable side whichever door reports it. */
+const beforeTripStart = (v: FieldValues, dateKey: string, timeKey: string): boolean => {
+  const own = stampMs(v, dateKey, timeKey);
+  const trip = stampMs(v, 'sailDate', 'sailTime');
+  return own !== null && trip !== null && own < trip;
+};
 
 // ─── State helpers ──────────────────────────────────────────────────────────
 
@@ -187,9 +250,19 @@ export const DFO_REQUIREMENTS_TABLE: FieldRequirement[] = [
   { fieldKey: 'fmaId', container: 'effort', labelKey: 'form234.fishingAreaLabel',
     kind: 'per-subform', state: MMMM, note: 'EFFORT.FMA_ID (row 64).' },
   { fieldKey: 'haulStartTime', container: 'effort', labelKey: 'form234.timeStartedHaulingLabel',
-    kind: 'per-subform', state: MMMM, note: 'EFFORT.START_DT (row 62).' },
+    kind: 'per-subform', state: MMMM,
+    isInvalid: values => haulStartProblem(values) !== null,
+    invalidKey: haulStartProblem,
+    checkDescribe: 'not in the future (Rule 30) and not before the trip start (Rule 29)',
+    note: 'EFFORT.START_DT (row 62). S147: carries Rules 30 and 29 — the send validator has ' +
+      'refused both since S51 (dfoXmlGenerator :908/:912), but only after the log was sealed.' },
   { fieldKey: 'haulEndTime', container: 'effort', labelKey: 'form234.timeStoppedHaulingLabel',
-    kind: 'per-subform', state: MMMM, note: 'EFFORT.END_DT (row 63).' },
+    kind: 'per-subform', state: MMMM,
+    isInvalid: values => haulEndProblem(values) !== null,
+    invalidKey: haulEndProblem,
+    checkDescribe: 'not before the haul start (Rule 32)',
+    note: 'EFFORT.END_DT (row 63). S147: Rule 32 — both halves are on this card, so the ' +
+      'refusal never points off it (dfoXmlGenerator :916).' },
   { fieldKey: 'sarInd', container: 'effort', labelKey: 'form234.sarIndShortLabel',
     kind: 'answered', state: MMMM,
     note: 'EFFORT.SAR_IND (row 67) — starts null by Rule 602; pass "" while unanswered. ' +
@@ -336,7 +409,12 @@ export const DFO_REQUIREMENTS_TABLE: FieldRequirement[] = [
     note: 'LANDING.PORT_ID (row 100): Mandatory on all four regions. Tier-1 on 89/90 (the old ' +
       'save gate omitted it there).' },
   { fieldKey: 'landingTime', container: 'landing', labelKey: 'form234.timeOfLandingLabel',
-    kind: 'per-subform', state: MMMM, note: 'LANDING.START_DT (row 101).' },
+    kind: 'per-subform', state: MMMM,
+    isInvalid: values => beforeTripStart(values, 'landingDate', 'landingTime'),
+    invalidKey: () => 'form234.landingOrderError',
+    checkDescribe: 'not before the trip start (Rule 45)',
+    note: 'LANDING.START_DT (row 101). S147: Rule 45 (dfoXmlGenerator :1154). Rule 46 — not ' +
+      'before the last haul ended — is the harder one and lands with Phase 4.' },
 
   // ── HAIL — group presence itself is requiredGroups(); these are the members once used ──
   { fieldKey: 'hlinCompany', container: 'hlin', labelKey: 'form234.companyLabel',
@@ -365,7 +443,12 @@ export const DFO_REQUIREMENTS_TABLE: FieldRequirement[] = [
   // ── TRANSFER (QC 88) — the carrier fields ride this close (recon-proven quirk) ──
   { fieldKey: 'transferTime', container: 'transfer', labelKey: 'form234.transferTimeLabel',
     kind: 'per-subform', state: per({ 88: 'mandatory' }),
-    note: 'TRANSFER.TRNSF_DT (row 105).' },
+    isInvalid: values => beforeTripStart(values, 'transferDate', 'transferTime'),
+    invalidKey: () => 'form234.transferOrderError',
+    checkDescribe: 'not before the trip start (Rule 248)',
+    note: 'TRANSFER.TRNSF_DT (row 105). S147: Rule 248 (dfoXmlGenerator :1175). Only correct ' +
+      'because Phase 5a gave the transfer its own date — before that, an after-midnight ' +
+      'transfer was stamped with the trip date and this check would have refused a legal trip.' },
   { fieldKey: 'transferWt', container: 'transfer', labelKey: 'form234.transferWtLabel',
     kind: 'per-subform', state: per({ 88: 'mandatory' }),
     note: 'TRANSFER_DTL.WT (row 117).' },
@@ -565,7 +648,11 @@ export function missingInContainer(
     // A typed value must be valid even when the field is optional (a sealed invalid value is
     // the same dead end as a sealed blank) — but a blocked field is never checked.
     if (state !== 'blocked' && isFilled(e, values) && e.isInvalid?.(values)) {
-      out.push({ fieldKey: e.fieldKey, labelKey: e.labelKey ?? e.fieldKey, reason: 'invalid' });
+      const detailKey = e.invalidKey?.(values) ?? undefined;
+      out.push({
+        fieldKey: e.fieldKey, labelKey: e.labelKey ?? e.fieldKey, reason: 'invalid',
+        ...(detailKey ? { detailKey } : {}),
+      });
     }
   }
   return out;

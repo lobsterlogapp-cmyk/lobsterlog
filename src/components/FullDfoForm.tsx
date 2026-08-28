@@ -2862,6 +2862,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // (which carries the label itself); the exactly-one TO pair → both labels + suffix.
   const closeBulletText = (m: MissingField): string => {
     if (m.reason === 'invalid') {
+      // S147: a clock conflict names its own reason — the table chose it (invalidKey), because
+      // one field can fail for two different rules and the fieldKey alone cannot say which.
+      if (m.detailKey) return t(m.detailKey);
       const rangeKey =
         m.fieldKey === 'soakDuration' ? 'form234.soakRangeError' :
         m.fieldKey === 'sarGps' ? 'form234.sarGpsRangeError' :
@@ -2933,6 +2936,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       // before it started, on exactly the cross-midnight trip S90 built these keys for.
       // Nothing reads these yet — no table entry names them, so no answer changes.
       haulStartDate, haulEndDate, dateFished,
+      // S147 Phase 3: the trip half rides along so Rule 29 can be answered here — the sail is
+      // on a card that never closes, so this door can always name an editable side.
+      sailDate, sailTime: timeSailed,
       sarInd: indToValue(sarYes), mmInterInd: indToValue(mmYes),
       gearSubtypeId,
       catchWeight, trapHauls, soakDuration,
@@ -2948,6 +2954,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       fmaId: e.fmaId ?? '', haulStartTime: e.haulStartTime ?? '', haulEndTime: e.haulEndTime ?? '',
       // S147 Phase 1 — efforts 2+ carry their own window dates (see effort1MissingRows).
       haulStartDate: e.haulStartDate ?? '', haulEndDate: e.haulEndDate ?? '', dateFished,
+      sailDate, sailTime: timeSailed,  // S147 Phase 3 — Rule 29, see effort1MissingRows
       sarInd: e.sarYes === 'true' ? 'Y' : e.sarYes === 'false' ? 'N' : '',
       mmInterInd: e.mmYes === 'true' ? 'Y' : e.mmYes === 'false' ? 'N' : '',
       gearSubtypeId: e.gearSubtypeId ?? '',
@@ -2989,12 +2996,14 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         // S147 Phase 1: landingDate + dateFished ride beside the time (generator :98).
         return rowsOf(missingInContainer('landing', ctx, {
           portId: portLanded, landingTime: timeOfLanding, landingDate, dateFished,
+          sailDate, sailTime: timeSailed,  // S147 Phase 3 — Rule 45
         }));
       case 'dgCloseTransfer':
         // S147 Phase 5a: transferDate + dateFished complete the date threading deferred at
         // Phase 1 §1.2 — the field exists now, so the transfer objects join the other eight.
         return rowsOf(missingInContainer('transfer', ctx, {
           transferTime, transferDate, dateFished,
+          sailDate, sailTime: timeSailed,  // S147 Phase 3 — Rule 248
           transferWt, transferToVrn, transferToPndNum, carrierVrn, useCrInd,
         }));
       case 'dgCloseHlin':
@@ -3638,6 +3647,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       // S147 Phase 1: landingDate + dateFished beside the time — same pair the Landing card's
       // own close passes, so the two doors read the same timestamp.
       portId: portLanded, landingTime: timeOfLanding, landingDate, dateFished,
+      sailDate, sailTime: timeSailed,  // S147 Phase 3 — Rule 45
     }).forEach(m => push(m));
 
     // HAIL — when any effort fishes 38b/41 on MAR (Rules 2024/2025); ETA + total weight join
@@ -3674,6 +3684,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       const transferValues = {
         // S147 Phase 5a — see sectionMissingRows.
         transferTime, transferDate, dateFished,
+        sailDate, sailTime: timeSailed,  // S147 Phase 3 — Rule 248
         transferWt, transferToVrn, transferToPndNum, carrierVrn, useCrInd,
       };
       if (transferYes === true) {
