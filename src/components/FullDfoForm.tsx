@@ -220,7 +220,7 @@ const parseDateTime = (dateStr: string, timeStr: string): Date => {
 // S135 Phase 4 (ruling 6): 'extraSarTime' is the combined Date & Time field on SAR blocks
 // 2+ — one PickerField for every extra block, disambiguated by the block index (passed
 // explicitly on Android, staged in extraSarPickerIdx for the iOS Done handler).
-type PickerField = 'sailed' | 'startHaul' | 'stopHaul' | 'landing' | 'sarTime' | 'extraSarTime' | 'extraEffortStart' | 'extraEffortEnd';
+type PickerField = 'sailed' | 'startHaul' | 'stopHaul' | 'landing' | 'transfer' | 'sarTime' | 'extraSarTime' | 'extraEffortStart' | 'extraEffortEnd';
 type SheetMode = 'bait' | 'bycatch' | null;
 
 const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLogId, onSaved, readOnly = false, onBack }, ref) => {
@@ -300,6 +300,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const [haulStartDate, setHaulStartDate] = useState('');
   const [haulEndDate, setHaulEndDate] = useState('');
   const [landingDate, setLandingDate] = useState('');
+  // S147 Phase 5a (CG-6): the fifth companion date. S90 gave the other four their own date and
+  // skipped the transfer, so TRNSF_DT was stamped from dateFished alone — a transfer made after
+  // midnight landed BEFORE the sail on the wire (Rule 248). Same shape as its four siblings:
+  // blank → the generator falls back to dateFished, so every stored log emits unchanged.
+  const [transferDate, setTransferDate] = useState('');
   const [soakDuration, setSoakDuration] = useState('');
 
   const [baitEntries, setBaitEntries] = useState<BaitEntry[]>([]);
@@ -589,6 +594,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           }
           setTransfers(d.transfers || '');
           setTransferTime(d.transferTime || '');
+          setTransferDate(d.transferDate || '');  // S147 Phase 5a — blank on every pre-existing log
           setTransferWt(d.transferWt || '');
           setTransferToVrn(d.transferToVrn || '');
           setTransferToPndNum(d.transferToPndNum || '');
@@ -829,7 +835,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     transfers, personalUse,
     // S124: persist any closed-section timestamps (dgClose* keys) — the generator reads them.
     ...closes,
-    transferTime, transferWt, transferToVrn, transferToPndNum,
+    transferTime, transferDate, transferWt, transferToVrn, transferToPndNum,
     useCrInd, carrierVrn, prtnshpId: String(prtnshpId),
     trapSize,
     gearSubtypeId,
@@ -1246,6 +1252,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       case 'startHaul':  current = parseDateTime(haulStartDate || dateFished, timeStartedHauling); break;
       case 'stopHaul':   current = parseDateTime(haulEndDate || dateFished, timeStoppedHauling); break;
       case 'landing':    current = parseDateTime(landingDate || dateFished, timeOfLanding); break;
+      case 'transfer':   current = parseDateTime(transferDate || dateFished, transferTime); break;
       case 'sarTime':    current = parseDateTime(sarDate, sarTime); break;
       // S135 Phase 4: SAR blocks 2+ — seed from the block's own stored strings (tolerant
       // parse: a blank/typed-malformed half falls back to now, never crashes the seed).
@@ -1294,6 +1301,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           setHaulEndDate(formatDate(d)); setTimeStoppedHauling(formatTime(d)); break;
         case 'landing':
           setLandingDate(formatDate(d)); setTimeOfLanding(formatTime(d)); break;
+        case 'transfer':
+          setTransferDate(formatDate(d)); setTransferTime(formatTime(d)); break;
         case 'sarTime':
           setSarDate(formatDate(d)); setSarTime(formatTime(d)); break;
         case 'extraSarTime': {
@@ -1479,7 +1488,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // Display-only helper (S93): render a trip-timestamp as locale-aware date + time —
   // e.g. "Jul 5, 12:33" (EN) / "5 juill., 12:33" (FR). Combines the field's companion date
   // (fallback dateFished) with its HH:MM time. Storage, companion-date keys, and the generator
-  // are UNTOUCHED — this only changes what the four Time Sailed/Hauling/Landing buttons render.
+  // are UNTOUCHED — this only changes what the Time Sailed/Hauling/Landing/Transfer buttons
+  // render (four until S147 Phase 5a gave the transfer its own date; five since).
   const formatDateTimeDisplay = (dateStr: string, timeStr: string): string => {
     if (!timeStr) return '';
     const d = parseDateTime(dateStr || dateFished, timeStr);
@@ -2981,8 +2991,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           portId: portLanded, landingTime: timeOfLanding, landingDate, dateFished,
         }));
       case 'dgCloseTransfer':
+        // S147 Phase 5a: transferDate + dateFished complete the date threading deferred at
+        // Phase 1 §1.2 — the field exists now, so the transfer objects join the other eight.
         return rowsOf(missingInContainer('transfer', ctx, {
-          transferTime, transferWt, transferToVrn, transferToPndNum, carrierVrn, useCrInd,
+          transferTime, transferDate, dateFished,
+          transferWt, transferToVrn, transferToPndNum, carrierVrn, useCrInd,
         }));
       case 'dgCloseHlin':
         return rowsOf(missingInContainer('hlin', { subformId, effortFmaIds: hail38b ? [DFO_FMA_38B] : [] }, {
@@ -3659,7 +3672,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         missing.push(t('form234.transferAnswerBullet'));
       }
       const transferValues = {
-        transferTime, transferWt, transferToVrn, transferToPndNum, carrierVrn, useCrInd,
+        // S147 Phase 5a — see sectionMissingRows.
+        transferTime, transferDate, dateFished,
+        transferWt, transferToVrn, transferToPndNum, carrierVrn, useCrInd,
       };
       if (transferYes === true) {
         missingInContainer('transfer', { subformId, fmaId }, transferValues)
@@ -4827,11 +4842,15 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             </View>
             {renderYesNoToggle(t('form234.transfersQuestion'), transferYes, (val) => {
               setTransferYes(val);
-              if (!val) { setTransfers(''); setTransferTime(''); setTransferWt(''); setTransferToVrn(''); setTransferToPndNum(''); }
+              if (!val) { setTransfers(''); setTransferTime(''); setTransferDate(''); setTransferWt(''); setTransferToVrn(''); setTransferToPndNum(''); }
             })}
             {transferYes === true && (
               <View style={styles.incidentBlock}>
-                {renderField(t('form234.transferTimeLabel'), transferTime, setTransferTime, 'HH:MM', false, false, 'numbers-and-punctuation', isRequired('transferTime'))}
+                {/* S147 Phase 5a (CG-6): the fifth timestamp joins its four siblings on the wheel
+                    picker. The old hand-typed HH:MM box could not carry a date, and an unparseable
+                    entry became 00:00 silently (localToUtcIso: Number('abc') -> NaN -> 0). The label
+                    key is unchanged — its four siblings are also worded "TIME" and render date+time. */}
+                {renderTimestampField(t('form234.transferTimeLabel'), formatDateTimeDisplay(transferDate, transferTime), 'transfer', false, isRequired('transferTime'), undefined, isClosed('dgCloseTransfer'))}
                 {renderField(t('form234.transferWtLabel'), transferWt, setTransferWt, '0', false, false, 'numeric', isRequired('transferWt'))}
                 {/* Rule 252: exactly ONE of the TO pair — both members marked (S140 P2) */}
                 {renderField(t('form234.transferToVrnLabel'), transferToVrn, (v: string) => { setTransferToVrn(v); if (v) setTransferToPndNum(''); }, '0', false, false, 'numeric', isRequired('transferToVrn'))}

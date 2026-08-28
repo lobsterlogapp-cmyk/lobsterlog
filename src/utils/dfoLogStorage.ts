@@ -822,7 +822,11 @@ export const getCompletionDetails = (log: DfoLog): CompletionDetails => {
   // alone is counted whenever the carrier question is Yes (it is mandatory regardless of
   // whether a transfer rides the trip — Rule 642).
   const transferValues: FieldValues = {
-    transferTime: d.transferTime, transferWt: d.transferWt,
+    // S147 Phase 5a: the fifth companion date completes the Phase 1 threading — the meter reads
+    // the same pair the close doors do, so it cannot count a field the door would refuse.
+    transferTime: d.transferTime, transferDate: d.transferDate,
+    dateFished: log.dateFished || d.dateFished,
+    transferWt: d.transferWt,
     transferToVrn: d.transferToVrn, transferToPndNum: d.transferToPndNum,
     carrierVrn: d.carrierVrn, useCrInd: d.useCrInd,
   };

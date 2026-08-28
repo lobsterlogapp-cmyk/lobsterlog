@@ -509,7 +509,12 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   // TRANSFER_DTL: lobster only (Rule 249: SPECIE_ID 1312), Round (Rule 250: 4691).
   if (subformId === 88 && d.transferYes === 'true') {
     const trnsfWtKg = kgStr(d.transferWt ?? '', inLbs);
-    const trnsfDt = toDate12(localToUtcIso(log.dateFished, d.transferTime ?? ''));
+    // S147 Phase 5a (CG-6): the transfer carries its OWN date, like the other four timestamps
+    // (S90). BYTE-IDENTICAL for every stored log — no log written before this change has a
+    // transferDate, so `d.transferDate` is undefined and the `||` falls back to log.dateFished,
+    // which is exactly what this line read before. A transfer recorded after midnight now emits
+    // its own date instead of the trip's nominal one — a corrected value, not a format change.
+    const trnsfDt = toDate12(localToUtcIso(d.transferDate || log.dateFished, d.transferTime ?? ''));
     if (trnsfWtKg) {
       body += `    <TRANSFER>\n`;
       body += tag('TRNSF_DT', trnsfDt, '      ');
