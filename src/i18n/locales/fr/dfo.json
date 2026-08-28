@@ -367,6 +367,8 @@
     "inProgress": "EN COURS",
     "resumeButton": "Reprendre",
     "lastSendFailed": "Dernière transmission échouée · {{error}} · Appuyez sur Réessayer",
+    "sendFailedNotSent": "Non transmis",
+    "sendFailedTimeout": "Délai dépassé",
     "sentConfirmed": "Transmis ✓",
     "sending": "Transmission en cours…",
     "sendToDfo": "Transmettre au MPO",

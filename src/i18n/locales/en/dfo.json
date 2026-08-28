@@ -366,6 +366,8 @@
     "inProgress": "IN PROGRESS",
     "resumeButton": "Resume",
     "lastSendFailed": "Last send failed · {{error}} · Tap Retry",
+    "sendFailedNotSent": "Not sent",
+    "sendFailedTimeout": "Network Timeout",
     "sentConfirmed": "Sent ✓",
     "sending": "Sending…",
     "sendToDfo": "Send to DFO",

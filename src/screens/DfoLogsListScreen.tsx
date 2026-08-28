@@ -383,7 +383,9 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
       const isTimeout = e.name === 'AbortError';
       const errMsg: string = e.message ?? 'Unknown error';
       await saveFailureRecord(undefined, errMsg);
-      setFailedSends(prev => ({ ...prev, [log.id]: isTimeout ? 'Timeout' : 'Not sent' }));
+      // S146 defect 83: store a language-neutral marker, never a translated word — the badge
+      // translates at the render site so a mid-session language change updates it.
+      setFailedSends(prev => ({ ...prev, [log.id]: isTimeout ? 'timeout' : 'notSent' }));
       if (isTimeout) {
         Alert.alert(
           t('logs.timeoutTitle'),
@@ -679,6 +681,12 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
     const sent = log.sentToDfo === true;
     const isSending = sendingLogs.has(log.id);
     const failError = failedSends[log.id];
+    // S146 defect 83: the catch path stores a marker ('timeout' | 'notSent') and it is translated
+    // here. The HTTP-status and DFO-error-code writers still store a raw technical string — those
+    // are not markers and pass through unchanged.
+    const failLabel = failError === 'timeout' ? t('logs.sendFailedTimeout')
+      : failError === 'notSent' ? t('logs.sendFailedNotSent')
+      : failError;
 
     return (
       <View key={log.id} style={[styles.logCard, !!failError && styles.logCardFailed]}>
@@ -693,7 +701,7 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
 
         {failError && (
           <View style={styles.failedBadge}>
-            <Text style={styles.failedBadgeText}>{t('logs.lastSendFailed', { error: failError })}</Text>
+            <Text style={styles.failedBadgeText}>{t('logs.lastSendFailed', { error: failLabel })}</Text>
           </View>
         )}
 
