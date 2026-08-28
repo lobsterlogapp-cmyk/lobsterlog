@@ -2916,6 +2916,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     const lvlAndG1: FieldValues = {
       fmaId: fmaId != null ? String(fmaId) : '',
       haulStartTime: timeStartedHauling, haulEndTime: timeStoppedHauling,
+      // S147 Phase 1: each haul time's OWN date rides beside it, plus dateFished as the
+      // fallback base — the two together are the timestamp the generator emits
+      // (dfoXmlGenerator :274/:275, `haulStartDate || log.dateFished`). A time without its
+      // date is half a timestamp: '02:00' vs '23:30' compared as strings says the haul ended
+      // before it started, on exactly the cross-midnight trip S90 built these keys for.
+      // Nothing reads these yet — no table entry names them, so no answer changes.
+      haulStartDate, haulEndDate, dateFished,
       sarInd: indToValue(sarYes), mmInterInd: indToValue(mmYes),
       gearSubtypeId,
       catchWeight, trapHauls, soakDuration,
@@ -2929,6 +2936,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const nodeMissingRows = (e: ExtraEffortNode): { rows: string[]; mixed: boolean } => {
     const lvl: FieldValues = {
       fmaId: e.fmaId ?? '', haulStartTime: e.haulStartTime ?? '', haulEndTime: e.haulEndTime ?? '',
+      // S147 Phase 1 — efforts 2+ carry their own window dates (see effort1MissingRows).
+      haulStartDate: e.haulStartDate ?? '', haulEndDate: e.haulEndDate ?? '', dateFished,
       sarInd: e.sarYes === 'true' ? 'Y' : e.sarYes === 'false' ? 'N' : '',
       mmInterInd: e.mmYes === 'true' ? 'Y' : e.mmYes === 'false' ? 'N' : '',
       gearSubtypeId: e.gearSubtypeId ?? '',
@@ -2967,7 +2976,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     const ctx = { subformId, fmaId };
     switch (dataKey) {
       case 'dgCloseLanding':
-        return rowsOf(missingInContainer('landing', ctx, { portId: portLanded, landingTime: timeOfLanding }));
+        // S147 Phase 1: landingDate + dateFished ride beside the time (generator :98).
+        return rowsOf(missingInContainer('landing', ctx, {
+          portId: portLanded, landingTime: timeOfLanding, landingDate, dateFished,
+        }));
       case 'dgCloseTransfer':
         return rowsOf(missingInContainer('transfer', ctx, {
           transferTime, transferWt, transferToVrn, transferToPndNum, carrierVrn, useCrInd,
@@ -3554,6 +3566,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     // TRIP — dates/times, region-gated departure port and crew, the bycatch toggle.
     missingInContainer('trip', { subformId, fmaId }, {
       startDt: dateFished,
+      // S147 Phase 1: startDt stays bound to dateFished — it is the field the asterisk and the
+      // blank check are about, and nothing there may change. sailDate rides ALONGSIDE it because
+      // the wire carries `sailDate || dateFished` (dfoXmlGenerator :97) and the two diverge when
+      // the Trip card's date-only picker moves dateFished after a sail time was set: the sail
+      // picker writes both, the Date Fished picker writes only dateFished.
+      sailDate,
       sailTime: timeSailed,
       departurePort,
       crewNb: crewMembers.length > 0 ? String(crewMembers.length) : '',
@@ -3604,7 +3622,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     // LANDING — Port Landed is table-mandatory on ALL FOUR regions; the old list omitted it
     // on 89/90 (the recon's R4 hole, closed here).
     missingInContainer('landing', { subformId, fmaId }, {
-      portId: portLanded, landingTime: timeOfLanding,
+      // S147 Phase 1: landingDate + dateFished beside the time — same pair the Landing card's
+      // own close passes, so the two doors read the same timestamp.
+      portId: portLanded, landingTime: timeOfLanding, landingDate, dateFished,
     }).forEach(m => push(m));
 
     // HAIL — when any effort fishes 38b/41 on MAR (Rules 2024/2025); ETA + total weight join

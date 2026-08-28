@@ -745,6 +745,11 @@ export const getCompletionDetails = (log: DfoLog): CompletionDetails => {
   const crewCount = crewCountFromJson(d.crewRegistry);
   add(containerProgress('trip', ctx, {
     startDt: log.dateFished || d.dateFished,
+    // S147 Phase 1: sailDate rides alongside startDt (which stays bound to dateFished) — the
+    // wire carries `sailDate || dateFished`. Threaded here in lockstep with the close doors:
+    // containerProgress discounts an isInvalid field, so a meter given less than the door gets
+    // would read 100% on a log the door refuses.
+    sailDate: d.sailDate,
     sailTime: d.timeSailed,
     departurePort: d.departurePort,
     crewNb: crewCount > 0 ? String(crewCount) : '',
@@ -759,6 +764,10 @@ export const getCompletionDetails = (log: DfoLog): CompletionDetails => {
       const level: FieldValues = {
         fmaId: e.fmaId ?? '',
         haulStartTime: e.haulStartTime ?? '', haulEndTime: e.haulEndTime ?? '',
+        // S147 Phase 1: each effort's own window dates + the fallback base, matching the
+        // close doors and the emit (dfoXmlGenerator :274/:275).
+        haulStartDate: e.haulStartDate ?? '', haulEndDate: e.haulEndDate ?? '',
+        dateFished: log.dateFished || d.dateFished,
         sarInd: indFromStored(e.sarYes), mmInterInd: indFromStored(e.mmYes),
         gearSubtypeId: e.gearSubtypeId ?? '',
       };
@@ -793,7 +802,9 @@ export const getCompletionDetails = (log: DfoLog): CompletionDetails => {
 
   // LANDING — port landed is mandatory on all four regions (the old list's known hole).
   add(containerProgress('landing', ctx, {
+    // S147 Phase 1: landingDate + the fallback base beside the time (generator :98).
     portId: d.portLanded, landingTime: d.timeOfLanding,
+    landingDate: d.landingDate, dateFished: log.dateFished || d.dateFished,
   }));
 
   // HAIL — only when the logbook must carry the groups (MAR with a 38b/41 effort).
