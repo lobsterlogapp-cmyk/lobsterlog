@@ -11,6 +11,7 @@ import {
 import {
   containerProgress,
   requiredGroups,
+  latestEffortEnd,
   EFFORT_LEVEL_KEYS,
   RequirementContext,
   FieldValues,
@@ -805,11 +806,18 @@ export const getCompletionDetails = (log: DfoLog): CompletionDetails => {
   }
 
   // LANDING — port landed is mandatory on all four regions (the old list's known hole).
+  // S147: the values here are the SAME set the Landing close door builds (landingValues() in
+  // FullDfoForm). containerProgress discounts a field its isInvalid rejects, so any key the door
+  // has and the meter lacks is a log the door refuses while the bar still reads 100%.
+  const lastEnd = latestEffortEnd(efforts, log.dateFished || d.dateFished || '');
   add(containerProgress('landing', ctx, {
     // S147 Phase 1: landingDate + the fallback base beside the time (generator :98).
     portId: d.portLanded, landingTime: d.timeOfLanding,
     landingDate: d.landingDate, dateFished: log.dateFished || d.dateFished,
     sailDate: d.sailDate, sailTime: d.timeSailed,  // S147 Phase 3 — Rule 45
+    // S147 Run 4 — Rule 46. Ungated on effortYes, exactly like the door: on a no-haul day the
+    // haul times are blank, latestEffortEnd returns null, and the comparison is simply not made.
+    lastEffortEndDate: lastEnd?.date ?? '', lastEffortEndTime: lastEnd?.time ?? '',
   }));
 
   // HAIL — only when the logbook must carry the groups (MAR with a 38b/41 effort).

@@ -42,6 +42,7 @@ import {
   saveLog,
   saveDraft,
   loadLogById,
+  loadAllLogs,          // S147 Run 4 (Rule 33) — the register snapshot the close doors ask
   generateNewLogMeta,
   loadLastLog,
   saveActiveDraft,
@@ -76,7 +77,10 @@ import {
   seedRemarksFromLog,
 } from '../utils/dfoLogStorage';
 import { triggerBackup } from '../utils/dfoBackup';
-import { isFieldRequired, missingInContainer, MissingField, FieldValues, EFFORT_LEVEL_KEYS } from '../utils/dfoRequirements';
+import { isFieldRequired, missingInContainer, MissingField, FieldValues, EFFORT_LEVEL_KEYS, latestEffortEnd } from '../utils/dfoRequirements';
+// S147 Run 4 (Rule 33, BE-1): the ONE clock rule that is not a requirements-table entry — it
+// reads every other saved log, which FieldValues cannot carry. See effortOverlapBullet below.
+import { findEffortOverlap } from '../utils/dfoXmlGenerator';
 import { applySarCaptureChoice, SarBlockWriter, SarCaptureDeps } from '../utils/sarCapture';
 import { REQUIRED_ASTERISK_COLOR } from '../styles/GlobalStyles';
 import {
@@ -305,6 +309,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // midnight landed BEFORE the sail on the wire (Rule 248). Same shape as its four siblings:
   // blank → the generator falls back to dateFished, so every stored log emits unchanged.
   const [transferDate, setTransferDate] = useState('');
+  // S147 Run 4 (Rule 33, BE-1): every saved log, read ONCE on mount so the close doors can ask
+  // findEffortOverlap synchronously. See effortOverlapBullet for why this rule is not in the
+  // requirements table. Staleness is bounded and harmless — a log saved elsewhere after this form
+  // opened is missed at the door, and the send-time check (DfoLogsListScreen) is still there.
+  const [allLogsSnapshot, setAllLogsSnapshot] = useState<DfoLog[]>([]);
   const [soakDuration, setSoakDuration] = useState('');
 
   const [baitEntries, setBaitEntries] = useState<BaitEntry[]>([]);
@@ -701,6 +710,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       const captainProfile = await loadCaptainProfile();
       setProfileLicence(captainProfile.fishingNumber || '');
       if (editingLogId) {
+        void loadAllLogs().then(setAllLogsSnapshot); // S147 Run 4 (Rule 33) — see above
         const log = await loadLogById(editingLogId);
         if (log) hydrateFromLog(log);
       } else {
@@ -710,6 +720,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         const profileSubformId = captainProfile.subformId ?? 90;
         setSubformId(profileSubformId);
         setRegId(captainProfile.regId ?? 1004);
+        // S147 Run 4 (Rule 33): one read of the register for the close doors.
+        void loadAllLogs().then(setAllLogsSnapshot);
         const meta = await generateNewLogMeta(today, profileSubformId);
         setTripId(meta.id);
         setLgbkUid(meta.lgbkUid);
@@ -1765,7 +1777,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     {
       // S140 P3: the gate — this node's full set with its OWN fishing area.
       const { rows, mixed } = nodeMissingRows(e);
-      if (rows.length) { showCloseBlocked(rows, mixed); return; }
+      const overlap = effortOverlapBullet();  // S147 Run 4 — Rule 33
+      const all = overlap ? [...rows, overlap] : rows;
+      if (all.length) { showCloseBlocked(all, mixed); return; }
     }
     Alert.alert(
       t('form234.closeEffortConfirmTitle'),
@@ -1814,6 +1828,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           allRows.push(...rn.rows.map(r => `${t('form234.effortNodeTitle', { n: i + 2 })} — ${r}`));
         }
       });
+      const overlap = effortOverlapBullet();  // S147 Run 4 — Rule 33, once for the whole set
+      if (overlap) allRows.push(overlap);
       if (allRows.length) { showCloseBlocked(allRows, anyMixed); return; }
     }
     Alert.alert(
@@ -2860,6 +2876,22 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
 
   // Bullet for one refused field: blank → its label; invalid → the ruled range line
   // (which carries the label itself); the exactly-one TO pair → both labels + suffix.
+  // S147 Run 4 — Rule 33 (BE-1: the ONE clock rule outside the requirements table).
+  //
+  // WHY IT IS NOT AN ENTRY IN dfoRequirements.ts: it compares this log's efforts against EVERY
+  // OTHER SAVED LOG. FieldValues is string-valued and cannot carry an array of logs;
+  // missingInContainer is synchronous while loadAllLogs is async; and the comparison is per-LOG,
+  // with no owning field to hang an isInvalid on. Ruled at S147 BE-1. Do not "tidy" this into the
+  // table, and do not copy the pattern for a rule whose data the caller already holds.
+  //
+  // findEffortOverlap itself is pure and synchronous, and it skips the current log by id — which
+  // matters, because once any section has been closed the current log IS in the snapshot, as a
+  // stale copy that would otherwise overlap itself every time.
+  const effortOverlapBullet = (): string | null => {
+    const clash = findEffortOverlap(buildDraftLog(), allLogsSnapshot);
+    return clash ? t('form234.effortOverlapBullet', { logId: clash }) : null;
+  };
+
   const closeBulletText = (m: MissingField): string => {
     if (m.reason === 'invalid') {
       // S147: a clock conflict names its own reason — the table chose it (invalidKey), because
@@ -2939,6 +2971,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       // S147 Phase 3: the trip half rides along so Rule 29 can be answered here — the sail is
       // on a card that never closes, so this door can always name an editable side.
       sailDate, sailTime: timeSailed,
+      // S147 Run 4: the landing half, for the EFFORT side of Rule 46 — "does this haul end after
+      // the landing?". Its twin on the landing entry asks the same question the other way round.
+      landingDate, landingTime: timeOfLanding,
       sarInd: indToValue(sarYes), mmInterInd: indToValue(mmYes),
       gearSubtypeId,
       catchWeight, trapHauls, soakDuration,
@@ -2955,6 +2990,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       // S147 Phase 1 — efforts 2+ carry their own window dates (see effort1MissingRows).
       haulStartDate: e.haulStartDate ?? '', haulEndDate: e.haulEndDate ?? '', dateFished,
       sailDate, sailTime: timeSailed,  // S147 Phase 3 — Rule 29, see effort1MissingRows
+      landingDate, landingTime: timeOfLanding,  // S147 Run 4 — Rule 46, effort side
       sarInd: e.sarYes === 'true' ? 'Y' : e.sarYes === 'false' ? 'N' : '',
       mmInterInd: e.mmYes === 'true' ? 'Y' : e.mmYes === 'false' ? 'N' : '',
       gearSubtypeId: e.gearSubtypeId ?? '',
@@ -2989,15 +3025,24 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // The generic closeSection serves five stamps — each maps to its table container.
   const rowsOf = (ms: MissingField[]): { rows: string[]; mixed: boolean } =>
     ({ rows: ms.map(closeBulletText), mixed: ms.some(bulletIsMixed) });
+
+  // S147 Run 4 (Rule 46): every effort's end reduced to the LATEST one, as a date/time pair the
+  // landing entry can compare. effortsFromData is THE one reader and buildLogData carries every
+  // key it needs for effort 1 plus extraEffortNodes for efforts 2..n — so this sees all of them.
+  // (liveEffortData would NOT: it carries no haul times, only areas and closure stamps.)
+  const landingValues = (): FieldValues => {
+    const last = latestEffortEnd(effortsFromData(buildLogData()), dateFished);
+    return {
+      portId: portLanded, landingTime: timeOfLanding, landingDate, dateFished,
+      sailDate, sailTime: timeSailed,                                   // Rule 45
+      lastEffortEndDate: last?.date ?? '', lastEffortEndTime: last?.time ?? '',  // Rule 46
+    };
+  };
   const sectionMissingRows = (dataKey: string): { rows: string[]; mixed: boolean } => {
     const ctx = { subformId, fmaId };
     switch (dataKey) {
       case 'dgCloseLanding':
-        // S147 Phase 1: landingDate + dateFished ride beside the time (generator :98).
-        return rowsOf(missingInContainer('landing', ctx, {
-          portId: portLanded, landingTime: timeOfLanding, landingDate, dateFished,
-          sailDate, sailTime: timeSailed,  // S147 Phase 3 — Rule 45
-        }));
+        return rowsOf(missingInContainer('landing', ctx, landingValues()));
       case 'dgCloseTransfer':
         // S147 Phase 5a: transferDate + dateFished complete the date threading deferred at
         // Phase 1 §1.2 — the field exists now, so the transfer objects join the other eight.
@@ -3053,7 +3098,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     if (readOnly || isClosed('dgCloseEffort')) return;
     {
       const { rows, mixed } = effort1MissingRows();
-      if (rows.length) { showCloseBlocked(rows, mixed); return; }
+      // S147 Run 4: Rule 33 rides the SAME refusal, as one more bullet — a clock conflict is a
+      // clock conflict whether the table found it or findEffortOverlap did.
+      const overlap = effortOverlapBullet();
+      const all = overlap ? [...rows, overlap] : rows;
+      if (all.length) { showCloseBlocked(all, mixed); return; }
     }
     Alert.alert(
       t('form234.closeEffortConfirmTitle'),
@@ -3177,12 +3226,39 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // S124 Phase 5: closing the Landing section runs Rule 1052 FIRST — if no EFFORT occurrence
   // has been entered, DFO mandates the verbatim warning (a warning, not a block) before the
   // app's own Close confirm. With an effort present, go straight to the standard close confirm.
+  // Rule 980 — is the landing more than 24 hours in the future? ONE definition, asked by the
+  // whole-log door and (S147 Phase 5b, CG-7) by the Landing card's own close. Uses the landing
+  // field's own date with the S90 dateFished fallback, matching the emit.
+  const landingIs24hFuture = (): boolean => {
+    const landDateStr = landingDate || dateFished;
+    if (!landDateStr || !timeOfLanding) return false;
+    const [ly, lm, ld] = landDateStr.split('-').map(Number);
+    const [lh, lmin] = timeOfLanding.split(':').map(Number);
+    const landMs = new Date(ly, (lm ?? 1) - 1, ld ?? 1, lh ?? 0, lmin ?? 0).getTime();
+    return !isNaN(landMs) && landMs > Date.now() + 24 * 3600 * 1000;
+  };
+
   const closeLanding = () => {
     if (readOnly || isClosed('dgCloseLanding')) return;
     // S124 Phase 6: Rule 1052 keys off the haul declaration — no EFFORT occurrence (effortYes
     // false) → show DFO's mandated warning first. With a haul declared, go straight to the confirm.
     const hasEffort = effortYes;
-    const proceed = () => closeSection('dgCloseLanding', 'form234.landingSection');
+    const doClose = () => closeSection('dgCloseLanding', 'form234.landingSection');
+    // S147 Phase 5b (CG-7): Rule 980 now fires HERE too, not only at Close & Save All — a
+    // harvester could previously seal a landing three days in the future from this card in
+    // silence. It stays DFO's WARNING, chained ahead of the close confirm exactly as the
+    // whole-log door chains it: warn, then continue. It never refuses.
+    const proceed = () => {
+      if (landingIs24hFuture()) {
+        Alert.alert(
+          t('form234.landing24hWarningTitle'),
+          t('form234.landing24hWarningBody'),
+          [{ text: tc('nav.ok'), onPress: doClose }],
+        );
+      } else {
+        doClose();
+      }
+    };
     if (hasEffort) { proceed(); return; }
     Alert.alert(
       t('form234.rule1052Title'),
@@ -3643,12 +3719,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
 
     // LANDING — Port Landed is table-mandatory on ALL FOUR regions; the old list omitted it
     // on 89/90 (the recon's R4 hole, closed here).
-    missingInContainer('landing', { subformId, fmaId }, {
-      // S147 Phase 1: landingDate + dateFished beside the time — same pair the Landing card's
-      // own close passes, so the two doors read the same timestamp.
-      portId: portLanded, landingTime: timeOfLanding, landingDate, dateFished,
-      sailDate, sailTime: timeSailed,  // S147 Phase 3 — Rule 45
-    }).forEach(m => push(m));
+    // S147: the SAME values the Landing card's own close builds, so the two doors cannot
+    // disagree about a timestamp.
+    missingInContainer('landing', { subformId, fmaId }, landingValues()).forEach(m => push(m));
 
     // HAIL — when any effort fishes 38b/41 on MAR (Rules 2024/2025); ETA + total weight join
     // on the 38b trigger only (Rules 660/661) — same ctx shape as sectionMissingRows.
@@ -3697,6 +3770,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       }
     }
 
+    // S147 Run 4 — Rule 33, once for the log (BE-1: not a table entry; see effortOverlapBullet).
+    if (effortYes) {
+      const overlap = effortOverlapBullet();
+      if (overlap) missing.push(overlap);
+    }
+
     // PERSONAL USE — mandatory once used, but "used" IS the weight being non-blank, so there
     // is nothing checkable here (same formality the Personal Use close door records).
 
@@ -3709,17 +3788,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       return;
     }
 
-    // Rule 980: WARNING (non-blocking) when the landing date/time is more than 24 hours in the
-    // future — a likely input error. Compute here and surface it chained BEFORE the close-all
-    // confirm so the two alerts don't stack. Uses the landing field's own date (S90 multi-day).
-    let landingWarn = false;
-    const landDateStr = landingDate || dateFished;
-    if (landDateStr && timeOfLanding) {
-      const [ly, lm, ld] = landDateStr.split('-').map(Number);
-      const [lh, lmin] = timeOfLanding.split(':').map(Number);
-      const landMs = new Date(ly, (lm ?? 1) - 1, ld ?? 1, lh ?? 0, lmin ?? 0).getTime();
-      if (!isNaN(landMs) && landMs > Date.now() + 24 * 3600 * 1000) landingWarn = true;
-    }
+    // Rule 980: WARNING (non-blocking) when the landing is more than 24 hours in the future.
+    // S147 Phase 5b (CG-7): the test moved to landingIs24hFuture() so the Landing card's own
+    // close can ask the SAME question — it fires at both doors now, and it stays a warning.
+    const landingWarn = landingIs24hFuture();
 
     // S124 Phase 4: "Close & Save All" — this complete-save path closes every USED group still
     // open, with ONE shared timestamp. The draft paths (Back / saveDraft / autosave) are

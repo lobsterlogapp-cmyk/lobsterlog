@@ -178,12 +178,22 @@ const haulStartProblem = (v: FieldValues): string | null => {
   return null;
 };
 
-/** Rule 32 — the haul cannot end before it started. Both halves are on the same card, so this is
- *  the one clock rule whose refusal never has to send the harvester anywhere else. */
+/** Rule 32 — the haul cannot end before it started (both halves on the same card) — and then
+ *  Rule 46 from the EFFORT side: this haul cannot end after the landing.
+ *
+ *  ⚠ Rule 46 is deliberately checked from BOTH sides. The landing entry asks "is this landing
+ *  before the latest haul end?"; this one asks "does THIS haul end after the landing?". Same
+ *  inequality, two subjects — and that is the whole point: each door reports the half that lives
+ *  on the card being closed, so the refusal always names something still editable. With only one
+ *  side built, closing Landing first and the effort second seals both halves before the conflict
+ *  is ever mentioned, and the log can never be sent or repaired. */
 const haulEndProblem = (v: FieldValues): string | null => {
   const end = stampMs(v, 'haulEndDate', 'haulEndTime');
   const start = stampMs(v, 'haulStartDate', 'haulStartTime');
-  return end !== null && start !== null && end < start ? 'form234.haulEndOrderError' : null;
+  if (end !== null && start !== null && end < start) return 'form234.haulEndOrderError';   // Rule 32
+  const land = stampMs(v, 'landingDate', 'landingTime');
+  if (end !== null && land !== null && end > land) return 'form234.haulEndAfterLandingError'; // Rule 46
+  return null;
 };
 
 /** Rules 45 and 248 — a landing, and a QC transfer, cannot precede the trip start. Both compare
@@ -193,6 +203,40 @@ const beforeTripStart = (v: FieldValues, dateKey: string, timeKey: string): bool
   const own = stampMs(v, dateKey, timeKey);
   const trip = stampMs(v, 'sailDate', 'sailTime');
   return own !== null && trip !== null && own < trip;
+};
+
+/** S147 Run 4 — Rule 46 needs the LATEST end across EVERY effort, and `FieldValues` is
+ *  string-valued: it cannot carry an array. So the caller reduces the efforts to one date/time
+ *  pair first and passes it as two ordinary keys. The reduction lives here, next to `stampMs`,
+ *  so the close doors and the completion meter can never compute "latest" differently.
+ *
+ *  Takes the plain shape rather than importing the effort type: `dfoLogStorage` imports THIS
+ *  module, so importing back would be a cycle. Callers pass `effortsFromData(...)`, which is the
+ *  one reader and already returns objects with these two fields. */
+export function latestEffortEnd(
+  efforts: { haulEndDate?: string; haulEndTime?: string }[],
+  dateFished: string,
+): { date: string; time: string } | null {
+  let best: { date: string; time: string; ms: number } | null = null;
+  for (const e of efforts) {
+    const date = e.haulEndDate ?? '';
+    const time = e.haulEndTime ?? '';
+    const ms = stampMs({ haulEndDate: date, haulEndTime: time, dateFished }, 'haulEndDate', 'haulEndTime');
+    if (ms === null) continue;                       // an unfinished effort is not "the latest"
+    if (!best || ms > best.ms) best = { date: date || dateFished, time, ms };
+  }
+  return best ? { date: best.date, time: best.time } : null;
+}
+
+/** Rule 45 then Rule 46, in that order, on the landing. Rule 45 (before the SAIL) is reported
+ *  first: a landing stamped before the boat left is a wrong date, and pointing at a haul time
+ *  would send the harvester to the wrong card. */
+const landingProblem = (v: FieldValues): string | null => {
+  if (beforeTripStart(v, 'landingDate', 'landingTime')) return 'form234.landingOrderError';
+  const land = stampMs(v, 'landingDate', 'landingTime');
+  const lastEnd = stampMs(v, 'lastEffortEndDate', 'lastEffortEndTime');
+  if (land !== null && lastEnd !== null && land < lastEnd) return 'form234.landingBeforeHaulError';
+  return null;
 };
 
 // ─── State helpers ──────────────────────────────────────────────────────────
@@ -208,6 +252,25 @@ const isLobster = (values: FieldValues, key: string) =>
 
 const anyEffort38b = (ctx: RequirementContext) =>
   (ctx.effortFmaIds ?? []).includes(DFO_FMA_38B);
+
+// ─── The one clock rule that is NOT in this table, and why ──────────────────
+//
+// Rule 33 (a fishing effort must not overlap another effort under the same licence) is enforced by
+// findEffortOverlap() in dfoXmlGenerator.ts, called directly by the close doors and by the send —
+// NOT by an entry here. That is a deliberate, ruled exception (S147 BE-1), not an oversight, and
+// the next person should not "tidy" it into the table or copy the pattern for anything else.
+//
+// It cannot live here for three reasons, all structural:
+//   1. It compares against EVERY OTHER SAVED LOG. This table's only input is FieldValues, which is
+//      Record<string, string | null | undefined> — it cannot carry an array of logs, and
+//      RequirementContext has no room either.
+//   2. Reading those logs is asynchronous (loadAllLogs); missingInContainer is synchronous.
+//   3. The comparison is per-LOG, not per-container: it has no single owning field to hang an
+//      isInvalid on.
+//
+// Everything else in the clock family (Rules 30/32/29/45/46/248) compares fields the caller already
+// holds, so those ARE entries here. If a future rule only needs values in hand, it belongs in the
+// table; Rule 33 is the exception precisely because it reaches outside the log.
 
 // ─── The table ──────────────────────────────────────────────────────────────
 
@@ -260,9 +323,9 @@ export const DFO_REQUIREMENTS_TABLE: FieldRequirement[] = [
     kind: 'per-subform', state: MMMM,
     isInvalid: values => haulEndProblem(values) !== null,
     invalidKey: haulEndProblem,
-    checkDescribe: 'not before the haul start (Rule 32)',
-    note: 'EFFORT.END_DT (row 63). S147: Rule 32 — both halves are on this card, so the ' +
-      'refusal never points off it (dfoXmlGenerator :916).' },
+    checkDescribe: 'not before the haul start (Rule 32) and not after the landing (Rule 46)',
+    note: 'EFFORT.END_DT (row 63). S147: Rule 32 (dfoXmlGenerator :916) and the EFFORT side of ' +
+      'Rule 46 (:1157). The Rule 46 twin on landingTime is not optional — see haulEndProblem.' },
   { fieldKey: 'sarInd', container: 'effort', labelKey: 'form234.sarIndShortLabel',
     kind: 'answered', state: MMMM,
     note: 'EFFORT.SAR_IND (row 67) — starts null by Rule 602; pass "" while unanswered. ' +
@@ -410,11 +473,12 @@ export const DFO_REQUIREMENTS_TABLE: FieldRequirement[] = [
       'save gate omitted it there).' },
   { fieldKey: 'landingTime', container: 'landing', labelKey: 'form234.timeOfLandingLabel',
     kind: 'per-subform', state: MMMM,
-    isInvalid: values => beforeTripStart(values, 'landingDate', 'landingTime'),
-    invalidKey: () => 'form234.landingOrderError',
-    checkDescribe: 'not before the trip start (Rule 45)',
-    note: 'LANDING.START_DT (row 101). S147: Rule 45 (dfoXmlGenerator :1154). Rule 46 — not ' +
-      'before the last haul ended — is the harder one and lands with Phase 4.' },
+    isInvalid: values => landingProblem(values) !== null,
+    invalidKey: landingProblem,
+    checkDescribe: 'not before the trip start (Rule 45) and not before the last haul ended (Rule 46)',
+    note: 'LANDING.START_DT (row 101). S147: Rules 45 (dfoXmlGenerator :1154) and 46 (:1157). ' +
+      'Rule 46 reads lastEffortEndDate/Time — the caller reduces every effort to that one pair ' +
+      'via latestEffortEnd(). Its twin lives on haulEndTime; both are required (see there).' },
 
   // ── HAIL — group presence itself is requiredGroups(); these are the members once used ──
   { fieldKey: 'hlinCompany', container: 'hlin', labelKey: 'form234.companyLabel',
