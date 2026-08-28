@@ -77,7 +77,7 @@ import {
   seedRemarksFromLog,
 } from '../utils/dfoLogStorage';
 import { triggerBackup } from '../utils/dfoBackup';
-import { isFieldRequired, missingInContainer, MissingField, FieldValues, EFFORT_LEVEL_KEYS, latestEffortEnd } from '../utils/dfoRequirements';
+import { isFieldRequired, missingInContainer, MissingField, FieldValues, EFFORT_LEVEL_KEYS, latestEffortEnd, missingFieldIsMixed, outOfTableInvalid } from '../utils/dfoRequirements';
 // S147 Run 4 (Rule 33, BE-1): the ONE clock rule that is not a requirements-table entry — it
 // reads every other saved log, which FieldValues cannot carry. See effortOverlapBullet below.
 import { findEffortOverlap } from '../utils/dfoXmlGenerator';
@@ -1777,9 +1777,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     {
       // S140 P3: the gate — this node's full set with its OWN fishing area.
       const { rows, mixed } = nodeMissingRows(e);
-      const overlap = effortOverlapBullet();  // S147 Run 4 — Rule 33
-      const all = overlap ? [...rows, overlap] : rows;
-      if (all.length) { showCloseBlocked(all, mixed); return; }
+      const overlap = effortOverlapMissing();  // S147 Run 4 — Rule 33
+      const all = overlap ? [...rows, closeBulletText(overlap)] : rows;
+      const allMixed = mixed || (!!overlap && bulletIsMixed(overlap));
+      if (all.length) { showCloseBlocked(all, allMixed); return; }
     }
     Alert.alert(
       t('form234.closeEffortConfirmTitle'),
@@ -1828,8 +1829,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           allRows.push(...rn.rows.map(r => `${t('form234.effortNodeTitle', { n: i + 2 })} — ${r}`));
         }
       });
-      const overlap = effortOverlapBullet();  // S147 Run 4 — Rule 33, once for the whole set
-      if (overlap) allRows.push(overlap);
+      const overlap = effortOverlapMissing();  // S147 Run 4 — Rule 33, once for the whole set
+      if (overlap) { allRows.push(closeBulletText(overlap)); anyMixed = anyMixed || bulletIsMixed(overlap); }
       if (allRows.length) { showCloseBlocked(allRows, anyMixed); return; }
     }
     Alert.alert(
@@ -2887,16 +2888,23 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // findEffortOverlap itself is pure and synchronous, and it skips the current log by id — which
   // matters, because once any section has been closed the current log IS in the snapshot, as a
   // stale copy that would otherwise overlap itself every time.
-  const effortOverlapBullet = (): string | null => {
+  //
+  // S147 Run 5 (the French walk): it returns a MissingField, not a bare string. As a string it sat
+  // outside the machinery that decides the refusal heading, so the bullet appeared under "these
+  // required fields are still blank" although the haul times were filled and merely clashed — a
+  // header contradicting the fields inside it. Routed through outOfTableInvalid it carries
+  // reason:'invalid', so bulletIsMixed picks it up like any table bullet and the heading is right
+  // by construction rather than by four call sites each remembering to OR a flag.
+  const effortOverlapMissing = (): MissingField | null => {
     const clash = findEffortOverlap(buildDraftLog(), allLogsSnapshot);
-    return clash ? t('form234.effortOverlapBullet', { logId: clash }) : null;
+    return clash ? outOfTableInvalid('form234.effortOverlapBullet', { logId: clash }) : null;
   };
 
   const closeBulletText = (m: MissingField): string => {
     if (m.reason === 'invalid') {
       // S147: a clock conflict names its own reason — the table chose it (invalidKey), because
       // one field can fail for two different rules and the fieldKey alone cannot say which.
-      if (m.detailKey) return t(m.detailKey);
+      if (m.detailKey) return t(m.detailKey, m.detailParams);
       const rangeKey =
         m.fieldKey === 'soakDuration' ? 'form234.soakRangeError' :
         m.fieldKey === 'sarGps' ? 'form234.sarGpsRangeError' :
@@ -2909,12 +2917,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     return t(m.labelKey);
   };
 
-  // S141 P4 amendment (W-2): a bullet is "mixed" when it reports a value that is WRONG
-  // rather than missing — an invalid range/format, or the exactly-one pair with BOTH sides
-  // filled. The refusal body must admit it: all-blank keeps the S140 sentence byte-identical;
-  // any mixed bullet switches to the "still blank or incorrect" variant.
-  const bulletIsMixed = (m: MissingField): boolean =>
-    m.reason === 'invalid' || m.reason === 'pair-both';
+  // S141 P4 amendment (W-2): a bullet is "mixed" when it reports a value that is WRONG rather
+  // than missing. S147 Run 5: the predicate moved to dfoRequirements so it has ONE definition and
+  // can be tested — a bullet that never reaches it is a heading that lies (see outOfTableInvalid).
+  const bulletIsMixed = missingFieldIsMixed;
 
   // One refusal shape for all twelve close doors (W-1: the whole-log door passes its own
   // title key — its bullets can span several sections, so "this section" would misname it).
@@ -3099,10 +3105,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     {
       const { rows, mixed } = effort1MissingRows();
       // S147 Run 4: Rule 33 rides the SAME refusal, as one more bullet — a clock conflict is a
-      // clock conflict whether the table found it or findEffortOverlap did.
-      const overlap = effortOverlapBullet();
-      const all = overlap ? [...rows, overlap] : rows;
-      if (all.length) { showCloseBlocked(all, mixed); return; }
+      // clock conflict whether the table found it or findEffortOverlap did. Run 5: it is a
+      // MissingField, so it feeds bulletIsMixed like every other bullet and the heading follows.
+      const overlap = effortOverlapMissing();
+      const all = overlap ? [...rows, closeBulletText(overlap)] : rows;
+      const allMixed = mixed || (!!overlap && bulletIsMixed(overlap));
+      if (all.length) { showCloseBlocked(all, allMixed); return; }
     }
     Alert.alert(
       t('form234.closeEffortConfirmTitle'),
@@ -3770,10 +3778,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       }
     }
 
-    // S147 Run 4 — Rule 33, once for the log (BE-1: not a table entry; see effortOverlapBullet).
+    // S147 Run 4 — Rule 33, once for the log (BE-1: not a table entry; see effortOverlapMissing).
+    // Run 5: pushed through push(), the same helper every table bullet uses, so it sets anyMixed.
     if (effortYes) {
-      const overlap = effortOverlapBullet();
-      if (overlap) missing.push(overlap);
+      const overlap = effortOverlapMissing();
+      if (overlap) push(overlap);
     }
 
     // PERSONAL USE — mandatory once used, but "used" IS the weight being non-blank, so there

@@ -7,7 +7,8 @@
 //
 // ⚠ The cross-midnight cases are the point of the suite. A times-only comparison ('02:00' < '23:30'
 // as strings) passes every other test here and refuses real overnight trips on the water.
-import { missingInContainer, containerProgress, MissingField, latestEffortEnd } from '../dfoRequirements';
+import { missingInContainer, containerProgress, MissingField, latestEffortEnd,
+         missingFieldIsMixed, outOfTableInvalid } from '../dfoRequirements';
 import { getCompletionDetails, DfoLog } from '../dfoLogStorage';
 import * as fs from 'fs';
 
@@ -390,4 +391,56 @@ test('10 — a no-haul day is not judged against a haul end that does not exist'
     portLanded: 'Abbott’s Harbour', timeOfLanding: '14:45',
   }));
   expect(noHaul.pct).toBe(100);
+});
+
+// ── S147 Run 5 — the refusal HEADING must not contradict the bullets under it ─────────────
+//
+// Found on the French walk. The heading has two variants: « ...sont encore vides: » (blank only)
+// and « ...sont encore vides ou incorrects: ». Every TABLE check sets it correctly, because a
+// MissingField carries its own reason. Rule 33 lives outside the table (BE-1), so its bullet was a
+// bare string, told the heading nothing, and appeared under "blank" although the haul times were
+// filled and merely clashed with another log — a card header contradicting the fields inside it
+// (the S142 rule; same shape as defect 61).
+
+test('R5 — an out-of-table bullet is INVALID, so the heading says "blank or incorrect"', () => {
+  const bullet = outOfTableInvalid('form234.effortOverlapBullet', { logId: 'LL-20260610-001' });
+  expect(bullet.reason).toBe('invalid');
+  expect(missingFieldIsMixed(bullet)).toBe(true);          // ← fails on the pre-fix bare string
+  expect(bullet.detailKey).toBe('form234.effortOverlapBullet');
+  expect(bullet.detailParams).toEqual({ logId: 'LL-20260610-001' });
+});
+
+test('R5 — the mixed predicate itself: only wrong values flip the heading, never a blank', () => {
+  expect(missingFieldIsMixed({ fieldKey: 'x', labelKey: 'x', reason: 'invalid' })).toBe(true);
+  expect(missingFieldIsMixed({ fieldKey: 'x', labelKey: 'x', reason: 'pair-both' })).toBe(true);
+  expect(missingFieldIsMixed({ fieldKey: 'x', labelKey: 'x', reason: 'blank' })).toBe(false);
+  expect(missingFieldIsMixed({ fieldKey: 'x', labelKey: 'x', reason: 'pair-none' })).toBe(false);
+});
+
+// ── the other direction: no TABLE bullet regressed ───────────────────────────────────────
+
+test('R5 — Rule 45 still produces a mixed bullet, so its heading is still the long one', () => {
+  const ms = missingInContainer('landing', MAR, landing({ landingTime: '04:00' }));
+  const m = ms.find(x => x.fieldKey === 'landingTime')!;
+  expect(m.detailKey).toBe('form234.landingOrderError');
+  expect(missingFieldIsMixed(m)).toBe(true);
+});
+
+test('R5 — Rule 46 still produces a mixed bullet at BOTH doors', () => {
+  const atLanding = missingInContainer('landing', MAR,
+    landingWithHaul({ landingTime: '12:00' })).find(x => x.fieldKey === 'landingTime')!;
+  const atEffort = missingInContainer('effort', MAR,
+    effortWithLanding({ haulEndTime: '15:30' })).find(x => x.fieldKey === 'haulEndTime')!;
+  expect(missingFieldIsMixed(atLanding)).toBe(true);
+  expect(missingFieldIsMixed(atEffort)).toBe(true);
+  expect(atLanding.detailKey).toBe('form234.landingBeforeHaulError');
+  expect(atEffort.detailKey).toBe('form234.haulEndAfterLandingError');
+});
+
+test('R5 — a genuinely blank required field still yields the SHORT heading', () => {
+  // The all-blank case must keep the S140 sentence byte-identical — do not make every refusal
+  // read "blank or incorrect" just because the fix was about headings.
+  const ms = missingInContainer('landing', MAR, landing({ landingTime: '', portId: '' }));
+  expect(ms.length).toBeGreaterThan(0);
+  expect(ms.every(m => !missingFieldIsMixed(m))).toBe(true);
 });

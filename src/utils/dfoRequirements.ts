@@ -106,6 +106,8 @@ export interface MissingField {
   /** S147: the entry's own explanation for an 'invalid', when it supplied one (invalidKey).
    *  The close doors render this instead of the bare label. */
   detailKey?: string;
+  /** S147 Run 5: interpolation for detailKey, when the sentence names something (a log id). */
+  detailParams?: Record<string, string>;
 }
 
 // ─── Value checks (send-validator ranges/formats, verbatim — nothing new) ───
@@ -654,6 +656,34 @@ export function fieldRequirement(
   return DFO_REQUIREMENTS_TABLE.find(
     e => e.fieldKey === fieldKey && (container === undefined || e.container === container),
   );
+}
+
+/** S141 P4 (W-2), exported at S147 Run 5 so it has ONE definition and can be tested.
+ *  A bullet is "mixed" when it reports a value that is WRONG rather than missing — an invalid
+ *  range/format, or the exactly-one pair with both sides filled. The close refusal's heading
+ *  switches on this: all-blank keeps "these required fields are still blank"; any mixed bullet
+ *  switches to "still blank or incorrect". */
+export const missingFieldIsMixed = (m: MissingField): boolean =>
+  m.reason === 'invalid' || m.reason === 'pair-both';
+
+/** S147 Run 5 — a refusal bullet from a check that lives OUTSIDE this table, in the shape the
+ *  close doors already handle.
+ *
+ *  ⚠ THIS IS THE DOCUMENTED COST OF THE BE-1 EXCEPTION. A table entry carries its own reason, so
+ *  the refusal heading learns for free that a bullet is "incorrect" rather than "blank". A check
+ *  outside the table has no MissingField and therefore tells the heading nothing — which is exactly
+ *  what went wrong with Rule 33: its bullet appeared under « Ces champs obligatoires sont encore
+ *  vides: » (blank only) although the haul times were filled and merely clashed with another log.
+ *  A card header must not contradict the fields inside it (the S142 rule).
+ *
+ *  Every out-of-table check routes its bullet through here, so it rejoins the same rails as every
+ *  table bullet and the heading cannot be told the wrong thing again. If a second out-of-table
+ *  check is ever added, use this — do not push a bare string. */
+export function outOfTableInvalid(
+  detailKey: string,
+  detailParams: Record<string, string>,
+): MissingField {
+  return { fieldKey: detailKey, labelKey: detailKey, reason: 'invalid', detailKey, detailParams };
 }
 
 /** Question 1 — what an asterisk needs: is this field mandatory here, right now?
