@@ -16,13 +16,13 @@ import {
 } from 'react-native';
 import { Plus, FileText, Send, Edit3, Eye, Trash2, CheckCircle, User, Shield, RotateCcw, Archive, HelpCircle } from 'lucide-react-native';
 import HelpSupportScreen from './HelpSupportScreen';
-import { loadAllLogs, deleteLog, markSentToDfo, DfoLog, saveTransmissionRecord, TransmissionRecord, saveXmlArchiveEntry, loadTransmissionRegister, transmissionKind, unclosedUsedGroupKeys, logsOwingForm222, getCompletionDetails } from '../utils/dfoLogStorage';
+import { loadAllLogs, deleteLog, markSentToDfo, DfoLog, saveTransmissionRecord, TransmissionRecord, SendFailureKind, SEND_FAILURE_BADGE_KEY, SEND_FAILURE_SHEET_KEY, isSendFailureKind, saveXmlArchiveEntry, loadTransmissionRegister, transmissionKind, unclosedUsedGroupKeys, logsOwingForm222, getCompletionDetails } from '../utils/dfoLogStorage';
 import { useTimer } from '../context/TimerContext';
 import { triggerBackup } from '../utils/dfoBackup';
 import { SentLogCard, SentLogDetailModal, indexSuccessRecords, indexFailureRecords } from '../components/SentLogCard';
 import { FormSentCard } from '../components/FormSentCard';
 import { generateElogXml, generateSoapEnvelope, generateReportUid, validateElogXml, hailGateSections, generateUniqueDfoXmlFileName, findEffortOverlap, DFO_SOAP_ACTION_SAVE, DFO_UAT_ENDPOINT } from '../utils/dfoXmlGenerator';
-import { parseDfoSoapResponse, isValidFormVrn } from '../utils/submitDfoXml';
+import { parseDfoSoapResponse, isValidFormVrn, failureDetailFor } from '../utils/submitDfoXml';
 // S125 7b: send a CLOSED-unsent form from its list card (send moved off the form).
 import { sendForm222Entry, sendForm233Entry } from '../utils/sendFormEntry';
 import { loadCaptainProfile, loadPrivacyAccepted, savePrivacyAccepted, isProfileComplete } from '../utils/captainStorage';
@@ -213,7 +213,15 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
     let soap = '';
     let fileName = '';
 
-    const saveFailureRecord = async (httpStatus: number | undefined, errorMessage: string) => {
+    // S148 defect 87 / R-A: wsErrCode is written ONLY when DFO actually sent a code. The HTTP
+    // 4xx/5xx and timeout/network callers pass nothing, so the sheet's "DFO response code" row
+    // honestly renders a dash rather than a code this app invented.
+    const saveFailureRecord = async (
+      httpStatus: number | undefined,
+      errorMessage: string,
+      failureKind: SendFailureKind,
+      wsErrCode?: string,
+    ) => {
       const record: TransmissionRecord = {
         id: log.id,
         logId: log.id,
@@ -222,6 +230,8 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
         kind: 'logbook',
         ...(httpStatus !== undefined && { httpStatus }),
         errorMessage,
+        failureKind,
+        ...(wsErrCode && { wsErrCode }),
         ...(fileName && { fileName }),
         xmlSnapshot: xml,
         soapSnapshot: soap,
@@ -326,8 +336,10 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
 
       // HTTP 4xx / 5xx
       if (httpStatus >= 400) {
-        await saveFailureRecord(httpStatus, `HTTP ${httpStatus}`);
-        setFailedSends(prev => ({ ...prev, [log.id]: `HTTP ${httpStatus}` }));
+        // R-D condition 1 — shares 'unclear' with condition 3 by ruling. The HTTP number itself
+        // is not lost: it stays in errorMessage, the raw technical row, and in httpStatus.
+        await saveFailureRecord(httpStatus, `HTTP ${httpStatus}`, 'unclear');
+        setFailedSends(prev => ({ ...prev, [log.id]: 'unclear' }));
         Alert.alert(
           t('logs.serverErrorTitle'),
           t('logs.serverErrorBody', { status: httpStatus }),
@@ -343,8 +355,13 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
           result.errorCode && `Error ${result.errorCode}`,
           result.errorMessage,
         ].filter(Boolean).join(': ');
-        await saveFailureRecord(httpStatus, detail);
-        setFailedSends(prev => ({ ...prev, [log.id]: result.errorCode ?? 'DFO error' }));
+        // result.errCode — DFO's own code only (R-A). result.errorCode may be an app marker
+        // (SOAP_FAULT / NO_CONF / NO_WS_RESP) and is deliberately NOT passed here.
+        const failureKind = result.failureKind ?? 'unclear';
+        await saveFailureRecord(httpStatus, detail, failureKind, result.errCode);
+        // S148 defect 84: the hardcoded English literal 'DFO error' is gone. The card stores a
+        // language-neutral marker and translates it at the render site.
+        setFailedSends(prev => ({ ...prev, [log.id]: failureKind }));
         Alert.alert(
           t('logs.rejectedTitle'),
           t('logs.rejectedBody', { detail }),
@@ -381,8 +398,14 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
 
     } catch (e: any) {
       const isTimeout = e.name === 'AbortError';
-      const errMsg: string = e.message ?? 'Unknown error';
-      await saveFailureRecord(undefined, errMsg);
+      // S148 E2 — was `e.message`, which on our own AbortController abort is the single word
+      // 'Aborted'. That is what the sheet's "Error" / « Erreur » row showed a boarding officer on
+      // every timed-out logbook send: one word that does not say what happened. Both send paths
+      // now share failureDetailFor, so they cannot store different sentences for the same event.
+      // Still raw, still English, still untranslated — this row is evidence, not a message (R-E).
+      const errMsg: string = failureDetailFor(e);
+      // R-D conditions 4 and 5. No DFO code exists on either path, so none is written (R-A).
+      await saveFailureRecord(undefined, errMsg, isTimeout ? 'timeout' : 'notSent');
       // S146 defect 83: store a language-neutral marker, never a translated word — the badge
       // translates at the render site so a mid-session language change updates it.
       setFailedSends(prev => ({ ...prev, [log.id]: isTimeout ? 'timeout' : 'notSent' }));
@@ -393,7 +416,14 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
           [{ text: tc('nav.ok') }]
         );
       } else {
-        Alert.alert(t('logs.submissionFailedTitle'), errMsg, [{ text: tc('nav.ok') }]);
+        // S148 defect 84: the body used to be the platform's raw English sentence and nothing
+        // else, under a French title. Plain words in the harvester's own language first, then the
+        // raw technical detail kept complete underneath for the officer (R-E).
+        Alert.alert(
+          t('logs.submissionFailedTitle'),
+          `${t('logs.sheetFailedNotSent')}\n\n${errMsg}`,
+          [{ text: tc('nav.ok') }]
+        );
       }
     } finally {
       setSendingLogs(prev => { const n = new Set(prev); n.delete(log.id); return n; });
@@ -588,11 +618,31 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
         ? await sendForm222Entry(entry as Form222Entry, profile)
         : await sendForm233Entry(entry as Form233Entry, profile);
       if (!result.ok) {
-        const detail = result.validationErrors?.length
-          ? result.validationErrors.join('\n')
-          : [result.errCode && `Error ${result.errCode}`, result.httpStatus && `HTTP ${result.httpStatus}`, result.errorMessage]
-              .filter(Boolean).join('\n');
-        Alert.alert(failTitle, detail || unknown);
+        // PHASE 4 (S148) — the validation-refusal path. The logbook has shown a plain-words heading
+        // above its raw validator list since long before this; the form path showed the bare list
+        // under "Submission Failed" and nothing else. It now gets the same treatment, using the
+        // form's OWN long-orphaned keys so each form names itself correctly: the logs.* pair the
+        // prompt named says « Le journal JBE » — the LOGBOOK — which would be false here.
+        if (result.validationErrors?.length) {
+          Alert.alert(
+            t(isF222 ? 'form222.validationFailedTitle' : 'form233.validationFailedTitle'),
+            `${t(isF222 ? 'form222.validationFailed' : 'form233.validationFailed')}\n\n${result.validationErrors.join('\n')}`,
+            [{ text: tc('nav.ok') }]
+          );
+          return;
+        }
+        // PHASE 3 (S148) defect 84, forms half — a real send failure. Plain words in the
+        // harvester's own language first, from the same marker the card badge and the sheet read,
+        // then the raw technical detail underneath, complete and untranslated, for the officer.
+        const detail = [
+          result.errCode && `Error ${result.errCode}`,
+          result.httpStatus && `HTTP ${result.httpStatus}`,
+          result.errorMessage,
+        ].filter(Boolean).join('\n');
+        const plain = isSendFailureKind(result.failureKind)
+          ? t(SEND_FAILURE_SHEET_KEY[result.failureKind])
+          : '';
+        Alert.alert(failTitle, [plain, detail || unknown].filter(Boolean).join('\n\n'), [{ text: tc('nav.ok') }]);
         return;
       }
       Alert.alert(t(isF222 ? 'form222.submittedTitle' : 'form233.submittedTitle'), t(isF222 ? 'form222.submitSuccess' : 'form233.submitSuccess'));
@@ -621,10 +671,18 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
     // still-closed-unsent entry with a failure record means the last attempt failed (a success would
     // have flipped sentToDfo → out of this bucket). Reuses the 234 card's failed treatment verbatim.
     const recordId = `${kind === 'form222' ? 'FORM222' : 'FORM233'}-${entry.uid}`;
-    const failError = register
+    // S148 defect 85: this badge used to show the stored ENGLISH technical string inline, on a
+    // French screen as readily as an English one. It now reads the language-neutral marker off the
+    // same persisted record and translates it here (R-F). A record written before S148 has no
+    // marker, so it falls back to what it always showed — never blank (R-E).
+    const lastFailure = register
       .filter(r => r.logId === recordId && r.outcome === 'failure')
-      .map(r => r.errorMessage || r.wsErrCode || '')
-      .pop() || '';
+      .pop();
+    const failError = lastFailure
+      ? (isSendFailureKind(lastFailure.failureKind)
+          ? t(SEND_FAILURE_BADGE_KEY[lastFailure.failureKind])
+          : (lastFailure.errorMessage || lastFailure.wsErrCode || ''))
+      : '';
     return (
       <View key={`closed-${kind}-${entry.uid}`} style={[styles.logCard, !!failError && styles.logCardFailed]}>
         <Text style={styles.logId}>{title}</Text>
@@ -681,12 +739,12 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
     const sent = log.sentToDfo === true;
     const isSending = sendingLogs.has(log.id);
     const failError = failedSends[log.id];
-    // S146 defect 83: the catch path stores a marker ('timeout' | 'notSent') and it is translated
-    // here. The HTTP-status and DFO-error-code writers still store a raw technical string — those
-    // are not markers and pass through unchanged.
-    const failLabel = failError === 'timeout' ? t('logs.sendFailedTimeout')
-      : failError === 'notSent' ? t('logs.sendFailedNotSent')
-      : failError;
+    // S146 defect 83 started this; S148 finishes it. ALL FOUR failure conditions now store a
+    // language-neutral marker and it is translated HERE, at the render site, so a mid-session
+    // language change re-renders the badge (R-F). The two writers that used to store raw technical
+    // strings — `HTTP 500` and the hardcoded English 'DFO error' — are gone (defect 84). The
+    // fallback keeps any unrecognised value rendering as itself rather than as a blank badge.
+    const failLabel = isSendFailureKind(failError) ? t(SEND_FAILURE_BADGE_KEY[failError]) : failError;
 
     return (
       <View key={log.id} style={[styles.logCard, !!failError && styles.logCardFailed]}>

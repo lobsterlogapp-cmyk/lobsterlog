@@ -6,7 +6,7 @@ import { View, Text, TouchableOpacity, Modal, ScrollView, SafeAreaView, StyleShe
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CheckCircle, XCircle, X } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
-import { DfoLog, TransmissionRecord, transmissionKind } from '../utils/dfoLogStorage';
+import { DfoLog, TransmissionRecord, transmissionKind, SEND_FAILURE_SHEET_KEY, isSendFailureKind } from '../utils/dfoLogStorage';
 import { formatSentDateTime } from '../utils/formatSentDateTime';
 
 // Latest SUCCESS transmission record per logId. A log can have several attempts
@@ -130,6 +130,16 @@ export const SentLogDetailModal: React.FC<SentLogDetailModalProps> = ({ visible,
                 </View>
                 <OutcomeBadge outcome={record.outcome} />
               </View>
+
+              {/* S148 R-A/R-E — TWO READERS, ONE SHEET. This line is the harvester's: plain words
+                  in his own language, translated here from the record's language-neutral marker so
+                  a mid-session language change follows it (R-F). Everything below is the officer's:
+                  the raw technical rows, complete and untranslated. A record written before S148
+                  carries no marker, so this line is simply absent and the rows below still show
+                  exactly what they always showed — nothing renders blank (R-E). */}
+              {record.outcome === 'failure' && isSendFailureKind(record.failureKind) && (
+                <Text style={styles.failurePlain}>{t(SEND_FAILURE_SHEET_KEY[record.failureKind])}</Text>
+              )}
 
               <View style={styles.detailCard}>
                 {log && <DetailRow label={t('logs.regTripLabel')} value={tripNum !== undefined ? `#${tripNum}` : '—'} />}
@@ -296,6 +306,19 @@ const styles = StyleSheet.create({
     color: '#1E293B',
     flex: 1,
     textAlign: 'right',
+  },
+  // S148 — the plain-words failure line above the technical rows. Deliberately NOT styled like an
+  // error banner: it is the sentence the harvester reads, not an alarm.
+  failurePlain: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#334155',
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
   },
   noRecord: {
     fontSize: 14,

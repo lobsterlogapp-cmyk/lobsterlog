@@ -7,7 +7,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { CheckCircle, XCircle } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
-import { TransmissionRecord, transmissionKind } from '../utils/dfoLogStorage';
+import { TransmissionRecord, transmissionKind, SEND_FAILURE_BADGE_KEY, isSendFailureKind } from '../utils/dfoLogStorage';
 import { formatSentDateTime } from '../utils/formatSentDateTime';
 
 const Field: React.FC<{ label: string; value: string }> = ({ label, value }) => (
@@ -63,8 +63,18 @@ export const FormSentCard: React.FC<FormSentCardProps> = ({ record, onPress }) =
 
       <View style={styles.fieldGrid}>
         {!!record.vrn && <Field label={t('logs.regVesselLabel')} value={record.vrn} />}
+        {/* S148 defect 86, forms half. This row used to render the stored ENGLISH technical string
+            inline on the register card, in French as readily as in English. It now shows the badge
+            word translated from the record's language-neutral marker (R-F); the full raw string is
+            one tap away, intact, in the Transmission Result sheet (R-E). A record written before
+            S148 has no marker and falls back to exactly what it showed before — never blank. */}
         {isFailure
-          ? <Field label={t('logs.regErrorLabel')} value={record.errorMessage || record.wsErrCode || '—'} />
+          ? <Field
+              label={t('logs.regErrorLabel')}
+              value={isSendFailureKind(record.failureKind)
+                ? t(SEND_FAILURE_BADGE_KEY[record.failureKind])
+                : (record.errorMessage || record.wsErrCode || '—')}
+            />
           : !!record.confNumber && <Field label={t('logs.regConfLabel')} value={record.confNumber} />}
         <Field label={t('logs.regSentLabel')} value={formatSentDateTime(record.attemptedAt, i18n.language)} />
       </View>

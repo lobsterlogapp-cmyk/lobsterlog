@@ -919,7 +919,49 @@ export interface TransmissionRecord {
   xsdValid?: boolean;   // result of validateElogXml() run before the POST
   wsErrCode?: string;   // parsed WS_RESP <ERR> (e.g. 'WS0000' on success)
   kind?: 'logbook' | 'form222' | 'form233';  // discriminator for Scope B register display
+  // S148 R-F: WHY the send failed, as a language-neutral marker — never a translated sentence.
+  // A stored sentence is frozen in whatever language it was written in for the three years the
+  // record is retained; this marker is translated at the render site instead, so the badge and
+  // the Transmission Result sheet follow a mid-session language change. Absent on success, and
+  // absent on every record written before S148 — those fall back to their stored errorMessage.
+  failureKind?: SendFailureKind;
 }
+
+// S148 R-F / R-D. Four markers for the five ways a send can fail: conditions 1 (HTTP 4xx/5xx) and
+// 3 (SOAP_FAULT / NO_CONF / NO_WS_RESP) deliberately share 'unclear', because the harvester's next
+// move is the same in both — wait, tap Retry — and a distinction he cannot act on is noise on a wet
+// deck. The technical difference between them still shows in full in errorMessage, the raw row.
+// 'timeout' and 'notSent' are the two markers 9afeadd already ships in the logbook card's in-memory
+// failedSends state; reused verbatim so the app has ONE vocabulary for this, not two.
+export type SendFailureKind =
+  | 'refused'   // DFO answered and rejected it     (condition 2)
+  | 'unclear'   // DFO answered but we can't read the answer, or the server errored (1 and 3)
+  | 'timeout'   // our own 30-second AbortController fired (condition 4)
+  | 'notSent';  // the request never left the phone  (condition 5)
+
+// S148 R-F — marker to i18n KEY NAME, never to text. Storage stays translation-free (the S61
+// isProfileComplete precedent: hand back key names, let the screen call t()). Both the badge and
+// the Transmission Result sheet read the SAME stored marker through these two maps, which is what
+// guarantees they can differ in how much they say but never in what they say happened.
+export const SEND_FAILURE_BADGE_KEY: Record<SendFailureKind, string> = {
+  refused: 'logs.sendFailedRefused',
+  unclear: 'logs.sendFailedUnclear',
+  timeout: 'logs.sendFailedTimeout',
+  notSent: 'logs.sendFailedNotSent',
+};
+
+export const SEND_FAILURE_SHEET_KEY: Record<SendFailureKind, string> = {
+  refused: 'logs.sheetFailedRefused',
+  unclear: 'logs.sheetFailedUnclear',
+  timeout: 'logs.sheetFailedTimeout',
+  notSent: 'logs.sheetFailedNotSent',
+};
+
+// True only for a marker this app actually wrote. Records written before S148 carry no marker at
+// all, and they must still render sensibly — they fall back to their stored errorMessage (R-E), so
+// nothing on a historical record can come out blank.
+export const isSendFailureKind = (v: unknown): v is SendFailureKind =>
+  v === 'refused' || v === 'unclear' || v === 'timeout' || v === 'notSent';
 
 export async function saveTransmissionRecord(record: TransmissionRecord): Promise<void> {
   try {
