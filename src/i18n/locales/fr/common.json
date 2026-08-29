@@ -325,7 +325,11 @@
     "reauthTitle": "Confirmer la suppression du compte",
     "reauthPrompt": "Saisissez votre mot de passe pour confirmer la suppression du compte.",
     "reauthConfirm": "Supprimer le compte",
-    "reauthFailed": "Impossible de vérifier votre mot de passe — rien n’a été supprimé. Réessayez."
+    "reauthFailed": "Impossible de vérifier votre mot de passe — rien n’a été supprimé. Réessayez.",
+    "exportSavedTitle": "Votre registre de transmission est enregistré",
+    "exportSavedBody": "Une copie de votre registre de transmission a été enregistrée dans le dossier Documents de LobsterLog sous le nom {{fileName}}. Conservez-la en lieu sûr — la loi vous oblige à conserver ces registres pendant trois ans, et l’application ne les conservera plus après cette étape.",
+    "exportFailedTitle": "Impossible d’enregistrer votre registre de transmission",
+    "exportFailedBody": "LobsterLog n’a pas pu écrire une copie de votre registre de transmission sur cet appareil. La suppression de votre compte se poursuivra et ces registres ne seront pas conservés. Annulez maintenant si vous voulez réessayer d’abord."
   },
   "login": {
     "subtitle": "Journal de bord numérique",

@@ -324,7 +324,11 @@
     "reauthTitle": "Confirm account deletion",
     "reauthPrompt": "Enter your password to confirm account deletion.",
     "reauthConfirm": "Delete account",
-    "reauthFailed": "Couldn't verify your password — nothing was deleted. Please try again."
+    "reauthFailed": "Couldn't verify your password — nothing was deleted. Please try again.",
+    "exportSavedTitle": "Your transmission record is saved",
+    "exportSavedBody": "A copy of your transmission record was saved to LobsterLog’s Documents folder as {{fileName}}. Keep it somewhere safe — the law requires you to keep those records for three years, and the app will not hold them after this.",
+    "exportFailedTitle": "Your transmission record could not be saved",
+    "exportFailedBody": "LobsterLog could not write a copy of your transmission record to this device. Deleting your account will continue, and those records will not be kept. Cancel now if you want to try again first."
   },
   "login": {
     "subtitle": "Digital Logbook",

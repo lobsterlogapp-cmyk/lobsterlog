@@ -17,6 +17,10 @@ import { doc, deleteDoc } from '@react-native-firebase/firestore';
 import { db } from '../../firebaseConfig';
 import { wipeAllStores, clearLocalDfoStores } from '../utils/dfoBackup';
 import { setActiveDfoUid } from '../utils/dfoStorageKeys';
+import {
+  exportTransmissionRecordForDeletion,
+  type DeletionExportOutcome,
+} from '../utils/exportTransmissionRecord';
 
 export function useAuth() {
   const [user, setUser] = useState<any>(null);
@@ -141,6 +145,51 @@ export function useAuth() {
     // read the ambient uid).
     const deletedUid = user.uid;
     try {
+      // 4a. S150C ruling C1 — HAND HIM HIS RECORD BEFORE ANYTHING IS DESTROYED.
+      //     The transmission register and the sent-XML archive are the three-year record the law
+      //     requires a licence holder to keep. S150 tried to preserve them by RETAINING both
+      //     stores through deletion; that was reverted, because a retained store is keyed to a uid
+      //     that deleteUser destroys, so no screen could ever open it again. Instead the app writes
+      //     him a plain-text copy and offers the share sheet.
+      //
+      //     THIS MUST STAY ABOVE wipeAllStores / deleteDoc / deleteUser. It is the last point at
+      //     which nothing has been destroyed, and deleteUser is the point of no return — after it
+      //     the uid is gone and the register can no longer be read.
+      //
+      //     ⚠ RULING R2 — A FAILED EXPORT MUST NEVER BLOCK THE DELETION. He is entitled to delete
+      //     his account. exportTransmissionRecordForDeletion already swallows its own errors and
+      //     returns a typed outcome; this try/catch is the second belt, so that even an unexpected
+      //     throw (or a future edit that removes the internal guard) cannot fall through to the
+      //     outer catch and abandon the deletion half-done. Log, never rethrow.
+      let exported: DeletionExportOutcome = { ok: false, reason: 'write_failed' };
+      try {
+        // S151B R2 — the document is written in the app's language. i18next is injected here, at
+        // the edge, so exportTransmissionRecord.ts itself stays free of i18n, storage and clock.
+        // `.t` is read off the module singleton, the same way this file already reads
+        // `i18next.language` at :76 — the app's one non-component language access pattern.
+        exported = await exportTransmissionRecordForDeletion(
+          deletedUid,
+          Date.now(),
+          (key, fallback, vars) => i18next.t(key, { defaultValue: fallback, ...(vars ?? {}) }),
+        );
+      } catch (err) {
+        console.warn('[useAuth] transmission-record export threw; deletion continues:', err);
+      }
+      // He has to KNOW about the file — a copy he never hears about is the same failure as no
+      // copy. Told either way: where it went, or that it could not be written.
+      //
+      // ⚠ S151B R6 — EXCEPT when there was nothing to export. A free/Pro user who never sent a
+      // report to DFO gets no file and no alert; announcing a saved "transmission record" he
+      // never had is a false statement about a legal record. Deletion is unaffected either way.
+      if (!(exported.ok && exported.skipped)) {
+        Alert.alert(
+          i18next.t(exported.ok ? 'account.exportSavedTitle' : 'account.exportFailedTitle'),
+          exported.ok
+            ? i18next.t('account.exportSavedBody', { fileName: exported.fileName })
+            : i18next.t('account.exportFailedBody')
+        );
+      }
+
       // Cloud wipe FIRST, while still signed in (block-and-retry): if the cloud
       // copy can't be removed, ABORT before deleting the profile/account so the
       // account stays intact and the harvester can retry. Once deleteUser runs the
