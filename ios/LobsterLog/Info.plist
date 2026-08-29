@@ -48,6 +48,16 @@
 	<string>12.0</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- S151, defect 99. Pairs with UIFileSharingEnabled below: together they make the app's
+	     Documents folder browsable in the Files app, which is where the Delete Account export
+	     is written (src/utils/exportTransmissionRecord.ts, exportDir() → DocumentDir). Without
+	     BOTH, the file persists but the harvester cannot reach it.
+	     ⚠ THE SAME TWO KEYS ARE ALSO DECLARED IN app.config.js (ios.infoPlist). That duplication
+	     is knowingly accepted, not engineered around: this file is what the build reads (ios/ is
+	     committed and nothing regenerates it in this workflow), and app.config.js is what a future
+	     `expo prebuild` would read. The two can drift. If you change one, change the other. -->
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
@@ -63,6 +73,10 @@
 	<string>LobsterLog uses your location to show your boat's position on the chart and log your catches.</string>
 	<key>RCTNewArchEnabled</key>
 	<false/>
+	<!-- S151, defect 99. Pairs with LSSupportsOpeningDocumentsInPlace above — see the note there.
+	     ⚠ ALSO DECLARED IN app.config.js (ios.infoPlist); the two copies can drift. Change both. -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
 	<key>UILaunchStoryboardName</key>
 	<string>SplashScreen</string>
 	<key>UIRequiredDeviceCapabilities</key>

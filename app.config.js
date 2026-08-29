@@ -16,7 +16,18 @@ module.exports = {
       infoPlist: {
         NSLocationWhenInUseUsageDescription: "LobsterLog uses your location to show your boat's position on the chart and log your catches.",
         NSLocationAlwaysAndWhenInUseUsageDescription: "LobsterLog needs your location to track your trawls even when the app is in the background.",
-        ITSAppUsesNonExemptEncryption: false
+        ITSAppUsesNonExemptEncryption: false,
+        // S151, defect 99. These two together make the app's Documents folder browsable in the
+        // Files app — where the Delete Account export lands (src/utils/exportTransmissionRecord.ts,
+        // exportDir() → DocumentDir). Without BOTH, the file persists but cannot be reached.
+        //
+        // ⚠ THE SAME TWO KEYS ARE ALSO DECLARED IN ios/LobsterLog/Info.plist, which is the file the
+        // ACTUAL BUILD READS (ios/ is committed; nothing regenerates it in this workflow). These
+        // entries exist so a future `expo prebuild` does not silently drop them. That is the same
+        // fact in two files and the two CAN DRIFT — knowingly accepted, not engineered around.
+        // If you change one, change the other.
+        UIFileSharingEnabled: true,
+        LSSupportsOpeningDocumentsInPlace: true
       }
     },
     plugins: [
