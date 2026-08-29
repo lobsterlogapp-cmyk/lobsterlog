@@ -43,10 +43,12 @@ function localToUtcIso(dateStr: string, timeStr: string): string {
   return new Date(y, mo - 1, d, h, mi, 0, 0).toISOString();
 }
 
-// allowZero: a typed 0 is a declarable quantity ONLY where a rule says so — currently
-// just CATCH.KEPT_WT (Rule 2020 zero-catch + Rules 630/631). Every other caller keeps
-// the default, so 0 still suppresses the element/node there (e.g. the personal-use
-// PCONS node whose hardcoded USG_ID is Blocked on 88/89/91).
+// allowZero: a typed 0 is a declarable quantity ONLY where a rule says so. Five callers
+// pass it: CATCH.KEPT_WT (Rule 2020 zero-catch + Rules 630/631, S120) and — per Rule 789
+// (FS234.txt:365-377), which says a declared 0 must survive and a blank must never be read
+// as a 0 — BAIT_USED.BT_WT, both PCONS.WT sites and TRANSFER_DTL.WT (S152A). The DEFAULT
+// STAYS false: HLIN.TOT_WT_ONBRD is deliberately NOT in Rule 789's element list and keeps
+// it, so a 0 still suppresses that element. See docs/GATE_S152A_RULE_789_ZERO.md.
 function kgStr(lbs: string, inLbs: boolean, allowZero: boolean = false): string {
   const n = parseFloat(lbs);
   if (isNaN(n) || (allowZero ? n < 0 : n <= 0)) return '';
@@ -126,7 +128,9 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
     baitXml = entries.map(e => {
       const match = baitList.find(b => b.label === e.type);
       const typeCode = match ? String(match.codeId) : '0';
-      const wtKg = kgStr(e.lbs, inLbs);
+      // Rule 789: a typed 0 is a declared quantity. Without allowZero it returned '' and the
+      // guard below deleted the whole BAIT_USED row — type, condition, close stamp and note.
+      const wtKg = kgStr(e.lbs, inLbs, true);
       if (!wtKg) return '';
       // BT_COND_ID: conditional per bait type/region (Item 13, Rules 3060 MAR / 984 QC-GLF /
       // NL-block). Emit only where the rule makes condition mandatory AND a value was captured;
@@ -166,7 +170,9 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
     for (const e of bycatch) {
       const match = pconsList.find(p => p.label === e.species);
       const specieId = match ? String(match.codeId) : '0';
-      const wt = kgStr(e.lbs, inLbs);
+      // Rule 789: a typed 0 is a declared quantity. Without allowZero the guard below
+      // dropped the whole bycatch PCONS row — species, size, usage, close stamp and note.
+      const wt = kgStr(e.lbs, inLbs, true);
       if (!wt) continue;
       const szId = specieId === '1312' ? '826' : String(DFO_PCONS_OTHER_SIZE_ID);
       // SPECIE_SZ_ID: Mandatory for GLF(89) ONLY; Blocked for QC(88)/MAR(90)/NL(91) per
@@ -196,7 +202,9 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
     // S134: personal-use PCONS is MAR(90)-ONLY — its hardcoded USG_ID (37822) is Blocked on
     // 88/89/91 (Subforms_requirements_234.xlsx row 58), so the whole node is withheld there.
     // A stored value on a blocked subform is ignored on read, never cleared (ruling D3).
-    const personalUseWt = kgStr(d.personalUse ?? '', inLbs);
+    // Rule 789: a typed 0 is a declared quantity. Without allowZero the gate below withheld
+    // the whole personal-use PCONS node, including its own note.
+    const personalUseWt = kgStr(d.personalUse ?? '', inLbs, true);
     if (subformId === 90 && personalUseWt) {
       // No SPECIE_SZ_ID here: it is GLF(89)-only (row 56) and this node is now MAR(90)-only,
       // so the old 89 szLine became unreachable and was removed (S134; '' on 90 before).
@@ -508,7 +516,10 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   // TO side is a vessel VRN or a pond number, never both (Rule 252).
   // TRANSFER_DTL: lobster only (Rule 249: SPECIE_ID 1312), Round (Rule 250: 4691).
   if (subformId === 88 && d.transferYes === 'true') {
-    const trnsfWtKg = kgStr(d.transferWt ?? '', inLbs);
+    // Rule 789: a typed 0 is a declared quantity. Without allowZero the guard below deleted
+    // the entire TRANSFER subtree — date, both vessel numbers, close stamp and BOTH copies of
+    // the harvester's own note. A QC transfer declared at 0 lb left no trace it happened.
+    const trnsfWtKg = kgStr(d.transferWt ?? '', inLbs, true);
     // S147 Phase 5a (CG-6): the transfer carries its OWN date, like the other four timestamps
     // (S90). BYTE-IDENTICAL for every stored log — no log written before this change has a
     // transferDate, so `d.transferDate` is undefined and the `||` falls back to log.dateFished,
