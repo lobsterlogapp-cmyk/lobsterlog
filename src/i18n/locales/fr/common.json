@@ -299,7 +299,7 @@
   },
   "backup": {
     "cardHeader": "Sauvegarde infonuagique",
-    "toggleLabel": "Sauvegarder mon journal sur les serveurs canadiens sécurisés de LobsterLog",
+    "toggleLabel": "Sauvegarder mon journal sur des serveurs canadiens sécurisés",
     "toggleHelp": "Désactivée par défaut. Une fois activée, votre journal de bord, vos formulaires et votre profil MPO sont copiés dans votre compte privé pour que vous puissiez les récupérer si vous perdez ou changez de téléphone.",
     "learnMore": "Qu’est-ce qui est sauvegardé?",
     "explainerTitle": "Sauvegarde infonuagique",
@@ -307,7 +307,7 @@
     "whatTitle": "Ce qui est sauvegardé",
     "whatBody": "Vos entrées de journal de bord MPO, vos formulaires 222 et 233, votre archive XML envoyée et votre registre de transmission, votre profil de capitaine et votre équipage enregistré. Rien du côté du journal de pêche gratuit n’est inclus.",
     "whereTitle": "Où c’est stocké",
-    "whereBody": "Sur les serveurs sécurisés de LobsterLog au Canada, dans votre propre compte privé. Vous seul, une fois connecté, pouvez lire ou écrire votre sauvegarde — personne d’autre ne peut la voir.",
+    "whereBody": "Sur des serveurs sécurisés au Canada, dans votre propre compte privé. Vous seul, une fois connecté, pouvez lire ou écrire votre sauvegarde.",
     "controlTitle": "Vous gardez le contrôle",
     "controlBody": "La sauvegarde reste désactivée jusqu’à ce que vous l’activiez, et vous pouvez la désactiver à tout moment sur cet écran. La désactiver arrête les nouvelles sauvegardes; elle ne supprime pas ce qui se trouve déjà sur votre téléphone.",
     "closeButton": "Compris",
@@ -316,7 +316,7 @@
     "backupOk": "Sauvegardé à l’instant",
     "backupFail": "Impossible de joindre le nuage — vos données sont en sécurité sur cet appareil. Réessayez plus tard.",
     "oneOffTitle": "Sauvegarder maintenant?",
-    "oneOffBody": "Cela enregistre une copie de votre journal sur les serveurs canadiens sécurisés de LobsterLog. La sauvegarde automatique reste désactivée — votre téléphone conserve tout comme avant.",
+    "oneOffBody": "Cela enregistre une copie de votre journal sur des serveurs canadiens sécurisés. La sauvegarde automatique reste désactivée — votre téléphone conserve tout comme avant.",
     "oneOffConfirm": "Sauvegarder une fois",
     "restoredNotice": "Journal de bord restauré à partir de la sauvegarde",
     "wipeFailedRetry": "Impossible de joindre le serveur pour supprimer votre sauvegarde — vérifiez votre connexion et réessayez."
