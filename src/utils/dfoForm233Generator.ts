@@ -21,8 +21,14 @@ export interface Form233Entry {
   periodStartDate: string;   // YYYY-MM-DD
   periodEndDate: string;     // YYYY-MM-DD
   reason: string;            // human-readable label
-  licenceNo: string;         // snapshotted from profile at save time
-  fin: string;               // snapshotted from profile at save time
+  // S152F (defect 59): these two are STILL SNAPSHOTTED at save time and still written on every
+  // save — but they are NO LONGER EMITTED. The generator reads FIN and LIC_NO from the live
+  // captain profile, so a 233 cannot carry identity from two different moments. They are kept as
+  // the record of what the harvester was shown when he closed the form, and because every entry
+  // saved before S152F carries them and those records live three years. Do not re-wire them into
+  // the emit, and do not remove them from the type.
+  licenceNo: string;         // snapshotted at save time — historical record, NOT emitted
+  fin: string;               // snapshotted at save time — historical record, NOT emitted
   remarks?: string;          // → REPORT.REM (string_2000, optional) — Session 111; additive
   reportDtlRemarks?: string; // → REPORT_DTL.REM (string_2000, optional) — Session 112; additive
   logbookUidRefered?: string; // → REPORT.LOGBOOK_UID_REFERED (string_6, optional; "REFERED" is DFO's schema spelling) — S116; additive
@@ -117,7 +123,13 @@ export function generateForm233Xml(entry: Form233Entry, profile: CaptainProfile)
   gi += tag('CIE_ID',      DFO_CIE_ID, '    ');
   gi += tag('SOFT_VER',    DFO_SOFT_VER, '    ');
   gi += tag('REG_ID',      String(regId), '    ');
-  gi += tag('FIN',         entry.fin, '    ');
+  // S152F (defect 59): FIN reads the LIVE profile, like REG_ID and VRN either side of it. It used
+  // to read entry.fin — the copy frozen into the record at close — so a 233 sent after the
+  // harvester corrected his profile carried the old FIN beside the new vessel number: one document
+  // describing him at two different moments, with the two mandatory fields being the stale ones.
+  // Ruling: all four identity fields come from one source, matching the 234 (:242) and the 222
+  // (:198). entry.fin is still stored, as the record of what he was shown at close — see the type.
+  gi += tag('FIN',         profile.licenceHolderFin, '    ');
   gi += tag('VRN',         profile.vesselNumber, '    ');
   gi += tag('FORM_VER_ID', String(DFO_FORM_VER_ID_233), '    ');
   gi += '  </GENERAL_INFO>\n';
@@ -125,7 +137,9 @@ export function generateForm233Xml(entry: Form233Entry, profile: CaptainProfile)
   let dtl = '    <REPORT_DTL>\n';
   dtl += tag('START_DT', startDt, '      ');
   dtl += tag('END_DT',   endDt, '      ');
-  dtl += tag('LIC_NO',   entry.licenceNo, '      ');
+  // S152F (defect 59): LIC_NO reads the LIVE profile — the other half of the same fix as FIN
+  // above. Same source the 234 uses for this element (dfoXmlGenerator :297).
+  dtl += tag('LIC_NO',   profile.fishingNumber, '      ');
   dtl += tag('REASON',   entry.reason, '      ');
   // REM (string_2000, opt) — REPORT_DTL-level note. XSD report_dtl_type sequence: LAST child,
   // after REASON. Distinct from REPORT.REM above — the two carry separate text (never the same).
