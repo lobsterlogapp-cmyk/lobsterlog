@@ -88,8 +88,9 @@ interface FormState {
   injuryInd: 'Y' | 'N';
   deathInd: 'Y' | 'N';
   entangleInd: 'Y' | 'N';
-  releaseInd: 'Y' | 'N';
-  gearDamageInd: 'Y' | 'N';
+  // S152D: '' = unanswered. Rule 593 makes GEAR_DMG_IND mandatory once
+  // INTERACT_IND=Y, so the harvester must answer it himself (Rule 602's shape).
+  gearDamageInd: 'Y' | 'N' | '';
   observerNm: string;
   contactInfo: string;
   remarks: string;
@@ -120,8 +121,7 @@ const EMPTY_FORM: FormState = {
   injuryInd: 'N',
   deathInd: 'N',
   entangleInd: 'N',
-  releaseInd: 'N',
-  gearDamageInd: 'N',
+  gearDamageInd: '',   // S152D: starts UNANSWERED, never pre-answered 'N'
   observerNm: '',
   contactInfo: '',
   remarks: '',
@@ -247,7 +247,6 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
           injuryInd: draft.injuryInd,
           deathInd: draft.deathInd,
           entangleInd: draft.entangleInd,
-          releaseInd: draft.releaseInd,
           gearDamageInd: draft.gearDamageInd,
           observerNm: draft.observerNm,
           contactInfo: draft.contactInfo,
@@ -272,10 +271,6 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
   const set = <K extends keyof FormState>(key: K) => (value: FormState[K]) =>
     setForm(prev => ({ ...prev, [key]: value }));
 
-  const toggleYN = (key: keyof FormState) => () => {
-    setForm(prev => ({ ...prev, [key]: prev[key] === 'Y' ? 'N' : 'Y' }));
-  };
-
   // S125 7a: build a Form222Entry from current state at the given lifecycle stage. Shared by the
   // park path (status:'draft', sentToDfo:false) and the send path (status:'complete') so a parked
   // draft and a sent record differ only in status/sent flags. uid reuses the owned draft uid, so
@@ -295,7 +290,6 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
     injuryInd: form.injuryInd,
     deathInd: form.deathInd,
     entangleInd: form.entangleInd,
-    releaseInd: form.releaseInd,
     gearDamageInd: form.gearDamageInd,
     observerNm: form.observerNm,
     contactInfo: form.contactInfo,
@@ -321,7 +315,8 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
     const flags =
       form.interactInd === 'Y' ||
       form.injuryInd === 'Y' || form.deathInd === 'Y' || form.entangleInd === 'Y' ||
-      form.releaseInd === 'Y' || form.gearDamageInd === 'Y';
+      // S152D: gear damage starts unanswered, so EITHER answer is user-caused.
+      form.gearDamageInd !== '';
     const typed = [
       form.interactionDate, form.interactionTime, form.lat, form.lon, form.speciesLabel,
       form.nbAnimals, form.interactionTypeLabel, form.observerNm, form.contactInfo, form.remarks,
@@ -596,13 +591,21 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
     );
   };
 
-  const renderYNToggle = (label: string, value: 'Y' | 'N', onToggle: () => void) => (
+  // S152D: `value` may be '' (unanswered) — neither button renders active, which is the
+  // unanswered look. The buttons now SET their own value rather than flipping, because a
+  // flip cannot express "No" from an unanswered start.
+  const renderYNToggle = (
+    label: string,
+    value: 'Y' | 'N' | '',
+    onPick: (v: 'Y' | 'N') => void,
+    required = false,
+  ) => (
     <View style={styles.ynRow}>
-      <Text style={styles.ynLabel}>{label}</Text>
+      <Text style={styles.ynLabel}>{label}{required && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
       <View style={styles.ynToggleGroup}>
         <TouchableOpacity
           style={[styles.ynButton, value === 'Y' && styles.ynButtonActive]}
-          onPress={() => { if (value !== 'Y') onToggle(); }}
+          onPress={() => onPick('Y')}
           activeOpacity={0.8}
         >
           <Text style={[styles.ynButtonText, value === 'Y' && styles.ynButtonTextActive]}>
@@ -611,7 +614,7 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.ynButton, value === 'N' && styles.ynButtonActive]}
-          onPress={() => { if (value !== 'N') onToggle(); }}
+          onPress={() => onPick('N')}
           activeOpacity={0.8}
         >
           <Text style={[styles.ynButtonText, value === 'N' && styles.ynButtonTextActive]}>
@@ -935,12 +938,10 @@ export default function Form222Screen({ onClose, registerClose, entryUid, prefil
             {/* Outcome indicators */}
             <View style={styles.card}>
               <Text style={styles.cardHeader}>{t('form222.indicatorsCard')}</Text>
-              {renderYNToggle(t('form222.injuryIndLabel'),     form.injuryInd,     toggleYN('injuryInd'))}
-              {renderYNToggle(t('form222.deathIndLabel'),      form.deathInd,      toggleYN('deathInd'))}
-              {renderYNToggle(t('form222.entangleIndLabel'),   form.entangleInd,   toggleYN('entangleInd'))}
-              {form.entangleInd === 'Y' &&
-                renderYNToggle(t('form222.releaseIndLabel'),   form.releaseInd,    toggleYN('releaseInd'))}
-              {renderYNToggle(t('form222.gearDamageIndLabel'), form.gearDamageInd, toggleYN('gearDamageInd'))}
+              {renderYNToggle(t('form222.injuryIndLabel'),     form.injuryInd,     set('injuryInd'))}
+              {renderYNToggle(t('form222.deathIndLabel'),      form.deathInd,      set('deathInd'))}
+              {renderYNToggle(t('form222.entangleIndLabel'),   form.entangleInd,   set('entangleInd'))}
+              {renderYNToggle(t('form222.gearDamageIndLabel'), form.gearDamageInd, set('gearDamageInd'), req('gearDamageInd'))}
 
               {/* GEAR_DMG_REM (string_150, optional) — remark about gear damage */}
               <View style={[styles.inputGroup, { marginTop: 12 }]}>

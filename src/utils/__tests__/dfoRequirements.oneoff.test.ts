@@ -212,7 +212,7 @@ describe('golden: per-subform answers', () => {
     for (const [f, container] of [
       ['operName', 'trip'], ['lgbkUid', 'trip'], ['useCrInd', 'trip'],
       ['targetSpecies', 'effort'], ['specieSzId', 'bycatchRow'],
-      ['gearDamageInd', 'form222'], ['fin', 'form233'],
+      ['fin', 'form233'],
     ] as const) {
       expect(isFieldRequired(f, ctx(88))).toBe(false);
       expect(fieldRequirement(f, container)!.kind).toBe('app-supplied');
@@ -420,6 +420,9 @@ describe('value checks: a sealed invalid value is the same dead end as a sealed 
       nbAnimals: '2', interactionTypeLabel: 'Entanglement', observerNm: 'Jane',
       contactInfo: 'x@y.z', siteDsc: 'Off the ledge', eventDsc: 'Swam clear',
       confidenceLabel: 'Sure', specimenCondLabel: 'Alive', lengthCatLabel: 'Adult',
+      // S152D: GEAR_DMG_IND is Rule-593 mandatory on the Y-path and starts unanswered,
+      // so a COMPLETE form now carries an answer to it.
+      gearDamageInd: 'N',
     };
     expect(missingInContainer('form222', ctx(90), y)).toEqual([]);
     expect(missingInContainer('form222', ctx(90), { ...y, lat: '90' })
@@ -790,7 +793,9 @@ describe('P3b (S141) ruling 2: form value checks agree with the send validators'
     interactionTime: '08:30', lat: '44.1234', lon: '-66.5432', speciesLabel: 'Gray Seal',
     nbAnimals: '2', interactionTypeLabel: 'Entanglement', observerNm: 'Jane',
     contactInfo: 'x@y.z', siteDsc: 'Off the ledge', eventDsc: 'Swam clear',
-    confidenceLabel: 'Sure', specimenCondLabel: 'Alive', lengthCatLabel: 'Adult', ...over,
+    confidenceLabel: 'Sure', specimenCondLabel: 'Alive', lengthCatLabel: 'Adult',
+    gearDamageInd: 'N',   // S152D: Rule-593 mandatory on the Y-path, answered by the harvester
+    ...over,
   });
   const entry222 = (over: Record<string, string>): any => ({
     uid: 'ABCDEF', savedAt: 1760000000000, reportDate: '2026-06-11',
@@ -844,5 +849,63 @@ describe('P3b (S141) ruling 2: form value checks agree with the send validators'
     const xml = generateForm233Xml(
       entry233({ periodStartDate: '2026-06-07', periodEndDate: '2026-06-01' }), profile);
     expect(validateForm233Xml(xml).errors.some(e => e.includes('END_DT is before START_DT'))).toBe(true);
+  });
+});
+
+// ── S152D: GEAR_DMG_IND is the harvester's answer, not the app's ────────────────────────
+// Rule 593 makes MM_INTER.GEAR_DMG_IND mandatory once INTERACT_IND=Y; Rule 594 blocks it when
+// N. It used to be kind:'app-supplied', defaulted 'N' by the screen — so the app answered a
+// mandatory DFO question on his behalf and the gate never asked. It now starts unanswered.
+describe('S152D: Form 222 gear damage must be answered by the harvester (Rules 593/594)', () => {
+  const base222 = (over: Record<string, string> = {}): Record<string, string> => ({
+    interactInd: 'Y', reportDate: '2026-06-11', lgbkNumRef: 'QWERTY', interactionDate: '2026-06-10',
+    interactionTime: '08:30', lat: '44.1234', lon: '-66.5432', speciesLabel: 'Gray Seal',
+    nbAnimals: '2', interactionTypeLabel: 'Entanglement', observerNm: 'Jane',
+    contactInfo: 'x@y.z', siteDsc: 'Off the ledge', eventDsc: 'Swam clear',
+    confidenceLabel: 'Sure', specimenCondLabel: 'Alive', lengthCatLabel: 'Adult',
+    gearDamageInd: 'N', ...over,
+  });
+  const entry = (gearDamageInd: string): any => ({
+    uid: 'ABCDEF', savedAt: 1760000000000, interactInd: 'Y', reportDate: '2026-06-11',
+    interactionDate: '2026-06-10', interactionTime: '08:30', lat: '44.1234', lon: '-66.5432',
+    speciesLabel: 'Gray Seal', nbAnimals: '2', interactionTypeLabel: 'Entanglement',
+    injuryInd: 'N', deathInd: 'N', entangleInd: 'N', gearDamageInd,
+    observerNm: 'Jane', contactInfo: 'x@y.z', remarks: '', lgbkNumRef: 'QWERTY',
+    closeDt: '2026-06-10T15:00:00.000Z', sentToDfo: false,
+  });
+  const profile222: any = { operatorName: 'Op', vesselNumber: '104460', regId: 1004,
+    fishingNumber: '104460', licenceHolderFin: '100400460', units: 'lbs', language: 'en' };
+
+  test('UNANSWERED: the close gate refuses and names the field', () => {
+    const missing = missingInContainer('form222', ctx(90), base222({ gearDamageInd: '' }));
+    expect(missing.map(m => ({ f: m.fieldKey, r: m.reason })))
+      .toEqual([{ f: 'gearDamageInd', r: 'blank' }]);
+    // it carries a real label now, so the refusal can name it on screen
+    expect(missing[0].labelKey).toBe('form222.gearDamageIndLabel');
+  });
+
+  test('ANSWERED either way: the gate is satisfied', () => {
+    expect(missingInContainer('form222', ctx(90), base222({ gearDamageInd: 'N' }))).toEqual([]);
+    expect(missingInContainer('form222', ctx(90), base222({ gearDamageInd: 'Y' }))).toEqual([]);
+  });
+
+  test('the red asterisk: mandatory on the Y-path (593), blocked on the N-path (594)', () => {
+    expect(isFieldRequired('gearDamageInd', ctx(90), { interactInd: 'Y' }, 'form222')).toBe(true);
+    expect(isFieldRequired('gearDamageInd', ctx(90), { interactInd: 'N' }, 'form222')).toBe(false);
+  });
+
+  test('UNANSWERED emits NO element, and the send validator refuses the document', () => {
+    const xml = generateForm222Xml(entry(''), profile222);
+    expect(xml).not.toContain('<GEAR_DMG_IND>');
+    const v = validateForm222Xml(xml);
+    expect(v.errors.some(e => e.includes('GEAR_DMG_IND'))).toBe(true);
+  });
+
+  test('an answer emits it, and the document passes', () => {
+    for (const v of ['Y', 'N'] as const) {
+      const xml = generateForm222Xml(entry(v), profile222);
+      expect(xml).toContain(`<GEAR_DMG_IND>${v}</GEAR_DMG_IND>`);
+      expect(validateForm222Xml(xml).errors.some(e => e.includes('GEAR_DMG_IND'))).toBe(false);
+    }
   });
 });

@@ -563,8 +563,14 @@ export const DFO_REQUIREMENTS_TABLE: FieldRequirement[] = [
     checkDescribe: 'must not be in the future (Rule 592, S141 P3b ruling 2)',
     note: 'MM_INTER.REP_DATE (CSV REQUIRED=Y) — prefilled to today and editable, so the ' +
       'blank check is inert (S140 P2 ruling 1); the future check (ruling 2, S141 P3b) is not.' },
-  { fieldKey: 'gearDamageInd', container: 'form222', labelKey: null, kind: 'app-supplied',
-    state: MMMM, note: 'GEAR_DMG_IND — defaulted N by the screen, can never be blank.' },
+  { fieldKey: 'gearDamageInd', container: 'form222', labelKey: 'form222.gearDamageIndLabel',
+    kind: 'answered',
+    state: (_ctx, values) =>
+      (String(values.interactInd ?? '') === 'Y' ? 'mandatory' : 'blocked'),
+    note: 'MM_INTER.GEAR_DMG_IND — Rule 593 mandatory when INTERACT_IND=Y; Rule 594 blocks it ' +
+      'when N. S152D: was kind app-supplied ("defaulted N by the screen, can never be blank"), ' +
+      'which is exactly why it was never gated and never starred — the app answered a mandatory ' +
+      'DFO question on the harvester\'s behalf. It now starts unanswered and he must answer it.' },
   // Rule 593 members keyed on the interaction answer (Rule 594 blocks the set when N):
   ...([
     ['interactionTime', 'form222.interactionTimeLabel', 'INTERACT_DT time half'],

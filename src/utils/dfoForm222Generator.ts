@@ -65,8 +65,17 @@ export interface Form222Entry {
   injuryInd: 'Y' | 'N';
   deathInd: 'Y' | 'N';
   entangleInd: 'Y' | 'N';
-  releaseInd: 'Y' | 'N';    // meaningful only when entangleInd = Y
-  gearDamageInd: 'Y' | 'N';
+  /** @deprecated S152D (defect 66) — the control and the REM sentence it fed are gone, and
+   *  NOTHING reads this any more. Kept OPTIONAL, never removed: every Form222Entry saved before
+   *  S152D carries it and those records live three years, so the field has to stay
+   *  representable for them to load. New entries simply omit it. Do not re-wire it. */
+  releaseInd?: 'Y' | 'N';
+  /** S152D: '' = UNANSWERED. Rule 593 makes MM_INTER.GEAR_DMG_IND mandatory once
+   *  INTERACT_IND=Y (and Rule 594 blocks it when N), so the harvester answers it himself
+   *  instead of the app pre-answering 'N' for him. While unanswered tag() drops the element,
+   *  and both the close gate (dfoRequirements 'answered' row) and validateForm222Xml's
+   *  Y-path required list refuse the document — Rule 602's shape, as used on the 234. */
+  gearDamageInd: 'Y' | 'N' | '';
   observerNm: string;
   contactInfo: string;
   remarks: string;           // optional free-text
@@ -173,9 +182,12 @@ function toDate12(dateStr: string, timeStr: string): string {
 }
 
 // XSD 39588.222: ELOG → GENERAL_INFO + MM_INTER[] → MM_INTER_INCDNT[].
-// The legacy INJURY/DEATH/ENTANGLE Y/N indicators have no XSD elements — they map
-// onto MM_INTER_INCDNT incident nodes; RELEASE_IND has no equivalent and is folded
-// into REM as free text.
+// The INJURY/DEATH/ENTANGLE Y/N indicators have no XSD elements of their own — they map onto
+// MM_INTER_INCDNT incident nodes (39615 / 39609 / 39610), which is a real additive path: the
+// TYPE OF INTERACTION dropdown is single-select, so these three are the ONLY way this app can
+// report a second incident type, and the XSD allows maxOccurs="unbounded" (S152C).
+// RELEASE_IND had no equivalent and used to be folded into REM as free text — removed in S152D,
+// see the REM emit below.
 export function generateForm222Xml(entry: Form222Entry, profile: CaptainProfile): string {
   const regId = profile.regId ?? 1004;
 
@@ -235,10 +247,15 @@ export function generateForm222Xml(entry: Form222Entry, profile: CaptainProfile)
   mm += tag('DG_CLOSE_DT', toCloseTimestamp(entry.closeDt), '    ');
 
   if (entry.interactInd === 'Y') {
-    const rem = entry.entangleInd === 'Y'
-      ? [entry.remarks.trim(), `Released: ${entry.releaseInd === 'Y' ? 'yes' : 'no'}`].filter(Boolean).join(' — ')
-      : entry.remarks;
-    mm += tag('REM', rem, '    ');
+    // S152D (defect 66): REM is the HARVESTER'S OWN remark and nothing else. It used to have
+    // `Released: yes/no` glued onto it whenever entanglement was Yes — hardcoded English, no
+    // French, written from a control he never had to touch. With his box empty the whole element
+    // was the app's words; with his own text present the app appended after it and could
+    // contradict him inside his own sentence. §6.3 of the 222 fact sheet makes him responsible
+    // for the accuracy of what is recorded, so the app does not write prose on his behalf.
+    // DFO has no element for the release answer (0 hits for RELEASE in the 222 dictionary and
+    // XSD) and MM_INTER_INCDNT.REM is blocked by Rule 595 — there was nowhere else to put it.
+    mm += tag('REM', entry.remarks, '    ');
 
     // MM_INTER_INCDNT: the selected interaction type plus incidents implied by the
     // legacy Y/N indicators (deduplicated, XSD allows 0..n)

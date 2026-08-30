@@ -519,7 +519,6 @@
     "injuryIndLabel": "INJURY",
     "deathIndLabel": "DEATH",
     "entangleIndLabel": "ENTANGLEMENT",
-    "releaseIndLabel": "RELEASED (if entangled)",
     "gearDamageIndLabel": "GEAR DAMAGE",
     "observerCard": "Observer",
     "observerNmLabel": "OBSERVER NAME",
