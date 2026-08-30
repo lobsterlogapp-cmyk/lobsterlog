@@ -68,7 +68,9 @@
     "successTitle": "Succès",
     "settingsSaved": "Paramètres enregistrés!",
     "savePreferences": "Enregistrer les préférences",
-    "preferencesSaved": "Préférences enregistrées!"
+    "preferencesSaved": "Préférences enregistrées!",
+    "weightUnitLbs": "lb",
+    "weightUnitKg": "kg"
   },
   "profile": {
     "title": "Profil capitaine",
@@ -115,7 +117,7 @@
     "gpsLocationLabel": "POSITION GPS",
     "latPlaceholder": "Lat",
     "lngPlaceholder": "Lng",
-    "lbsSuffix": "{{lbs}} lbs",
+    "lbsSuffix": "{{lbs}} lb",
     "captureNowBtn": "Capturer l’heure et la position GPS",
     "page1Tab": "Page 1 : Chaque sortie",
     "page2Tab": "Page 2 : Si applicable",

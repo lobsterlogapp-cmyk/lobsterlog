@@ -67,7 +67,9 @@
     "successTitle": "Success",
     "settingsSaved": "Settings saved!",
     "savePreferences": "Save Preferences",
-    "preferencesSaved": "Preferences saved!"
+    "preferencesSaved": "Preferences saved!",
+    "weightUnitLbs": "lbs",
+    "weightUnitKg": "kg"
   },
   "profile": {
     "title": "Captain Profile",

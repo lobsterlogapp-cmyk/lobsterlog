@@ -1180,7 +1180,9 @@ const isAdmin = useMemo(() => {
                             fontSize: 14, fontWeight: '600',
                             color: prefUnits === u ? '#FFFFFF' : '#64748B',
                           }}>
-                            {u}
+                            {/* S153 Phase 5: was the raw union value {u} — untranslated, so
+                                both languages read "lbs"/"kg". Now a real string per language. */}
+                            {t(u === 'kg' ? 'settings.weightUnitKg' : 'settings.weightUnitLbs')}
                           </Text>
                         </TouchableOpacity>
                       ))}
