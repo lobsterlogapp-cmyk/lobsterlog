@@ -9,7 +9,7 @@ import { EMPTY_PROFILE, CaptainProfile } from '../captainStorage';
 const base: DataGroupInputs = {
   subformId: 90, hailFma: false, effortYes: true, baitCount: 0, bycatchYes: false, bycatchCount: 0,
   personalUse: '', sarYes: false, transferYes: false,
-  hlinCompany: '', hlinConfirmNo: '', hloutCompany: '', hloutConfirmNo: '',
+  hlinCompany: '', hlinConfirmNo: '', hlinTotalWeight: '', hloutCompany: '', hloutConfirmNo: '',
 };
 
 test('no-haul log with bait: exactly Landing + Bait are used (2), not 3', () => {

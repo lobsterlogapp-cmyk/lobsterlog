@@ -20,6 +20,265 @@ import {
 export type DfoLogMode = 'full' | 'proposal';
 export type DfoLogStatus = 'draft' | 'complete';
 
+// --- S153 Phase 1: the weight unit a data group was CLOSED in ---
+// R1: a weight is converted to kilograms and STORED that way when its section closes, so a
+// stored weight is only interpretable beside the unit it was sealed in. R2: that unit then
+// freezes with the number — a later toggle change touches neither. R4: different groups in
+// one log may therefore carry different units, and (S153 founder ruling A) so may two rows
+// of one card, because the tag follows `closeDt` exactly rather than inventing a card level.
+//
+// The tag rides the SAME shape as the stamp it pairs with, never a parallel one:
+//   • bait / bycatch rows      -> row field `closeUnit`, beside the row's own `closeDt`
+//   • efforts 2+               -> ExtraEffortNode.closeUnit, beside that node's `closeDt`
+//   • effort 1, personal use,  -> flat data-map keys `<dgCloseKey>Unit`, beside the flat
+//     transfer, hail-in           stamp (effort 1 has no node; it lives in the legacy keys)
+// SAR, HLOUT and LANDING seal no weight (SAR.WT is not built), so they carry no tag.
+export type WeightUnit = 'lbs' | 'kg';
+
+// R5: an ABSENT tag means POUNDS. Every weight closed under pre-S153 code is untagged, and
+// pre-S153 code converted lbs->kg at emit reading the live toggle — so pounds is what those
+// numbers are unless something says otherwise. Anything that is not exactly 'kg' reads as
+// pounds: undefined, '', a legacy value, or garbage. Fail toward the old behaviour.
+export function closedWeightUnit(tag: string | undefined): WeightUnit {
+  return tag === 'kg' ? 'kg' : 'lbs';
+}
+
+// --- S153 Phase 3: what unit the STORED NUMBER is in — a different question ---
+// closedWeightUnit above answers "which unit was the harvester working in when he sealed
+// this?" — that is the LABEL's question (R2/R6). THIS answers "what is the number in the
+// database?", which is the EMIT's question, and the two are NOT the same:
+//
+//   closed on lbs -> Phase 2 divided at close -> STORED kilograms, tag 'lbs'
+//   closed on kg  -> nothing to divide        -> STORED kilograms, tag 'kg'
+//   pre-S153      -> no conversion ever ran   -> STORED pounds,    NO TAG
+//
+// So the stored number is kilograms whenever a tag is PRESENT, whatever the tag says, and
+// pounds only when there is none (R5). Reading the tag's value here instead would re-divide
+// every lbs-closed weight — 100 lb out as 20.58 kg. That is the double conversion.
+export function storedWeightUnit(tag: string | undefined): WeightUnit {
+  return tag ? 'kg' : 'lbs';
+}
+
+// --- S153 Phase 2: the conversion, in ONE place ---
+// Pounds per kilogram. Until S153 this number appeared exactly once in the repo (kgStr, at
+// emit); R1 moves the conversion to close, so it lives HERE and Phase 3 points kgStr at it.
+// It must never be written a second time — a second copy is a second rounding rule.
+export const LBS_PER_KG = 2.20462;
+
+// How many decimal places a converted weight is STORED with. Deliberately more than the two
+// the wire carries (S153 founder ruling, Phase 5 §5.1).
+//
+// WHY NOT 2. The emit has always rounded to 2dp and still does, so 2dp of kilograms is all DFO
+// ever sees. But storing only 2dp throws away what the harvester typed: 40 lb becomes 18.14 kg,
+// and 18.14 kg read back is 39.99 lb. A man who typed 40 would reopen a card he can no longer
+// edit and find 39.99 on it. Six places make the round-trip exact for every value tested,
+// while kgStr's toFixed(2) at emit keeps the bytes identical to pre-S153.
+//
+// ACCEPTED COST, on the record: storage is no longer the wire format — 45.359291 stored,
+// 45.36 sent. One is a deterministic rounding of the other, applied at emit and nowhere else.
+export const STORED_KG_DECIMALS = 6;
+
+// Convert a stored weight string to kilograms, given the unit it is currently in.
+// • from 'kg'  -> returned untouched. Converting an already-converted number is THE failure
+//   mode this whole build exists to prevent, so it is refused here, not guarded at call sites.
+// • blank, non-numeric or negative -> returned EXACTLY as-is. kgStr's own guard already drops
+//   these at emit, and a close must not invent a value where the harvester typed none.
+// • otherwise -> divided and kept to STORED_KG_DECIMALS places, so the value can be shown back
+//   in the unit it was closed in without drift (R2 + Option 2).
+export function weightToKg(value: string, from: WeightUnit): string {
+  if (from === 'kg') return value;
+  const n = parseFloat(value);
+  if (!isFinite(n) || n < 0) return value;
+  return (n / LBS_PER_KG).toFixed(STORED_KG_DECIMALS);
+}
+
+// --- S153 Phase 5: DISPLAY ---
+// Trailing zeros carry no meaning after a decimal point, and none at all without one — '100'
+// must never become '1'. Used for every weight shown to the harvester.
+export function formatWeight(value: string): string {
+  const s = value.trim();
+  if (!s.includes('.')) return s;
+  return s.replace(/0+$/, '').replace(/\.$/, '');
+}
+
+// The inverse of weightToKg, for DISPLAY ONLY — never for storage and never for the emit.
+// A CLOSED section stores kilograms (R1) but must be shown in the unit it was closed in
+// (R2 + founder ruling Option 2), so this converts back. Two decimal places then stripped:
+// with STORED_KG_DECIMALS behind it, a typed 40 comes back as exactly '40', which is the
+// whole reason storage keeps more places than the wire.
+export function weightFromKg(value: string, to: WeightUnit): string {
+  const n = parseFloat(value);
+  if (!isFinite(n)) return value;
+  return formatWeight((to === 'kg' ? n : n * LBS_PER_KG).toFixed(2));
+}
+
+// R8 — the toggle flipped while a section was OPEN. An open section's number is held in the
+// unit currently selected (founder ruling Option A: state holds what he typed), so a flip
+// rewrites it once, here, and nothing is deleted. Blank and non-numeric pass through
+// untouched: a flip must never turn an empty box into a declared 0, which under Rule 789
+// would be a real quantity the harvester never entered.
+export function convertOpenWeight(value: string, from: WeightUnit, to: WeightUnit): string {
+  if (from === to) return value;
+  const n = parseFloat(value);
+  if (!isFinite(n)) return value;
+  return formatWeight((to === 'kg' ? n / LBS_PER_KG : n * LBS_PER_KG).toFixed(2));
+}
+
+// --- S153 Phase 5: R8 across a remount ---
+// R8 says an open section's weight converts when the toggle flips. The toggle lives on the
+// free app's Settings screen, and App.tsx renders FullDfoForm ONLY on view 'dfo-demo' — so
+// going to Settings UNMOUNTS the form. A flip is therefore never seen mid-session; it is
+// always discovered at the next mount. That is why the draft has to record which unit its
+// OPEN values are currently in: without it, a value typed as 100 lb would be silently read
+// as 100 kg after a flip, and sealed that way at the next close.
+//
+// This key does NOT weaken founder ruling A (open values carry no per-section tag). It records
+// ONE unit for the whole draft — the unit the toggle was on when those values were last
+// written — which is exactly what "it lives in the toggle" means once the toggle can change
+// behind the form's back.
+export const DRAFT_WEIGHT_UNIT_KEY = 'draftWeightUnit';
+
+// The open weights, by where they live. Closed ones are excluded by their own stamp.
+function openWeightPlan(d: Record<string, string | undefined>) {
+  const closed = (k: string) => !!d[k];
+  return {
+    effort1Open: !closed('dgCloseEffort'),
+    personalOpen: !closed('dgClosePconsPersonal'),
+    transferOpen: !closed('dgCloseTransfer'),
+    hlinOpen: !closed('dgCloseHlin'),
+  };
+}
+
+// Re-express a draft's OPEN weights in `to`, returning ONLY the changed keys (or null when
+// nothing moves). Pure: the caller decides what to do with the result. Closed groups and
+// closed rows are never touched — they are sealed, and sealed means sealed (R2).
+export function reunitOpenWeights(
+  data: Record<string, string | undefined>,
+  to: WeightUnit,
+): Record<string, string> | null {
+  const from: WeightUnit = data[DRAFT_WEIGHT_UNIT_KEY] === 'kg' ? 'kg'
+    : data[DRAFT_WEIGHT_UNIT_KEY] === 'lbs' ? 'lbs' : to;
+  if (from === to) return null;
+  const out: Record<string, string> = { [DRAFT_WEIGHT_UNIT_KEY]: to };
+  const conv = (v: string | undefined) => convertOpenWeight(v ?? '', from, to);
+  const { effort1Open, personalOpen, transferOpen, hlinOpen } = openWeightPlan(data);
+
+  if (effort1Open && data.catchWeight) out.catchWeight = conv(data.catchWeight);
+  if (personalOpen && data.personalUse) out.personalUse = conv(data.personalUse);
+  if (transferOpen && data.transferWt) out.transferWt = conv(data.transferWt);
+  if (hlinOpen && data.hlinTotalWeight) out.hlinTotalWeight = conv(data.hlinTotalWeight);
+
+  // Effort 1's extra trap groups close with effort 1.
+  if (effort1Open) {
+    try {
+      const rows = JSON.parse(data.extraEffortDetails || '[]') as ExtraEffortDetail[];
+      if (Array.isArray(rows) && rows.length) {
+        out.extraEffortDetails = JSON.stringify(
+          rows.map(r => (r.catchWeight ? { ...r, catchWeight: conv(r.catchWeight) } : r)));
+      }
+    } catch { /* noop */ }
+  }
+  // Efforts 2+ each close on their own stamp.
+  try {
+    const nodes = JSON.parse(data.extraEffortNodes || '[]') as ExtraEffortNode[];
+    if (Array.isArray(nodes) && nodes.length) {
+      out.extraEffortNodes = JSON.stringify(nodes.map(n => (n.closeDt ? n : {
+        ...n,
+        details: (n.details ?? []).map(r => (r.catchWeight ? { ...r, catchWeight: conv(r.catchWeight) } : r)),
+      })));
+    }
+  } catch { /* noop */ }
+  // Bait and bycatch rows close individually (founder ruling A).
+  for (const key of ['baitEntries', 'bycatchEntries'] as const) {
+    try {
+      const rows = JSON.parse(data[key] || '[]') as { lbs?: string; closeDt?: string }[];
+      if (Array.isArray(rows) && rows.length) {
+        out[key] = JSON.stringify(rows.map(r => (r.closeDt || !r.lbs ? r : { ...r, lbs: conv(r.lbs) })));
+      }
+    } catch { /* noop */ }
+  }
+  return out;
+}
+
+// --- S153 Phase 2: one PURE sealer per weight-sealing data group ---
+// WHY THESE EXIST AS SEPARATE EXPORTED FUNCTIONS
+// The close handlers live inside FullDfoForm, and this repo has no way to render that
+// component under jest — so a conversion written inline there could not be tested, and a
+// mutation of it could not be watched. These are the same pattern the close STAMPS already
+// use (stampOpenRows / stampOpenEfforts / stampOpenSarBlocks): pure, exported, called by the
+// component. One per group, so breaking one fails exactly one named test.
+// The three scalar sealers are deliberately one-line wrappers over weightToKg. They share the
+// arithmetic; what they buy is separability — a change to hail-in's handling cannot silently
+// move personal use, and a mutation of one is caught by one test.
+
+// BAIT_USED.BT_WT — the bait card. Rows close individually (founder ruling A), so a row that
+// already carries its own closeDt is returned untouched: it keeps the number AND the unit it
+// was closed with (R2). `onlyIndex` seals a single row; null seals every open row.
+export function sealBaitRowWeights<T extends { lbs: string; closeDt?: string; closeUnit?: WeightUnit }>(
+  rows: T[], unit: WeightUnit, onlyIndex: number | null = null,
+): T[] {
+  return rows.map((r, i) => {
+    if (r.closeDt) return r;
+    if (onlyIndex !== null && i !== onlyIndex) return r;
+    return { ...r, lbs: weightToKg(r.lbs, unit), closeUnit: unit };
+  });
+}
+
+// PCONS.WT (bycatch) — identical row shape, its own function so it is its own mutation site.
+export function sealBycatchRowWeights<T extends { lbs: string; closeDt?: string; closeUnit?: WeightUnit }>(
+  rows: T[], unit: WeightUnit, onlyIndex: number | null = null,
+): T[] {
+  return rows.map((r, i) => {
+    if (r.closeDt) return r;
+    if (onlyIndex !== null && i !== onlyIndex) return r;
+    return { ...r, lbs: weightToKg(r.lbs, unit), closeUnit: unit };
+  });
+}
+
+// CATCH.KEPT_WT for EFFORT 1 — which owns two homes: the top-level catchWeight (trap group 1)
+// and every extraEffortDetails row (groups 2..n of the same effort). They close together, so
+// they convert together. Effort 1 has no node, so its tag is the flat dgCloseEffortUnit.
+export function sealEffort1Weights(
+  catchWeight: string, details: ExtraEffortDetail[], unit: WeightUnit,
+): { catchWeight: string; details: ExtraEffortDetail[]; unit: WeightUnit } {
+  return {
+    catchWeight: catchWeight ? weightToKg(catchWeight, unit) : catchWeight,
+    details: details.map(d => (d.catchWeight ? { ...d, catchWeight: weightToKg(d.catchWeight, unit) } : d)),
+    unit,
+  };
+}
+
+// CATCH.KEPT_WT for EFFORTS 2+ — each node seals its OWN trap groups and carries its own tag
+// beside its own closeDt. Skip-never-restamp, as above.
+export function sealEffortNodeWeights(
+  nodes: ExtraEffortNode[], unit: WeightUnit, onlyIndex: number | null = null,
+): ExtraEffortNode[] {
+  return nodes.map((n, i) => {
+    if (n.closeDt) return n;
+    if (onlyIndex !== null && i !== onlyIndex) return n;
+    return {
+      ...n,
+      closeUnit: unit,
+      details: (n.details ?? []).map(d => (d.catchWeight ? { ...d, catchWeight: weightToKg(d.catchWeight, unit) } : d)),
+    };
+  });
+}
+
+// PCONS.WT (personal use) — MAR-90 only.
+export function sealPersonalUseWeight(value: string, unit: WeightUnit): string {
+  return weightToKg(value, unit);
+}
+
+// TRANSFER_DTL.WT — QC-88 only.
+export function sealTransferWeight(value: string, unit: WeightUnit): string {
+  return weightToKg(value, unit);
+}
+
+// HLIN.TOT_WT_ONBRD — 38b/41 hail only.
+export function sealHailInWeight(value: string, unit: WeightUnit): string {
+  return weightToKg(value, unit);
+}
+
 // Per-section REM (note) text, grouped at the human-section level. Each key fans out to
 // one or more XSD REM nodes in dfoXmlGenerator.ts (T1 Logbook test):
 //   trip -> TRIP | haul -> EFFORT + EFFORT_BY_GEAR + EFFORT_DETAIL | catch -> CATCH |
@@ -138,6 +397,7 @@ export interface ExtraEffortNode {
   gearSubtypeId?: string;                          // NL → EFFORT_BY_GEAR.GEAR_SBTYP_ID
   note?: string;                                   // per-effort REM text (fans out, see above)
   closeDt?: string;                                // per-effort DG_CLOSE_DT (ISO)
+  closeUnit?: WeightUnit;                          // S153: unit this effort's KEPT_WT closed in
   details?: ExtraEffortDetail[];                   // its OWN trap groups (EFFORT_DETAIL 1..n)
 }
 
@@ -314,6 +574,13 @@ export interface DataGroupInputs {
   sarYes: boolean;
   transferYes: boolean;
   hlinCompany: string; hlinConfirmNo: string;
+  // S153 Phase 4 (R9): a typed hail-in WEIGHT makes the group used. Until S153 the formula
+  // named only company and confirmation number, so a 38b harvester who typed just the total
+  // weight had no close door — the weight sat stored, unconvertible and untaggable, because
+  // nothing could ever seal it. R1 needs every weight to pass a close, so the weight now
+  // counts. Accepted cost (founder ruling R9): typing a weight and changing your mind leaves
+  // a group that must be closed before the log can be sent.
+  hlinTotalWeight: string;
   hloutCompany: string; hloutConfirmNo: string;
 }
 
@@ -332,7 +599,7 @@ export function usedDataGroupKeys(v: DataGroupInputs): string[] {
     // on a no-haul day even if a stale sarYes survived a haul→no-haul toggle.
     dgCloseSar: v.effortYes && v.sarYes,
     dgCloseTransfer: v.subformId === 88 && v.transferYes,
-    dgCloseHlin: hlFma && !!(v.hlinCompany || v.hlinConfirmNo),
+    dgCloseHlin: hlFma && !!(v.hlinCompany || v.hlinConfirmNo || v.hlinTotalWeight),
     dgCloseHlout: hlFma && !!(v.hloutCompany || v.hloutConfirmNo),
   };
   return Object.keys(used).filter(k => used[k]);
@@ -358,6 +625,7 @@ export function dataGroupInputsFromLog(log: Pick<DfoLog, 'subformId' | 'data'>):
     sarYes: effortsFromData(d).some(e => e.sarYes === 'true'),
     transferYes: d.transferYes === 'true',
     hlinCompany: d.hlinCompany ?? '', hlinConfirmNo: d.hlinConfirmNo ?? '',
+    hlinTotalWeight: d.hlinTotalWeight ?? '',
     hloutCompany: d.hloutCompany ?? '', hloutConfirmNo: d.hloutConfirmNo ?? '',
   };
 }
@@ -474,6 +742,11 @@ export function effortsFromData(d: Record<string, string | undefined>): ExtraEff
       sarYes: d.sarYes, mmYes: d.mmYes,
       gearSubtypeId: d.gearSubtypeId,
       closeDt: d.dgCloseEffort || undefined,
+      // S153 Phase 3: effort 1's unit tag lives in the flat key, exactly as its stamp does.
+      // Synthesized here so the EMIT can read ef.closeUnit uniformly for every effort and
+      // never has to know that effort 1 is the legacy shape. Left undefined when absent, so
+      // "untagged" stays distinguishable from "tagged lbs" — both read as pounds (R5).
+      closeUnit: d.dgCloseEffortUnit === 'kg' ? 'kg' : d.dgCloseEffortUnit === 'lbs' ? 'lbs' : undefined,
       details: [
         {
           lgridCodeId: d.lgridCodeId, gridId: d.gridId, statSectId: d.statSectId,

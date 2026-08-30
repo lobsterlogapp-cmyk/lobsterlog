@@ -75,7 +75,19 @@ import {
   effortDeleteRefused,
   LOG_REMARK_KEYS,
   seedRemarksFromLog,
+  closedWeightUnit,
+  weightFromKg,
+  reunitOpenWeights,
+  DRAFT_WEIGHT_UNIT_KEY,
+  sealBaitRowWeights,
+  sealBycatchRowWeights,
+  sealEffort1Weights,
+  sealEffortNodeWeights,
+  sealPersonalUseWeight,
+  sealTransferWeight,
+  sealHailInWeight,
 } from '../utils/dfoLogStorage';
+import type { WeightUnit } from '../utils/dfoLogStorage';
 import { triggerBackup } from '../utils/dfoBackup';
 import { isFieldRequired, missingInContainer, MissingField, FieldValues, EFFORT_LEVEL_KEYS, latestEffortEnd, missingFieldIsMixed, outOfTableInvalid } from '../utils/dfoRequirements';
 // S147 Run 4 (Rule 33, BE-1): the ONE clock rule that is not a requirements-table entry — it
@@ -126,12 +138,16 @@ interface FullDfoFormProps {
 // and closes independently (§5 per-occurrence closure). Legacy rows without them parse
 // unchanged and fall back to the card-level dgCloseBaitUsed STAMP at emit. S142 (defect 44):
 // there is no longer a note fallback — a row with no note of its own emits no REM.
-type BaitEntry = { type: string; lbs: string; condition?: number; closeDt?: string; note?: string; };
+// S153 Phase 1: closeUnit is the unit this row's lbs was CONVERTED AND STORED in at its own
+// close (R1/R2). It rides beside closeDt because the row is what closes — founder ruling A
+// accepts that two rows of one card may therefore carry different units. Absent = pounds (R5).
+type BaitEntry = { type: string; lbs: string; condition?: number; closeDt?: string; closeUnit?: WeightUnit; note?: string; };
 // S134 Phase 3: closeDt/note are OPTIONAL additions — each bycatch row is its own PCONS
 // occurrence and closes independently (the bait pattern). Legacy rows parse unchanged and
 // fall back to the card-level dgClosePconsBycatch STAMP at emit. S142 (defect 44): there is
 // no longer a note fallback — a row with no note of its own emits no REM.
-type BycatchEntry = { species: string; lbs: string; usage?: string; closeDt?: string; note?: string; };
+// S153 Phase 1: closeUnit as on BaitEntry above — same shape, same reason, same fallback.
+type BycatchEntry = { species: string; lbs: string; usage?: string; closeDt?: string; closeUnit?: WeightUnit; note?: string; };
 
 // S124 Phase 3: the dgClose* data-map keys the generator reads for DG_CLOSE_DT, one per
 // closeable Form-234 data group (§5.2.1). PCONS has two occurrences (bycatch + personal use);
@@ -140,6 +156,16 @@ type BycatchEntry = { species: string; lbs: string; usage?: string; closeDt?: st
 const CLOSE_DATA_KEYS = [
   'dgCloseEffort', 'dgCloseBaitUsed', 'dgClosePconsBycatch', 'dgClosePconsPersonal',
   'dgCloseSar', 'dgCloseTransfer', 'dgCloseHlin', 'dgCloseHlout', 'dgCloseLanding',
+] as const;
+
+// S153 Phase 1: the flat unit tags, mirroring CLOSE_DATA_KEYS exactly — hydrated into and
+// written from their own `closeUnits` state, spread into the data map beside `...closes`.
+// FOUR keys, not nine: only the groups that (a) seal a weight AND (b) have no per-row or
+// per-node home of their own. Bait and bycatch tag their ROWS; efforts 2+ tag their NODE;
+// SAR, HLOUT and LANDING seal no weight at all. Effort 1 is here because it lives in the
+// legacy flat keys and has no node to carry it.
+const CLOSE_UNIT_DATA_KEYS = [
+  'dgCloseEffortUnit', 'dgClosePconsPersonalUnit', 'dgCloseTransferUnit', 'dgCloseHlinUnit',
 ] as const;
 
 // MARINE_MAMMAL_OPTIONS removed (S136 Phase 2, ruling 4) — the MM detail fields left the
@@ -333,6 +359,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // (dfoXmlGenerator reads these); the value is the ISO close timestamp. A group with a value
   // here is locked (greyed, non-editable, timestamped). Closure is irreversible — no un-close.
   const [closes, setCloses] = useState<Record<string, string>>({});
+  // S153 Phase 1: the flat unit tags (CLOSE_UNIT_DATA_KEYS), kept in their OWN record rather
+  // than inside `closes` so that nothing which walks close STAMPS — isClosed, the send guard,
+  // the note lock — can ever mistake a unit for a closure. Spread beside `...closes`.
+  const [closeUnits, setCloseUnits] = useState<Record<string, string>>({});
+  // S153 Phase 5: the live toggle, read from the profile at mount. It decides what an OPEN
+  // section shows and does (R3/R8); a CLOSED section ignores it entirely and reads its own tag.
+  const [unitPref, setUnitPref] = useState<WeightUnit>('lbs');
   const [transfers, setTransfers] = useState('');
   const [transferYes, setTransferYes] = useState<boolean | null>(null);
   // QC(88) only — TRANSFER node fields (Rules 248-252) replace the legacy free-text
@@ -540,7 +573,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
 
   // Apply a stored DfoLog's fields into form state. Shared by the edit-load path AND the S95
   // crash-safety restore path (restoring the scratch draft is identical to opening a saved log).
-  const hydrateFromLog = (log: DfoLog) => {
+  // S153 Phase 5 (R8): `liveUnit` is passed in rather than read from state, because the
+  // profile is loaded in the same tick and setUnitPref has not landed yet when this runs.
+  const hydrateFromLog = (log: DfoLog, liveUnit: WeightUnit = unitPref) => {
           setTripId(log.id);
           setLgbkUid(log.lgbkUid ?? '');
           setTripNum(log.tripNum);
@@ -549,7 +584,19 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           setEditingCompleted(log.status === 'complete');
           setSubformId(log.subformId ?? 90);
           setRegId(log.regId ?? 1004);
-          const d = log.data;
+          // S153 Phase 5 (R8): if the toggle moved while this form was unmounted — which is
+          // the ONLY way it can move, since Settings unmounts it — re-express every still-OPEN
+          // weight in the unit now selected, once, before anything is hydrated from it. Closed
+          // groups and closed rows are untouched (R2). Nothing is deleted: a blank or
+          // non-numeric box passes straight through, so a flip can never manufacture the
+          // declared 0 that Rule 789 would treat as a real quantity.
+          const reunited = reunitOpenWeights(log.data, liveUnit);
+          const d = reunited ? { ...log.data, ...reunited } : log.data;
+          // Persist the re-expression straight away, but ONLY for a draft. A completed log is
+          // being reviewed, not worked on, and must not be silently rewritten on open.
+          if (reunited && log.status !== 'complete') {
+            void saveLog({ ...log, data: d as Record<string, string> });
+          }
           setFmaId(d.fmaId ? Number(d.fmaId) : null);
           setLgridCodeId(d.lgridCodeId ? Number(d.lgridCodeId) : null);
           setLgridDisplay(d.lgridDisplay || '');
@@ -600,6 +647,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             const loaded: Record<string, string> = {};
             for (const k of CLOSE_DATA_KEYS) { if (d[k]) loaded[k] = d[k]; }
             setCloses(loaded);
+            // S153 Phase 1: hydrate the flat unit tags the same way. Absent on every log
+            // saved before S153 → nothing loads → closedWeightUnit reads them as pounds (R5).
+            const loadedUnits: Record<string, string> = {};
+            for (const k of CLOSE_UNIT_DATA_KEYS) { if (d[k]) loadedUnits[k] = d[k]; }
+            setCloseUnits(loadedUnits);
           }
           setTransfers(d.transfers || '');
           setTransferTime(d.transferTime || '');
@@ -709,10 +761,14 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       // no per-effort override is stored).
       const captainProfile = await loadCaptainProfile();
       setProfileLicence(captainProfile.fishingNumber || '');
+      // S153 Phase 5: the live toggle. Read here because the profile is already in hand, and
+      // because this form UNMOUNTS whenever the harvester goes to Settings (App.tsx renders it
+      // only on view 'dfo-demo') — so a flip is always seen at mount, never mid-session.
+      setUnitPref(captainProfile.units === 'kg' ? 'kg' : 'lbs');
       if (editingLogId) {
         void loadAllLogs().then(setAllLogsSnapshot); // S147 Run 4 (Rule 33) — see above
         const log = await loadLogById(editingLogId);
-        if (log) hydrateFromLog(log);
+        if (log) hydrateFromLog(log, captainProfile.units === 'kg' ? 'kg' : 'lbs');
       } else {
         // New log — today's date + fresh trip ID
         const today = formatDate(new Date());
@@ -847,6 +903,14 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     transfers, personalUse,
     // S124: persist any closed-section timestamps (dgClose* keys) — the generator reads them.
     ...closes,
+    // S153 Phase 1: and the unit each of those flat groups was closed in. Written only once
+    // a close has stamped one, so a log with nothing closed carries no unit key at all and
+    // its stored shape is byte-identical to pre-S153.
+    ...closeUnits,
+    // S153 Phase 5 (R8): the unit the still-OPEN weights above are expressed in. Needed
+    // because a toggle flip always happens while this form is unmounted, so the next mount
+    // has to be able to tell what unit it is looking at.
+    [DRAFT_WEIGHT_UNIT_KEY]: unitPref,
     transferTime, transferDate, transferWt, transferToVrn, transferToPndNum,
     useCrInd, carrierVrn, prtnshpId: String(prtnshpId),
     trapSize,
@@ -1790,9 +1854,14 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         {
           text: t('form234.closeConfirmYes'),
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
             const nowIso = new Date().toISOString();
-            const next = extraEffortNodes.map((en, i) => (i === idx ? { ...en, closeDt: nowIso } : en));
+            // S153 Phase 2: this node seals the KEPT_WT of its OWN trap groups (node.details),
+            // and carries its own unit tag beside its own closeDt — efforts 2+ have a node to
+            // hold it, unlike effort 1 which uses the flat key.
+            const unit = await currentWeightUnit();
+            const next = sealEffortNodeWeights(extraEffortNodes, unit, idx)
+              .map((en, i) => (i === idx ? { ...en, closeDt: nowIso } : en));
             setExtraEffortNodes(next);
             if (isLoaded && !editingCompleted) {
               void saveLog({ ...buildDraftLog(), data: { ...buildLogData(), extraEffortNodes: JSON.stringify(next) } });
@@ -1841,15 +1910,32 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         {
           text: t('form234.closeConfirmYes'),
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
             const nowIso = new Date().toISOString();
-            const stamped = stampOpenEfforts(closes['dgCloseEffort'], JSON.stringify(extraEffortNodes), nowIso);
+            // S153 Phase 2: convert ONLY what was still open. stampOpenEfforts already skips
+            // (never restamps) an effort that carries a stamp, and the same skip rule governs
+            // conversion — an effort closed an hour ago on lbs keeps its number AND its unit
+            // (R2), even though this tap seals its neighbours on kg (R4).
+            const unit = await currentWeightUnit();
+            const effort1WasOpen = !closes['dgCloseEffort'];
+            const sealedAll = effort1WasOpen ? sealEffort1Weights(catchWeight, extraEfforts, unit) : null;
+            const cwKg = sealedAll ? sealedAll.catchWeight : catchWeight;
+            const detailsNext = sealedAll ? sealedAll.details : extraEfforts;
+            const converted = sealEffortNodeWeights(extraEffortNodes, unit);
+            const stamped = stampOpenEfforts(closes['dgCloseEffort'], JSON.stringify(converted), nowIso);
             const nodesNext = JSON.parse(stamped.extraEffortNodes) as ExtraEffortNode[];
             setCloses(prev => ({ ...prev, dgCloseEffort: stamped.dgCloseEffort }));
             setExtraEffortNodes(nodesNext);
+            if (effort1WasOpen) {
+              setCatchWeight(cwKg);
+              setExtraEfforts(detailsNext);
+              setCloseUnits(prev => ({ ...prev, dgCloseEffortUnit: unit }));
+            }
             if (isLoaded && !editingCompleted) {
               void saveLog({ ...buildDraftLog(), data: {
                 ...buildLogData(), dgCloseEffort: stamped.dgCloseEffort,
+                ...(effort1WasOpen ? { catchWeight: cwKg, dgCloseEffortUnit: unit } : {}),
+                ...(effort1WasOpen && detailsNext.length > 0 ? { extraEffortDetails: JSON.stringify(detailsNext) } : {}),
                 ...(nodesNext.length > 0 ? { extraEffortNodes: JSON.stringify(nodesNext) } : {}),
               } });
             }
@@ -2005,7 +2091,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 )}
               </View>
             )}
-            {nodeGroupField(nodeIdx, gIdx, t('form234.catchWeightLabel'), 'catchWeight', 'numeric', isRequired('catchWeight'))}
+            {nodeGroupField(nodeIdx, gIdx, wLabel('form234.catchWeightLabel', !!extraEffortNodes[nodeIdx]?.closeDt, extraEffortNodes[nodeIdx]?.closeUnit), 'catchWeight', 'numeric', isRequired('catchWeight'))}
             {nodeGroupField(nodeIdx, gIdx, t('form234.trapHaulsLabel'), 'trapHauls', 'numeric', isRequired('trapHauls'))}
             {subformId !== 90 &&
               nodeGroupField(nodeIdx, gIdx, t('form234.soakDurationLabel'), 'soakDuration', 'decimal-pad', isRequired('soakDuration'))}
@@ -2267,7 +2353,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     if (subformId === 90 && e.lgridDisplay) parts.push(t('form234.summaryLgrid', { g: e.lgridDisplay }));
     if (subformId === 88 && e.gridDisplay) parts.push(t('form234.summaryGrid', { g: e.gridDisplay }));
     if (subformId === 91 && e.statSectDisplay) parts.push(e.statSectDisplay);
-    if (e.catchWeight?.trim()) parts.push(t('form234.lbsSuffix', { lbs: e.catchWeight.trim() }));
+    if (e.catchWeight?.trim()) parts.push(wSuffix(e.catchWeight.trim(), isClosed('dgCloseEffort'), closeUnits.dgCloseEffortUnit));
     if (e.trapHauls?.trim()) parts.push(t('form234.haulsSuffix', { n: e.trapHauls.trim() }));
     return parts.length > 0 ? parts.join(' — ') : t('form234.effortBlockEmpty');
   };
@@ -2403,7 +2489,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 )}
               </View>
             )}
-            {extraField(i, t('form234.catchWeightLabel'), 'catchWeight', 'numeric', isRequired('catchWeight'))}
+            {extraField(i, wLabel('form234.catchWeightLabel', isClosed('dgCloseEffort'), closeUnits.dgCloseEffortUnit), 'catchWeight', 'numeric', isRequired('catchWeight'))}
             {extraField(i, t('form234.trapHaulsLabel'), 'trapHauls', 'numeric', isRequired('trapHauls'))}
             {/* SOAKED_DUR: blocked for MAR(90); per-EFFORT_DETAIL for 88/89/91 */}
             {subformId !== 90 &&
@@ -2765,6 +2851,42 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   );
 
   // ── S124 Phase 3: data-group closure (Close & Save Section) ──────────────────────────────
+  // --- S153 Phase 2: convert-at-close plumbing ---
+  // R1 says the conversion uses "the toggle's CURRENT value", and the toggle lives on the free
+  // app's Settings screen — a harvester can flip it while this form is open. So the unit is
+  // read from the profile AT THE MOMENT OF CLOSE, not from the value cached at mount.
+  const currentWeightUnit = async (): Promise<WeightUnit> => {
+    const p = await loadCaptainProfile();
+    return p.units === 'kg' ? 'kg' : 'lbs';
+  };
+  // The per-group conversion itself is PURE and lives in dfoLogStorage (sealBaitRowWeights,
+  // sealBycatchRowWeights, sealEffort1Weights, sealEffortNodeWeights, and the three scalar
+  // sealers) — the same shape the close STAMP helpers already use, so each group's conversion
+  // is independently testable and independently mutable. This component only wires them.
+  // --- S153 Phase 5: units on screen ---
+  // ONE rule, applied everywhere a weight is shown or labelled:
+  //   closed -> the unit it was CLOSED in (its tag). Frozen; the toggle cannot move it (R2).
+  //   open   -> the unit currently selected (R3).
+  const fieldUnit = (isFieldClosed: boolean, tag?: string): WeightUnit =>
+    (isFieldClosed ? closedWeightUnit(tag) : unitPref);
+  // What to SHOW. A closed section stores kilograms (R1) and must read back in its own unit
+  // (Option 2), so it converts; an open section already holds what he typed, in the unit he
+  // typed it in (ruling A), so it is shown untouched.
+  const showWeight = (stored: string, isFieldClosed: boolean, tag?: string): string =>
+    (isFieldClosed ? weightFromKg(stored, closedWeightUnit(tag)) : stored);
+  // A field label with its unit appended — "ESTIMATED KEPT WEIGHT (LBS)". The bracket style
+  // lives in the locale file, not here, so a language can punctuate it its own way.
+  const unitWord = (u: WeightUnit) => t(u === 'kg' ? 'form234.unitShort_kg' : 'form234.unitShort_lbs');
+  const wLabel = (labelKey: string, isFieldClosed: boolean, tag?: string): string =>
+    t('form234.labelWithUnit', { label: t(labelKey), unit: unitWord(fieldUnit(isFieldClosed, tag)) });
+  // The row-summary suffix ("50 lbs"), same rule.
+  const wSuffix = (stored: string, isFieldClosed: boolean, tag?: string): string => {
+    const u = fieldUnit(isFieldClosed, tag);
+    return t('form234.lbsSuffix', {
+      lbs: showWeight(stored, isFieldClosed, tag),
+      unit: t(u === 'kg' ? 'form234.unitLower_kg' : 'form234.unitLower_lbs'),
+    });
+  };
   const isClosed = (k: string) => !!closes[k];
   // S134: a bait ROW is closed by its own stamp OR by the card-level close-all (the row's
   // stamp wins at emit; the card stamp is the fallback — the SAR pattern).
@@ -3085,11 +3207,41 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         {
           text: t('form234.closeConfirmYes'),
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
             const nowIso = new Date().toISOString();
+            // S153 Phase 2 (R1/R10): convert the weight this group seals to kilograms and stamp
+            // the unit — into BOTH the React state and the persisted map, in the same tick and
+            // from the SAME values. State must not keep the typed pounds figure: buildLogData
+            // rebuilds the whole map from state on every later save, so a stale state would put
+            // pounds back under a 'kg' tag the next time anything saved.
+            const unit = await currentWeightUnit();
+            // Two objects, kept apart on purpose: `tags` are unit keys and belong in the
+            // closeUnits record; `values` are converted weights and belong only in the saved
+            // data map, because buildLogData() would otherwise read the pre-setState value.
+            const tags: Record<string, string> = {};
+            const values: Record<string, string> = {};
+            // Three of this function's four groups seal a weight; HLOUT (and LANDING, which
+            // routes here via closeLanding) seal none, so they fall through converting nothing.
+            if (dataKey === 'dgClosePconsPersonal' && personalUse) {
+              const kg = sealPersonalUseWeight(personalUse, unit);
+              setPersonalUse(kg);
+              values.personalUse = kg;
+              tags.dgClosePconsPersonalUnit = unit;
+            } else if (dataKey === 'dgCloseTransfer' && transferWt) {
+              const kg = sealTransferWeight(transferWt, unit);
+              setTransferWt(kg);
+              values.transferWt = kg;
+              tags.dgCloseTransferUnit = unit;
+            } else if (dataKey === 'dgCloseHlin' && hlinTotalWeight) {
+              const kg = sealHailInWeight(hlinTotalWeight, unit);
+              setHlinTotalWeight(kg);
+              values.hlinTotalWeight = kg;
+              tags.dgCloseHlinUnit = unit;
+            }
             setCloses(prev => ({ ...prev, [dataKey]: nowIso }));
+            if (Object.keys(tags).length) setCloseUnits(prev => ({ ...prev, ...tags }));
             if (isLoaded && !editingCompleted) {
-              void saveLog({ ...buildDraftLog(), data: { ...buildLogData(), [dataKey]: nowIso } });
+              void saveLog({ ...buildDraftLog(), data: { ...buildLogData(), ...values, ...tags, [dataKey]: nowIso } });
             }
           },
         },
@@ -3120,11 +3272,27 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         {
           text: t('form234.closeConfirmYes'),
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
             const nowIso = new Date().toISOString();
+            // S153 Phase 2: effort 1 seals CATCH.KEPT_WT for EVERY trap group it owns — the
+            // top-level catchWeight (group 1) and every extraEfforts row (groups 2..n). Both
+            // convert together because they close together.
+            const unit = await currentWeightUnit();
+            const sealed1 = sealEffort1Weights(catchWeight, extraEfforts, unit);
+            const cwKg = sealed1.catchWeight;
+            const detailsNext = sealed1.details;
+            setCatchWeight(cwKg);
+            setExtraEfforts(detailsNext);
+            setCloseUnits(prev => ({ ...prev, dgCloseEffortUnit: unit }));
             setCloses(prev => ({ ...prev, dgCloseEffort: nowIso }));
             if (isLoaded && !editingCompleted) {
-              void saveLog({ ...buildDraftLog(), data: { ...buildLogData(), dgCloseEffort: nowIso } });
+              void saveLog({ ...buildDraftLog(), data: {
+                ...buildLogData(),
+                catchWeight: cwKg,
+                ...(detailsNext.length > 0 ? { extraEffortDetails: JSON.stringify(detailsNext) } : {}),
+                dgCloseEffortUnit: unit,
+                dgCloseEffort: nowIso,
+              } });
             }
           },
         },
@@ -3173,9 +3341,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         {
           text: t('form234.closeConfirmYes'),
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
             const nowIso = new Date().toISOString();
-            const next = bycatchEntries.map((en, i) => (i === index ? { ...en, closeDt: nowIso } : en));
+            // S153 Phase 2: per-row conversion and tag, exactly as bait above.
+            const unit = await currentWeightUnit();
+            const next = sealBycatchRowWeights(bycatchEntries, unit, index)
+              .map((en, i) => (i === index ? { ...en, closeDt: nowIso } : en));
             setBycatchEntries(next);
             if (isLoaded && !editingCompleted) {
               void saveLog({ ...buildDraftLog(), data: { ...buildLogData(), bycatchEntries: JSON.stringify(next) } });
@@ -3212,9 +3383,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         {
           text: t('form234.closeConfirmYes'),
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
             const nowIso = new Date().toISOString();
-            const next = JSON.parse(stampOpenRows(JSON.stringify(bycatchEntries), nowIso)) as BycatchEntry[];
+            // S153 Phase 2: convert + tag every OPEN row before stamping it.
+            const unit = await currentWeightUnit();
+            const converted = sealBycatchRowWeights(bycatchEntries, unit);
+            const next = JSON.parse(stampOpenRows(JSON.stringify(converted), nowIso)) as BycatchEntry[];
             setBycatchEntries(next);
             if (isLoaded && !editingCompleted) {
               void saveLog({ ...buildDraftLog(), data: { ...buildLogData(), bycatchEntries: JSON.stringify(next) } });
@@ -3300,9 +3474,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         {
           text: t('form234.closeConfirmYes'),
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
             const nowIso = new Date().toISOString();
-            const next = baitEntries.map((en, i) => (i === index ? { ...en, closeDt: nowIso } : en));
+            // S153 Phase 2: this ROW seals its own BT_WT, so it converts and tags on its own
+            // (founder ruling A) — its neighbours in the same card are untouched.
+            const unit = await currentWeightUnit();
+            const next = sealBaitRowWeights(baitEntries, unit, index)
+              .map((en, i) => (i === index ? { ...en, closeDt: nowIso } : en));
             setBaitEntries(next);
             if (isLoaded && !editingCompleted) {
               // buildLogData reads the (still-stale) state, so override baitEntries with `next`.
@@ -3343,9 +3521,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         {
           text: t('form234.closeConfirmYes'),
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
             const nowIso = new Date().toISOString();
-            const next = JSON.parse(stampOpenBaitRows(JSON.stringify(baitEntries), nowIso)) as BaitEntry[];
+            // S153 Phase 2: convert + tag every OPEN row before stamping it.
+            const unit = await currentWeightUnit();
+            const converted = sealBaitRowWeights(baitEntries, unit);
+            const next = JSON.parse(stampOpenBaitRows(JSON.stringify(converted), nowIso)) as BaitEntry[];
             setBaitEntries(next);
             if (isLoaded && !editingCompleted) {
               void saveLog({ ...buildDraftLog(), data: { ...buildLogData(), baitEntries: JSON.stringify(next) } });
@@ -3623,7 +3804,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       // S136 Phase 4: the SAR pool is used when ANY effort answers Yes (per-effort SAR_IND)
       sarYes: sarYes === true || extraEffortNodes.some(e => e.sarYes === 'true'),
       transferYes: transferYes === true,
-      hlinCompany, hlinConfirmNo, hloutCompany, hloutConfirmNo,
+      hlinCompany, hlinConfirmNo, hlinTotalWeight, hloutCompany, hloutConfirmNo,
     }).filter(k => !(k === 'dgCloseEffort'
       // S136 Phase 4: the effort key stays OPEN while ANY effort lacks its stamp — mirrors
       // the send guard's effortsAllClosed, so Close & Save All stamps efforts 2+ too.
@@ -3815,6 +3996,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       sarCloseNext: string | null = null,
       extraSarsNext: ExtraSarDetail[] | null = null,
       effortNodesNext: ExtraEffortNode[] | null = null,
+      // S153 Phase 2: the converted scalar weights + their unit tags for every group this
+      // door seals. Data-map keys, so they can be spread straight in; the setState calls
+      // below keep the SCREEN in step with them (R10 — state and storage must never diverge).
+      weightData: Record<string, string> = {},
     ) => {
       if (Object.keys(extraCloses).length) setCloses(prev => ({ ...prev, ...extraCloses }));
       if (baitNext) setBaitEntries(baitNext);
@@ -3822,6 +4007,18 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       if (sarCloseNext) setSarCloseDt(sarCloseNext);
       if (extraSarsNext) setExtraSars(extraSarsNext);
       if (effortNodesNext) setExtraEffortNodes(effortNodesNext);
+      // S153 Phase 2: mirror the converted weights into state, and the unit tags into
+      // closeUnits. Without this the next buildLogData() would rebuild from the pre-close
+      // pounds figures and quietly overwrite the kilograms just written (R10).
+      if (weightData.catchWeight !== undefined) setCatchWeight(weightData.catchWeight);
+      if (weightData.personalUse !== undefined) setPersonalUse(weightData.personalUse);
+      if (weightData.transferWt !== undefined) setTransferWt(weightData.transferWt);
+      if (weightData.hlinTotalWeight !== undefined) setHlinTotalWeight(weightData.hlinTotalWeight);
+      if (weightData.extraEffortDetails !== undefined) {
+        try { setExtraEfforts(JSON.parse(weightData.extraEffortDetails) as ExtraEffortDetail[]); } catch { /* noop */ }
+      }
+      const tagEntries = Object.entries(weightData).filter(([k]) => k.endsWith('Unit'));
+      if (tagEntries.length) setCloseUnits(prev => ({ ...prev, ...Object.fromEntries(tagEntries) }));
       const log: DfoLog = {
         id: tripId,
         lgbkUid,
@@ -3842,6 +4039,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           // S136 P4: the close-all's effort member stamps EACH open effort (effort 1 via its
           // own dgCloseEffort in extraCloses; efforts 2+ via their own closeDt here).
           ...(effortNodesNext && effortNodesNext.length > 0 ? { extraEffortNodes: JSON.stringify(effortNodesNext) } : {}),
+          // S153 Phase 2: last, so the converted weights and their tags win over the stale
+          // values buildLogData() read out of state above.
+          ...weightData,
         },
         remarks: buildRemarks(),
         subformId,
@@ -3861,9 +4061,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     };
 
     // count > 0 → confirm naming how many will close (i18next plural); count 0 → plain save.
-    const confirmThenSave = () => {
+    const confirmThenSave = async () => {
       if (openUsed.length > 0) {
         const stamp = new Date().toISOString();
+        // S153 Phase 2: ONE unit for this whole door — every group it seals is sealed in the
+        // same instant, so they all take the toggle's value at that instant.
+        const unit = await currentWeightUnit();
         // S134: the row-based groups have NO card-level close state — when the close-all
         // covers bait or bycatch, it stamps each still-open ROW's own closeDt instead of
         // writing the card key. S135: SAR is per-BLOCK the same way (block 1 = sarCloseDt).
@@ -3873,17 +4076,42 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         const extra = Object.fromEntries(openUsed
           .filter(k => k !== 'dgCloseBaitUsed' && k !== 'dgClosePconsBycatch' && k !== 'dgCloseSar' && k !== 'dgCloseEffort')
           .map(k => [k, stamp]));
+        // S153 Phase 2: the converted scalar weights + tags this door seals, built alongside
+        // the stamps. Only groups in openUsed convert — anything already closed keeps the
+        // number and the unit it was closed with (R2), which is how one log ends up carrying
+        // two units (R4).
+        const weightData: Record<string, string> = {};
         let effortNodesNext: ExtraEffortNode[] | null = null;
         if (openUsed.includes('dgCloseEffort')) {
-          const effortStamped = stampOpenEfforts(closes['dgCloseEffort'], JSON.stringify(extraEffortNodes), stamp);
+          const effort1WasOpen = !closes['dgCloseEffort'];
+          if (effort1WasOpen) {
+            const sealedCA = sealEffort1Weights(catchWeight, extraEfforts, unit);
+            if (catchWeight) weightData.catchWeight = sealedCA.catchWeight;
+            if (sealedCA.details.length > 0) weightData.extraEffortDetails = JSON.stringify(sealedCA.details);
+            weightData.dgCloseEffortUnit = unit;
+          }
+          const convertedNodes = sealEffortNodeWeights(extraEffortNodes, unit);
+          const effortStamped = stampOpenEfforts(closes['dgCloseEffort'], JSON.stringify(convertedNodes), stamp);
           extra['dgCloseEffort'] = effortStamped.dgCloseEffort;
           effortNodesNext = JSON.parse(effortStamped.extraEffortNodes) as ExtraEffortNode[];
         }
+        if (openUsed.includes('dgClosePconsPersonal') && personalUse) {
+          weightData.personalUse = sealPersonalUseWeight(personalUse, unit);
+          weightData.dgClosePconsPersonalUnit = unit;
+        }
+        if (openUsed.includes('dgCloseTransfer') && transferWt) {
+          weightData.transferWt = sealTransferWeight(transferWt, unit);
+          weightData.dgCloseTransferUnit = unit;
+        }
+        if (openUsed.includes('dgCloseHlin') && hlinTotalWeight) {
+          weightData.hlinTotalWeight = sealHailInWeight(hlinTotalWeight, unit);
+          weightData.dgCloseHlinUnit = unit;
+        }
         const baitNext = openUsed.includes('dgCloseBaitUsed')
-          ? (JSON.parse(stampOpenBaitRows(JSON.stringify(baitEntries), stamp)) as BaitEntry[])
+          ? (JSON.parse(stampOpenBaitRows(JSON.stringify(sealBaitRowWeights(baitEntries, unit)), stamp)) as BaitEntry[])
           : null;
         const bycatchNext = openUsed.includes('dgClosePconsBycatch')
-          ? (JSON.parse(stampOpenRows(JSON.stringify(bycatchEntries), stamp)) as BycatchEntry[])
+          ? (JSON.parse(stampOpenRows(JSON.stringify(sealBycatchRowWeights(bycatchEntries, unit)), stamp)) as BycatchEntry[])
           : null;
         const sarOpenHere = openUsed.includes('dgCloseSar');
         // Single-sourced stamping (skip-never-restamp), same helper as the card's close-all.
@@ -3895,7 +4123,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           t('form234.closeAllConfirmBody', { count: openUsed.length }),
           [
             { text: t('form234.closeConfirmNotYet'), style: 'cancel' },
-            { text: t('form234.closeAllConfirmYes'), style: 'destructive', onPress: () => persist(extra, baitNext, bycatchNext, sarCloseNext, extraSarsNext, effortNodesNext) },
+            { text: t('form234.closeAllConfirmYes'), style: 'destructive', onPress: () => persist(extra, baitNext, bycatchNext, sarCloseNext, extraSarsNext, effortNodesNext, weightData) },
           ],
         );
       } else {
@@ -3915,7 +4143,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       if (landingWarn) {
         Alert.alert(t('form234.landing24hWarningTitle'), t('form234.landing24hWarningBody'), [{ text: tc('nav.ok'), onPress: confirmThenSave }]);
       } else {
-        confirmThenSave();
+        void confirmThenSave();
       }
     };
 
@@ -4384,7 +4612,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                         </TouchableOpacity>
                       </View>
                     )}
-          {renderField(t('form234.catchWeightLabel'), catchWeight, setCatchWeight, '0', false, false, 'numeric', isRequired('catchWeight'))}
+          {renderField(wLabel('form234.catchWeightLabel', isClosed('dgCloseEffort'), closeUnits.dgCloseEffortUnit), showWeight(catchWeight, isClosed('dgCloseEffort'), closeUnits.dgCloseEffortUnit), setCatchWeight, '0', false, false, 'numeric', isRequired('catchWeight'))}
           {renderField(t('form234.trapHaulsLabel'), trapHauls, setTrapHauls, '0', false, false, 'numeric', isRequired('trapHauls'))}
           {/* S124: soak (group-1 EFFORT_DETAIL) stays here with group 1's fields. The two haul
               times are EFFORT-level (one pair per node) and render AFTER the trap groups, below. */}
@@ -4639,7 +4867,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                   {/* S134 (D1c, defect 12): the condition, mandatory in the sheet, now shows
                       on the row instead of vanishing after entry. */}
                   {!!condLabel && <Text style={styles.entryLbs}>{condLabel}</Text>}
-                  <Text style={styles.entryLbs}>{t('form234.lbsSuffix', { lbs: entry.lbs })}</Text>
+                  <Text style={styles.entryLbs}>{wSuffix(entry.lbs, baitRowClosed(entry), entry.closeUnit)}</Text>
                   {!!entry.note?.trim() && <Text style={styles.baitRowNote}>{entry.note}</Text>}
                 </View>
                 {/* D1b: a CLOSED row loses its trash icon; open rows keep theirs. */}
@@ -4740,7 +4968,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                         {entry.usage && (
                           <Text style={[styles.entryLbs, { color: '#64748B' }]}>{t(`form234.usageOption_${entry.usage}`)}</Text>
                         )}
-                        <Text style={styles.entryLbs}>{t('form234.lbsSuffix', { lbs: entry.lbs })}</Text>
+                        <Text style={styles.entryLbs}>{wSuffix(entry.lbs, bycatchRowClosed(entry), entry.closeUnit)}</Text>
                         {!!entry.note?.trim() && <Text style={styles.baitRowNote}>{entry.note}</Text>}
                       </View>
                       {!readOnly && !rowClosed && (
@@ -4943,7 +5171,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                     entry became 00:00 silently (localToUtcIso: Number('abc') -> NaN -> 0). The label
                     key is unchanged — its four siblings are also worded "TIME" and render date+time. */}
                 {renderTimestampField(t('form234.transferTimeLabel'), formatDateTimeDisplay(transferDate, transferTime), 'transfer', false, isRequired('transferTime'), undefined, isClosed('dgCloseTransfer'))}
-                {renderField(t('form234.transferWtLabel'), transferWt, setTransferWt, '0', false, false, 'numeric', isRequired('transferWt'))}
+                {renderField(wLabel('form234.transferWtLabel', isClosed('dgCloseTransfer'), closeUnits.dgCloseTransferUnit), showWeight(transferWt, isClosed('dgCloseTransfer'), closeUnits.dgCloseTransferUnit), setTransferWt, '0', false, false, 'numeric', isRequired('transferWt'))}
                 {/* Rule 252: exactly ONE of the TO pair — both members marked (S140 P2) */}
                 {renderField(t('form234.transferToVrnLabel'), transferToVrn, (v: string) => { setTransferToVrn(v); if (v) setTransferToPndNum(''); }, '0', false, false, 'numeric', isRequired('transferToVrn'))}
                 {renderField(t('form234.transferToPndNumLabel'), transferToPndNum, (v: string) => { setTransferToPndNum(v); if (v) setTransferToVrn(''); }, '', false, false, 'default', isRequired('transferToPndNum'))}
@@ -4975,7 +5203,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 read as an obligation. The table's personalUse entry serves the close gate
                 (P3) once the group is used, not a mark. The one site that does not ask the
                 table for a star. */}
-            {renderField(t('form234.personalUseLabel'), personalUse, setPersonalUse, '0', false, false, 'numeric')}
+            {renderField(wLabel('form234.personalUseLabel', isClosed('dgClosePconsPersonal'), closeUnits.dgClosePconsPersonalUnit), showWeight(personalUse, isClosed('dgClosePconsPersonal'), closeUnits.dgClosePconsPersonalUnit), setPersonalUse, '0', false, false, 'numeric')}
             </View>
             {renderCloseControl('dgClosePconsPersonal', 'form234.personalUseSection', personalUse.trim().length > 0)}
           </View>}
@@ -4999,9 +5227,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           {/* Rules 660/661 key on "any effort fishes 38b" — hail38b IS that fact, translated
               into the table's context shape (S140 P2). */}
           {hail38b && renderField(t('form234.etaLabel'), hlinEta, setHlinEta, t('form234.etaPlaceholder'), false, false, 'default', isFieldRequired('hlinEta', { subformId, effortFmaIds: hail38b ? [DFO_FMA_38B] : [] }))}
-          {hail38b && renderField(t('form234.totalWeightLabel'), hlinTotalWeight, setHlinTotalWeight, '0', false, false, 'numeric', isFieldRequired('hlinTotalWeight', { subformId, effortFmaIds: hail38b ? [DFO_FMA_38B] : [] }))}
+          {hail38b && renderField(wLabel('form234.totalWeightLabel', isClosed('dgCloseHlin'), closeUnits.dgCloseHlinUnit), showWeight(hlinTotalWeight, isClosed('dgCloseHlin'), closeUnits.dgCloseHlinUnit), setHlinTotalWeight, '0', false, false, 'numeric', isFieldRequired('hlinTotalWeight', { subformId, effortFmaIds: hail38b ? [DFO_FMA_38B] : [] }))}
           </View>
-          {renderCloseControl('dgCloseHlin', 'form234.hlinSection', !!(hlinCompany || hlinConfirmNo))}
+          {/* S153 Phase 4 (R9): the weight counts too, so a typed weight raises the close door. */}
+          {renderCloseControl('dgCloseHlin', 'form234.hlinSection', !!(hlinCompany || hlinConfirmNo || hlinTotalWeight))}
         </View>
         )}
 
@@ -5156,7 +5385,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 </>
               )}
 
-              <Text style={[styles.sheetLabel, { marginTop: 14 }]}>{t('form234.weightLbsLabel')}{isFieldRequired('lbs', { subformId, fmaId }, {}, sheetMode === 'bait' ? 'baitRow' : 'bycatchRow') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
+              {/* S153: the sheet only ever edits an OPEN row (a closed row has no Edit button), so the
+                  unit here is always the live toggle — for BOTH elements this one key serves. */}
+              <Text style={[styles.sheetLabel, { marginTop: 14 }]}>{wLabel('form234.weightLbsLabel', false)}{isFieldRequired('lbs', { subformId, fmaId }, {}, sheetMode === 'bait' ? 'baitRow' : 'bycatchRow') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
               <TextInput
                 style={styles.input}
                 value={sheetLbs}

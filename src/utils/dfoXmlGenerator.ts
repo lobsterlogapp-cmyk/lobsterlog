@@ -5,7 +5,8 @@
 // digits only). Flat ISO-8601 fields still inside TRIP are S2/S3 scope.
 
 import forge from 'node-forge';
-import { DfoLog, ExtraSarDetail, ExtraEffortNode, sarBlocksFromData, effortsFromData, fishesHailArea } from './dfoLogStorage';
+import { DfoLog, ExtraSarDetail, ExtraEffortNode, sarBlocksFromData, effortsFromData, fishesHailArea, storedWeightUnit, LBS_PER_KG } from './dfoLogStorage';
+import type { WeightUnit } from './dfoLogStorage';
 import { CaptainProfile } from './captainStorage';
 import { getDfoBaitTypeList, baitConditionState, getDfoPconsSpeciesList, DFO_SPECIE_FRM_ID, DFO_PCONS_OTHER_SIZE_ID, DFO_GEAR_ID, DFO_SOFT_VER, DFO_CIE_ID, DFO_FORM_VER_ID, DFO_HLIN_COMPANY_LIST, DFO_HLOUT_COMPANY_LIST, DFO_FMA_HLIN_REQUIRED, DFO_FMA_LGRID_REQUIRED, DFO_SUBFORM_REGISTRY, DFO_FMA_38B, DFO_FMA_NB_VNTCH, DFO_FMA_NB_VNTCH_YOU, DFO_FMA_STAT_SECT_REQUIRED, DFO_STAT_SECT_BY_FMA, DFO_FMA_GRID_MAP, DFO_GRID_BLOCKED_FMA, clampCoord4, effortCoordsEntryAllowed } from './dfoConstants';
 import { MV_PARTNERSHIP_TYPE, MV_GRID } from '../data/reftables';
@@ -49,10 +50,18 @@ function localToUtcIso(dateStr: string, timeStr: string): string {
 // as a 0 — BAIT_USED.BT_WT, both PCONS.WT sites and TRANSFER_DTL.WT (S152A). The DEFAULT
 // STAYS false: HLIN.TOT_WT_ONBRD is deliberately NOT in Rule 789's element list and keeps
 // it, so a 0 still suppresses that element. See docs/GATE_S152A_RULE_789_ZERO.md.
-function kgStr(lbs: string, inLbs: boolean, allowZero: boolean = false): string {
-  const n = parseFloat(lbs);
+// S153 Phase 3: the unit is no longer the LIVE toggle — it is the unit the value was CLOSED
+// and STORED in (R1/R2), read from that group's own tag. A value already in kilograms is
+// emitted as-is; only a pounds value is divided. DOUBLE CONVERSION is the failure mode this
+// signature exists to prevent: passing a boolean off captainProfile.units, as this function
+// did until S153, would re-divide a number Phase 2 had already converted.
+// UNTAGGED reads as pounds (R5, via storedWeightUnit at the call sites) — which is exactly
+// what the pre-S153 emit did for a log stored under an lbs profile, so those bytes do not move.
+// The arithmetic and the rounding are unchanged; only the source of the decision moved.
+function kgStr(value: string, storedUnit: WeightUnit, allowZero: boolean = false): string {
+  const n = parseFloat(value);
   if (isNaN(n) || (allowZero ? n < 0 : n <= 0)) return '';
-  return (inLbs ? n / 2.20462 : n).toFixed(2);
+  return (storedUnit === 'lbs' ? n / LBS_PER_KG : n).toFixed(2);
 }
 
 function tag(name: string, value: string, indent: string = '  '): string {
@@ -88,7 +97,11 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   // and bycatch notes ride their own rows (S134) and Personal Use has its own key; a row or
   // a card with no note of its own now emits no REM rather than borrowing a retired one.
   const rem = log.remarks ?? {};
-  const inLbs = captainProfile.units === 'lbs';
+  // S153 Phase 3: captainProfile.units is NO LONGER read here. The live toggle decides what an
+  // OPEN section does (R3/R8); what a CLOSED section emits is decided by that group's own tag,
+  // read at each site below. A log cannot be sent with a used group still open (the send guard
+  // refuses), so every weight reaching this generator is closed and therefore tagged — or is a
+  // pre-S153 log with no tag, which reads as pounds (R5).
   const subformId = log.subformId ?? 90;
   const regId = log.regId ?? 1004;
 
@@ -121,7 +134,8 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
     // S134: rows may carry their OWN closeDt/note (per-occurrence closure, §5 — DFO ruling
     // Aug 17). The STAMP still falls back to the card-level dgCloseBaitUsed for legacy rows
     // without their own. The NOTE does not — see the REM line below.
-    const entries: { type: string; lbs: string; condition?: number; closeDt?: string; note?: string }[] = JSON.parse(d.baitEntries || '[]');
+    // S153: closeUnit is the unit this row's lbs was CONVERTED AND STORED in at its own close.
+    const entries: { type: string; lbs: string; condition?: number; closeDt?: string; closeUnit?: WeightUnit; note?: string }[] = JSON.parse(d.baitEntries || '[]');
     // S125 Phase 9: DG_CLOSE_DT ONLY from a real stored stamp — no now() fallback. Absent → tag()
     // drops the element (used-but-unclosed is refused before the send by unclosedUsedGroupKeys).
     const baitCloseDt = d.dgCloseBaitUsed ? toCloseTimestamp(d.dgCloseBaitUsed) : '';
@@ -130,7 +144,7 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
       const typeCode = match ? String(match.codeId) : '0';
       // Rule 789: a typed 0 is a declared quantity. Without allowZero it returned '' and the
       // guard below deleted the whole BAIT_USED row — type, condition, close stamp and note.
-      const wtKg = kgStr(e.lbs, inLbs, true);
+      const wtKg = kgStr(e.lbs, storedWeightUnit(e.closeUnit), true);
       if (!wtKg) return '';
       // BT_COND_ID: conditional per bait type/region (Item 13, Rules 3060 MAR / 984 QC-GLF /
       // NL-block). Emit only where the rule makes condition mandatory AND a value was captured;
@@ -158,7 +172,8 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
     // §5 — the bait pattern). The STAMP still falls back to the card-level
     // dgClosePconsBycatch for legacy rows without their own. The NOTE does not — see the
     // REM lines below.
-    const bycatch: { species: string; lbs: string; usage?: string; closeDt?: string; note?: string }[] = JSON.parse(d.bycatchEntries || '[]');
+    // S153: closeUnit as on the bait row above.
+    const bycatch: { species: string; lbs: string; usage?: string; closeDt?: string; closeUnit?: WeightUnit; note?: string }[] = JSON.parse(d.bycatchEntries || '[]');
     // S124 Phase 2: PCONS closes per occurrence — one for the bycatch block, one for personal
     // use (Rule 1505, §5.2.1). S125 Phase 9: each DG_CLOSE_DT comes ONLY from its real stored
     // stamp — no now() fallback (the legacy shared `dgClosePcons` fallback is gone). Absent → the
@@ -172,7 +187,7 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
       const specieId = match ? String(match.codeId) : '0';
       // Rule 789: a typed 0 is a declared quantity. Without allowZero the guard below
       // dropped the whole bycatch PCONS row — species, size, usage, close stamp and note.
-      const wt = kgStr(e.lbs, inLbs, true);
+      const wt = kgStr(e.lbs, storedWeightUnit(e.closeUnit), true);
       if (!wt) continue;
       const szId = specieId === '1312' ? '826' : String(DFO_PCONS_OTHER_SIZE_ID);
       // SPECIE_SZ_ID: Mandatory for GLF(89) ONLY; Blocked for QC(88)/MAR(90)/NL(91) per
@@ -204,7 +219,7 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
     // A stored value on a blocked subform is ignored on read, never cleared (ruling D3).
     // Rule 789: a typed 0 is a declared quantity. Without allowZero the gate below withheld
     // the whole personal-use PCONS node, including its own note.
-    const personalUseWt = kgStr(d.personalUse ?? '', inLbs, true);
+    const personalUseWt = kgStr(d.personalUse ?? '', storedWeightUnit(d.dgClosePconsPersonalUnit), true);
     if (subformId === 90 && personalUseWt) {
       // No SPECIE_SZ_ID here: it is GLF(89)-only (row 56) and this node is now MAR(90)-only,
       // so the old 89 szLine became unreachable and was removed (S134; '' on 90 before).
@@ -388,7 +403,7 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   effort += tag('SPECIE_ID',     '1312', '            ');
   // KEPT_WT: a typed 0 must emit as 0.00 (Rule 2020 — "the fisher must enter 0 in the
   // quantity kept" — with Rules 630/631 making KEPT_WT mandatory on the lobster CATCH).
-  effort += tag('KEPT_WT',       kgStr(det.catchWeight ?? '', inLbs, true), '            ');
+  effort += tag('KEPT_WT',       kgStr(det.catchWeight ?? '', storedWeightUnit(ef.closeUnit), true), '            ');
   // NB_SPCMN_KEPT: NL(91) only — mandatory for the lobster catch (Rule 976), blocked for
   // the non-lobster case (Rule 977) and for QC/GLF/MAR (Subforms row 93). Every CATCH
   // node is the lobster target (Rule 2020), so the gate is subform-only (S110 Phase 2).
@@ -472,7 +487,7 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
       body += tag('HLIN_CIE_ID',  hlinCie ? String(hlinCie.codeId) : '', '      ');
       body += tag('HLIN_NUM',     d.hlinConfirmNo ?? '', '      ');
       body += tag('ETA_DT',       toDate12(d.hlinEta ?? ''), '      ');
-      body += tag('TOT_WT_ONBRD', kgStr(d.hlinTotalWeight ?? '', inLbs), '      ');
+      body += tag('TOT_WT_ONBRD', kgStr(d.hlinTotalWeight ?? '', storedWeightUnit(d.dgCloseHlinUnit)), '      ');
       body += tag('DG_CLOSE_DT',  d.dgCloseHlin ? toCloseTimestamp(d.dgCloseHlin) : '', '      ');
       body += tag('REM',          rem.hlin ?? '', '      ');
       body += `    </HLIN>\n`;
@@ -519,7 +534,7 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
     // Rule 789: a typed 0 is a declared quantity. Without allowZero the guard below deleted
     // the entire TRANSFER subtree — date, both vessel numbers, close stamp and BOTH copies of
     // the harvester's own note. A QC transfer declared at 0 lb left no trace it happened.
-    const trnsfWtKg = kgStr(d.transferWt ?? '', inLbs, true);
+    const trnsfWtKg = kgStr(d.transferWt ?? '', storedWeightUnit(d.dgCloseTransferUnit), true);
     // S147 Phase 5a (CG-6): the transfer carries its OWN date, like the other four timestamps
     // (S90). BYTE-IDENTICAL for every stored log — no log written before this change has a
     // transferDate, so `d.transferDate` is undefined and the `||` falls back to log.dateFished,

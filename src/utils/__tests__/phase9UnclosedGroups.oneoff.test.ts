@@ -65,6 +65,6 @@ test('legacy log with NO dgClose* keys: guard fires (effort + landing always use
   expect(usedDataGroupKeys({
     subformId: 90, hailFma: false, effortYes: true, baitCount: 0, bycatchYes: false, bycatchCount: 0,
     personalUse: '', sarYes: false, transferYes: false,
-    hlinCompany: '', hlinConfirmNo: '', hloutCompany: '', hloutConfirmNo: '',
+    hlinCompany: '', hlinConfirmNo: '', hlinTotalWeight: '', hloutCompany: '', hloutConfirmNo: '',
   }).sort()).toEqual(['dgCloseEffort', 'dgCloseLanding']);
 });
