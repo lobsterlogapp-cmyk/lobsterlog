@@ -32,7 +32,12 @@ export type DfoLogStatus = 'draft' | 'complete';
 //   • efforts 2+               -> ExtraEffortNode.closeUnit, beside that node's `closeDt`
 //   • effort 1, personal use,  -> flat data-map keys `<dgCloseKey>Unit`, beside the flat
 //     transfer, hail-in           stamp (effort 1 has no node; it lives in the legacy keys)
-// SAR, HLOUT and LANDING seal no weight (SAR.WT is not built), so they carry no tag.
+//   • SAR blocks (S153B)       -> block 1: flat `sarCloseUnit`, beside its flat `sarCloseDt`;
+//                                 blocks 2+: `ExtraSarDetail.closeUnit`, beside their own
+//                                 `closeDt`. SAR is the one group that needs BOTH shapes,
+//                                 because block 1 lives in flat keys and blocks 2+ in an array.
+// HLOUT and LANDING seal no weight, so they carry no tag. (Until S153B SAR was in that list
+// too — SAR.WT had no field and no emit; it now seals SAR.WT like any other weight.)
 export type WeightUnit = 'lbs' | 'kg';
 
 // R5: an ABSENT tag means POUNDS. Every weight closed under pre-S153 code is untagged, and
@@ -146,6 +151,13 @@ function openWeightPlan(d: Record<string, string | undefined>) {
     personalOpen: !closed('dgClosePconsPersonal'),
     transferOpen: !closed('dgCloseTransfer'),
     hlinOpen: !closed('dgCloseHlin'),
+    // S153B: SAR block 1 lives in the flat keys, so its open-ness is its own stamp — plus the
+    // legacy dgCloseSar, which sealed every block at once and must not be re-united either.
+    sar1Open: !closed('sarCloseDt') && !closed('dgCloseSar'),
+    // ...and that legacy card stamp closes blocks 2+ as well, so it gates their arm too. In
+    // practice a dgCloseSar log predates SAR.WT and carries no weight to re-unit, but the
+    // predicate must say what it means rather than rely on that.
+    sarCardOpen: !closed('dgCloseSar'),
   };
 }
 
@@ -161,9 +173,14 @@ export function reunitOpenWeights(
   if (from === to) return null;
   const out: Record<string, string> = { [DRAFT_WEIGHT_UNIT_KEY]: to };
   const conv = (v: string | undefined) => convertOpenWeight(v ?? '', from, to);
-  const { effort1Open, personalOpen, transferOpen, hlinOpen } = openWeightPlan(data);
+  const { effort1Open, personalOpen, transferOpen, hlinOpen, sar1Open, sarCardOpen } = openWeightPlan(data);
 
   if (effort1Open && data.catchWeight) out.catchWeight = conv(data.catchWeight);
+  // S153B (R8): SAR.WT on block 1. Without this a weight typed as 40 under pounds would be
+  // read as 40 KILOGRAMS after a toggle flip and sealed that way at the next close — the exact
+  // silent corruption DRAFT_WEIGHT_UNIT_KEY exists to prevent, and the reason SAR could not
+  // simply be left out of this function when the field was built.
+  if (sar1Open && data.sarWt) out.sarWt = conv(data.sarWt);
   if (personalOpen && data.personalUse) out.personalUse = conv(data.personalUse);
   if (transferOpen && data.transferWt) out.transferWt = conv(data.transferWt);
   if (hlinOpen && data.hlinTotalWeight) out.hlinTotalWeight = conv(data.hlinTotalWeight);
@@ -188,6 +205,17 @@ export function reunitOpenWeights(
       })));
     }
   } catch { /* noop */ }
+  // S153B: SAR blocks 2+ close individually, so each open block re-units on its own — the
+  // bait/bycatch row rule, applied to the extraSars array.
+  if (sarCardOpen) {
+    try {
+      const blocks = JSON.parse(data.extraSars || '[]') as ExtraSarDetail[];
+      if (Array.isArray(blocks) && blocks.length) {
+        out.extraSars = JSON.stringify(
+          blocks.map(b => (b.closeDt || !b.wt ? b : { ...b, wt: conv(b.wt) })));
+      }
+    } catch { /* noop */ }
+  }
   // Bait and bycatch rows close individually (founder ruling A).
   for (const key of ['baitEntries', 'bycatchEntries'] as const) {
     try {
@@ -261,6 +289,31 @@ export function sealEffortNodeWeights(
       closeUnit: unit,
       details: (n.details ?? []).map(d => (d.catchWeight ? { ...d, catchWeight: weightToKg(d.catchWeight, unit) } : d)),
     };
+  });
+}
+
+// SAR.WT for BLOCK 1 — the legacy flat sar* keys, which have no node to carry anything. The
+// scalar-sealer shape (see the three below), separate from the array sealer so a mutation of
+// block 1's conversion fails its own test and not the other blocks'. Its unit tag is the flat
+// `sarCloseUnit`, written beside block 1's own `sarCloseDt` by the caller.
+export function sealSarBlock1Weight(value: string, unit: WeightUnit): string {
+  return weightToKg(value, unit);
+}
+
+// SAR.WT for BLOCKS 2+ — one ExtraSarDetail each. SAR blocks close individually (S135 ruling
+// 4), so this is the bait/bycatch ROW shape, not the section shape: a block that already
+// carries its own closeDt is returned untouched, keeping the number AND the unit it was closed
+// with (R2). `onlyIndex` seals a single block; null seals every open one.
+// The tag is written even when the block has no weight, exactly as sealBaitRowWeights tags a
+// row it seals: the tag records the unit the BLOCK closed in, and a blank weight simply has
+// nothing for it to interpret (kgStr drops an empty value at emit either way).
+export function sealSarBlockWeights(
+  blocks: ExtraSarDetail[], unit: WeightUnit, onlyIndex: number | null = null,
+): ExtraSarDetail[] {
+  return blocks.map((b, i) => {
+    if (b.closeDt) return b;
+    if (onlyIndex !== null && i !== onlyIndex) return b;
+    return { ...b, wt: weightToKg(b.wt ?? '', unit), closeUnit: unit };
   });
 }
 
@@ -355,8 +408,17 @@ export interface ExtraSarDetail {
   lat?: string; lng?: string; gpsSrc?: string;
   date?: string; time?: string;   // YYYY-MM-DD / HH:MM → SAR_DT
   nbSpcmn?: string;
+  // S153B: SAR.WT — "Total estimated weight" (XML_dictionary ELEMENT_ID 545, UOM 59, the same
+  // unit of measure as CATCH.KEPT_WT / BAIT_USED.BT_WT / PCONS.WT). Optional in all four
+  // regions (Subforms_requirements_234.xlsx row 36) and optional in the XSD (sar_type: WT
+  // minOccurs=0, type `weight`). Sits between nbSpcmn and condId to mirror the XSD sequence
+  // and the dictionary's ELEMENT_ORDER, so the field list and the emit read in the same order.
+  wt?: string;
   condId?: string;        // MV_SPECIMENS_CONDITION codeId → SPCMN_COND_ID
   closeDt?: string;       // S124: per-block DG_CLOSE_DT (ISO) — SAR closes one block at a time
+  // S153B: the unit THIS block's wt was closed in, beside this block's own closeDt (R1/R2).
+  // Same shape and same rule as ExtraEffortNode.closeUnit. Absent = pounds (R5).
+  closeUnit?: WeightUnit;
   note?: string;          // S135: per-block REM text; absent → falls back to rem.sar at emit
 }
 
@@ -675,6 +737,13 @@ export function sarBlocksFromData(d: Record<string, string | undefined>): ExtraS
   return [
     { species: d.sarSpecies, lat: d.sarLat, lng: d.sarLng, gpsSrc: d.sarGpsSrc,
       date: d.sarDate, time: d.sarTime, nbSpcmn: d.sarNbSpcmn, condId: d.sarCondId,
+      // S153B: block 1's weight and its unit tag, synthesised onto the uniform block exactly
+      // as its closeDt/note are — so the emit reads s.wt / s.closeUnit for EVERY block and
+      // never branches on block 1. The tag is narrowed the same way effortsFromData narrows
+      // dgCloseEffortUnit: anything that is not 'kg'/'lbs' becomes undefined, which reads as
+      // pounds (R5) — which is what every pre-S153B block is.
+      wt: d.sarWt,
+      closeUnit: d.sarCloseUnit === 'kg' ? 'kg' : d.sarCloseUnit === 'lbs' ? 'lbs' : undefined,
       closeDt: d.sarCloseDt || undefined, note: d.sarNote || undefined },
     ...extraSars,
   ];

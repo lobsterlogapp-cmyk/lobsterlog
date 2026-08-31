@@ -30,6 +30,7 @@ import {
   DFO_FMA_STAT_SECT_REQUIRED,
   effortCoordsEntryAllowed,
   baitConditionState,
+  clampCoord4,
 } from './dfoConstants';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -128,10 +129,81 @@ const soakOk = (v: string) => { const n = num(v); return Number.isFinite(n) && n
 const latInRange = (v: string) => { const n = num(v); return Number.isFinite(n) && n >= 38 && n <= 72; };
 const longInRange = (v: string) => { const n = num(v); return Number.isFinite(n) && n >= -148 && n <= -40; };
 
-/** SAR coordinates are emitted RAW (no clamp), so the validator's full lat/long leaf check
- *  applies: range AND ≤4 decimals (dfoXmlGenerator LEAF_CHECKS lat/long, verbatim). */
-const sarLatOk = (v: string) => /^\d{1,2}(\.\d{1,4})?$/.test(v.trim()) && latInRange(v);
-const sarLongOk = (v: string) => /^-\d{1,3}(\.\d{1,4})?$/.test(v.trim()) && longInRange(v);
+/** S153B (U5) — SPECIES-AT-RISK COORDINATES HAVE THEIR OWN, MUCH NARROWER WINDOW.
+ *
+ *  Until S153B these reused latInRange/longInRange — the XSD's 38–72 / −148…−40, which is the
+ *  window for a FISHING EFFORT. DFO gives a species-at-risk interaction its own box, and it is
+ *  roughly a third the size. Rules 172 and 173 of the 234.12 fact sheet, quoted verbatim from
+ *  both language editions:
+ *
+ *    EN (FS-NAT-234-12-EN.txt:712–719)
+ *      172 SAR LAT  — "The latitude of the interaction with the species at risk (Sar.Lat) must
+ *                      be greater than or equal to 39.0000 (deg) and less than or equal to
+ *                      53.0000 (deg)"
+ *      173 SAR LONG — "The longitude of the interaction with the species at risk (Sar.Long)
+ *                      must be greater than or equal to -70.8167 (deg) and less than or equal
+ *                      to -52.0000 (deg)"
+ *
+ *    FR (FS-NAT-234-12-FR.txt:759–766)
+ *      172 — "La latitude de l'interaction avec l'espèce en péril(Sar.Lat) doit être supérieure
+ *             ou égale à 39.0000 (deg) et inférieure ou égale à 53.0000 (deg)"
+ *      173 — "La longitude de l'interaction avec l'espèce en péril(Sar.La) doit être supérieure
+ *             ou égale à -70.8167 (deg) et inférieure ou égale à -52.0000 (deg)"
+ *
+ *  ⚠ BOTH BOUNDS ARE INCLUSIVE, in both languages — "greater than or EQUAL", "less than or
+ *  EQUAL" / "supérieure ou ÉGALE", "inférieure ou ÉGALE". A position sitting exactly on
+ *  39.0000, 53.0000, -70.8167 or -52.0000 is therefore ACCEPTED, not refused. Hence >= and <=,
+ *  never > and <. `Number('-70.8167') === -70.8167` exactly (same double, same literal), so the
+ *  awkward bound compares true rather than falling foul of floating point.
+ *
+ *  (DFO's FR text writes "Sar.La" in Rule 173 — a typo in their document. The Nœud/Élément
+ *  columns say SAR / LONG and the EN edition says Sar.Long. It is the longitude.)
+ *
+ *  These are DELIBERATELY NOT applied to the send validator's LEAF_CHECKS.lat/long: those are
+ *  the XSD's own bounds and are shared with EFFORT_DETAIL, where 38–72 is correct. The refusal
+ *  belongs at the close door, where the field can still be edited (S153B ruling L3). */
+const sarLatInRange = (v: string) => { const n = num(v); return Number.isFinite(n) && n >= 39 && n <= 53; };
+const sarLongInRange = (v: string) => { const n = num(v); return Number.isFinite(n) && n >= -70.8167 && n <= -52; };
+
+/** S153B ruling R-c — CHECK THE BOX ONLY, TRIM SILENTLY, NO PRECISION REFUSAL.
+ *
+ *  The ≤4-decimal regexes these used to carry are GONE, and the range is judged on the CLAMPED
+ *  value rather than the raw string. Two consequences, both intended:
+ *
+ *  1. A high-precision coordinate is no longer refused. Phase 3 put the SAR emit through
+ *     clampCoord4, so those digits are discarded before anything is transmitted — refusing a
+ *     man over digits the app itself throws away is telling him off for nothing. This is the
+ *     answer the effort card already gives (see its own entry, and the test that pins it:
+ *     "clampCoord4 launders this at emit — rejecting it would be a NEW check").
+ *  2. Judging the clamped value is what keeps a position like -70.81674 legal: raw, it sits
+ *     just outside Rule 173's floor; clamped — which is what DFO actually receives — it is
+ *     exactly -70.8167, on the boundary, and the boundary is inclusive.
+ *
+ *  ACCEPTED COST, on the record (founder): this removes a refusal that shipped, so he is no
+ *  longer told about excess precision — the app simply shortens his number; and it judges a
+ *  value he did not type, where every other entry in this table judges the literal field value.
+ *
+ *  Shape is still covered: clampCoord4 returns a non-numeric input untouched, and num() then
+ *  yields NaN, so 'abc' and '44.5N' are refused by Number.isFinite. A longitude missing its
+ *  minus is refused by the range, not by a pattern. */
+const sarLatOk = (v: string) => sarLatInRange(clampCoord4(v));
+const sarLongOk = (v: string) => sarLongInRange(clampCoord4(v));
+
+/** S153B — the XSD `weight` simple type as a MAGNITUDE range: 0 ≤ v ≤ 999999.999.
+ *
+ *  ⚠ Deliberately NOT a decimal-count check, though the XSD pattern allows three places and
+ *  `LEAF_CHECKS.weight` enforces exactly that. `kgStr` ends `.toFixed(2)` for every weight the
+ *  app emits, so decimals CANNOT reach the wire out of range whatever is typed — only an
+ *  integer part over six digits, or a negative, can bust the type, and that is what this asks.
+ *  A three-decimal regex would buy nothing at the wire and would refuse a correctly sealed
+ *  `18.143881` — a closed weight stores kilograms at STORED_KG_DECIMALS (6) places.
+ *
+ *  0 is IN range: Rule 789 names Sar.Wt among the elements a harvester may use to declare a
+ *  quantity of 0, so a typed zero is a real declaration and must pass. */
+const weightOk = (v: string) => {
+  const n = num(v);
+  return Number.isFinite(n) && n >= 0 && n <= 999999.999;
+};
 
 /** Rule 444 (validator): crew count 1–20. */
 const crewCountOk = (v: string) => /^\d+$/.test(v.trim()) && num(v) >= 1 && num(v) <= 20;
@@ -429,6 +501,20 @@ export const DFO_REQUIREMENTS_TABLE: FieldRequirement[] = [
     kind: 'per-subform', state: MMMM, note: 'SAR.SPECIE_ID.' },
   { fieldKey: 'sarNbSpcmn', container: 'sar', labelKey: 'form234.sarNbSpcmnLabel',
     kind: 'per-subform', state: MMMM, note: 'SAR.NB_SPCMN.' },
+  { fieldKey: 'sarWt', container: 'sar', labelKey: 'form234.sarWtLabel',
+    kind: 'per-subform',
+    state: () => 'optional',
+    isInvalid: simpleInvalid('sarWt', weightOk),
+    checkDescribe: 'a weight from 0 to 999999.999',
+    note: 'SAR.WT — Optional on all four subforms (Subforms_requirements_234.xlsx row 36) and ' +
+      'minOccurs=0 in the XSD, so it is UNMARKED by construction: isFieldRequired only returns ' +
+      'true for “mandatory”, so no asterisk; missingInContainer only reports a blank when the ' +
+      'state is mandatory, so no close-gate demand; containerProgress counts only mandatory ' +
+      'entries, so the completion meter does not move. It is here for the one thing an optional ' +
+      'field still owes — a TYPED value must be valid — exactly as logbookUidRefered is ' +
+      '(S117): a SAR block closes irreversibly and its body then renders pointerEvents:"none", ' +
+      'so a sealed bad weight is a permanently unsendable log with nothing left to edit. ' +
+      'Rule 789 names Sar.Wt, so a typed 0 is a real declaration and passes.' },
   { fieldKey: 'sarCondId', container: 'sar', labelKey: 'form234.sarCondLabel',
     kind: 'per-subform', state: MMMM, note: 'SAR.SPCMN_COND_ID.' },
   { fieldKey: 'sarGps', container: 'sar', labelKey: 'form234.gpsLocationLabel',
@@ -437,9 +523,13 @@ export const DFO_REQUIREMENTS_TABLE: FieldRequirement[] = [
     isInvalid: values =>
       (!blank(values.sarLat) && !sarLatOk(String(values.sarLat))) ||
       (!blank(values.sarLng) && !sarLongOk(String(values.sarLng))),
-    checkDescribe: 'latitude 38–72, longitude −148 to −40, max 4 decimals (SAR coordinates ' +
-      'are emitted unclamped, so the decimal limit applies here unlike effort GPS)',
-    note: 'SAR.LAT/LONG.' },
+    checkDescribe: 'latitude 39–53, longitude −70.8167 to −52, max 4 decimals',
+    note: 'SAR.LAT/LONG — the range is DFO Rules 172/173, which give a species-at-risk ' +
+      'interaction its OWN window, roughly a third the size of the effort card’s XSD ' +
+      'range (38–72 / −148…−40). Both bounds inclusive, so a position exactly on 39.0000, ' +
+      '53.0000, −70.8167 or −52.0000 is accepted. The decimal limit is retained pending ' +
+      'S153B ruling R-c; since Phase 3 clamped the SAR emit it no longer changes what DFO ' +
+      'receives.' },
 
   // ── BAIT ROW — the add-sheet makes a blank row unconstructable; kept for uniformity ──
   { fieldKey: 'type', container: 'baitRow', labelKey: 'form234.baitTypeLabel',

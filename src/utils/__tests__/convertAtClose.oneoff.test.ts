@@ -25,8 +25,12 @@ import {
   sealPersonalUseWeight,
   sealTransferWeight,
   sealHailInWeight,
+  sealSarBlock1Weight,
+  sealSarBlockWeights,
+  reunitOpenWeights,
+  DRAFT_WEIGHT_UNIT_KEY,
 } from '../dfoLogStorage';
-import type { ExtraEffortNode, ExtraEffortDetail, WeightUnit } from '../dfoLogStorage';
+import type { ExtraEffortNode, ExtraEffortDetail, ExtraSarDetail, WeightUnit } from '../dfoLogStorage';
 
 // The row shapes the sealers accept. Declared here so the generic resolves to a type that
 // HAS closeUnit — an inline literal without it makes T too narrow to read the tag back.
@@ -222,18 +226,132 @@ describe('S153 Phase 2 — HLIN.TOT_WT_ONBRD', () => {
   });
 });
 
+// S153B — SAR.WT joins the family. TWO sealers, therefore TWO describes: SAR is the only
+// group whose occurrences live in two different shapes (block 1 in the legacy flat keys,
+// blocks 2+ in an array), so block 1's conversion and the array's are separate mutation sites
+// and a break in one must not be masked by the other.
+
+describe('S153B Phase 2 — SAR.WT, block 1 (the flat keys)', () => {
+  test('closing on pounds converts and stores kilograms', () => {
+    expect(sealSarBlock1Weight('100', 'lbs')).toBe(HUNDRED_LB_IN_KG);
+  });
+
+  test('closing on kg stores the typed number untouched — no second division', () => {
+    expect(sealSarBlock1Weight('100', 'kg')).toBe('100');
+  });
+
+  test('a blank weight stays blank — a close must not invent a 0 (Rule 789)', () => {
+    expect(sealSarBlock1Weight('', 'lbs')).toBe('');
+    expect(sealSarBlock1Weight('', 'kg')).toBe('');
+  });
+
+  test('a typed 0 survives as 0 — Rule 789 names Sar.Wt', () => {
+    expect(sealSarBlock1Weight('0', 'lbs')).toBe('0.000000');
+    expect(sealSarBlock1Weight('0', 'kg')).toBe('0');
+  });
+});
+
+describe('S153B Phase 2 — SAR.WT, blocks 2+ (ExtraSarDetail)', () => {
+  test('an open block converts and is tagged', () => {
+    const [b] = sealSarBlockWeights([{ species: '1', wt: '100' }], 'lbs');
+    expect(b.wt).toBe(HUNDRED_LB_IN_KG);
+    expect(b.closeUnit).toBe('lbs');
+  });
+
+  test('closing on kg stores the typed number and tags it kg', () => {
+    const [b] = sealSarBlockWeights([{ species: '1', wt: '100' }], 'kg');
+    expect(b.wt).toBe('100');
+    expect(b.closeUnit).toBe('kg');
+  });
+
+  test('R2: a block already closed is untouched — number and unit both keep', () => {
+    const closed = { species: '1', wt: '45.36', closeDt: '2026-08-27T10:00:00.000Z', closeUnit: 'lbs' as const };
+    const [b] = sealSarBlockWeights([closed], 'kg');
+    expect(b).toEqual(closed);
+  });
+
+  test('R4: onlyIndex seals ONE block, leaving its neighbour open and unconverted', () => {
+    const next = sealSarBlockWeights([{ wt: '100' }, { wt: '100' }], 'lbs', 0);
+    expect(next[0].wt).toBe(HUNDRED_LB_IN_KG);
+    expect(next[0].closeUnit).toBe('lbs');
+    expect(next[1].wt).toBe('100');
+    expect(next[1].closeUnit).toBeUndefined();
+  });
+
+  test('two blocks of one card can end up in different units', () => {
+    let blocks: ExtraSarDetail[] = [{ wt: '100' }, { wt: '100' }];
+    blocks = sealSarBlockWeights(blocks, 'lbs', 0).map((b, i) => (i === 0 ? { ...b, closeDt: 'T1' } : b));
+    blocks = sealSarBlockWeights(blocks, 'kg', 1).map((b, i) => (i === 1 ? { ...b, closeDt: 'T2' } : b));
+    expect(blocks[0]).toMatchObject({ wt: HUNDRED_LB_IN_KG, closeUnit: 'lbs' });
+    expect(blocks[1]).toMatchObject({ wt: '100', closeUnit: 'kg' });
+  });
+
+  test('a block with NO weight still records the unit it closed in', () => {
+    // The tag describes the BLOCK, not the number. Matching sealBaitRowWeights, which tags
+    // every row it seals; a blank weight simply gives the tag nothing to interpret.
+    const [b] = sealSarBlockWeights([{ species: '1' }], 'kg');
+    expect(b.wt).toBe('');
+    expect(b.closeUnit).toBe('kg');
+  });
+});
+
+describe('S153B Phase 2 — R8: an OPEN SAR weight follows the toggle', () => {
+  // The toggle lives on the free app's Settings screen, which UNMOUNTS the form — so a flip is
+  // never seen live, only discovered at the next mount, through reunitOpenWeights. Without a
+  // SAR arm a weight typed as 40 lb would be read as 40 KG after a flip and sealed that way.
+  test('block 1 re-expresses when the toggle moves', () => {
+    const out = reunitOpenWeights({ [DRAFT_WEIGHT_UNIT_KEY]: 'lbs', sarWt: '100' }, 'kg');
+    expect(out?.sarWt).toBe('45.36');
+  });
+
+  test('a CLOSED block 1 is never re-united — it is sealed (R2)', () => {
+    const out = reunitOpenWeights(
+      { [DRAFT_WEIGHT_UNIT_KEY]: 'lbs', sarWt: '45.359291', sarCloseDt: 'T1' }, 'kg');
+    expect(out?.sarWt).toBeUndefined();
+  });
+
+  test('a legacy card-closed log (dgCloseSar) is never re-united either', () => {
+    const out = reunitOpenWeights(
+      { [DRAFT_WEIGHT_UNIT_KEY]: 'lbs', sarWt: '100', dgCloseSar: 'T1' }, 'kg');
+    expect(out?.sarWt).toBeUndefined();
+  });
+
+  test('blocks 2+ re-unit individually, and a closed one is skipped', () => {
+    const out = reunitOpenWeights({
+      [DRAFT_WEIGHT_UNIT_KEY]: 'lbs',
+      extraSars: JSON.stringify([
+        { wt: '100' },
+        { wt: '45.359291', closeDt: 'T1', closeUnit: 'lbs' },
+        { species: 'no weight' },
+      ]),
+    }, 'kg');
+    const blocks = JSON.parse(out!.extraSars) as ExtraSarDetail[];
+    expect(blocks[0].wt).toBe('45.36');            // open -> re-expressed
+    expect(blocks[1].wt).toBe('45.359291');        // closed -> untouched
+    expect(blocks[2].wt).toBeUndefined();          // blank -> not invented
+  });
+
+  test('a flip that changes nothing returns null, as before', () => {
+    expect(reunitOpenWeights({ [DRAFT_WEIGHT_UNIT_KEY]: 'kg', sarWt: '100' }, 'kg')).toBeNull();
+  });
+});
+
 describe('S153 Phase 2 — R7: nothing here rewrites history', () => {
   test('every sealer returns a NEW object and leaves its input untouched', () => {
     const rows: BaitRow[] = [{ type: 'A', lbs: '100' }];
     const nodes: ExtraEffortNode[] = [{ fmaId: '1', details: [{ catchWeight: '100' }] }];
     const details: ExtraEffortDetail[] = [{ catchWeight: '100' }];
+    const sars: ExtraSarDetail[] = [{ wt: '100' }];
     sealBaitRowWeights(rows, 'lbs');
     sealBycatchRowWeights<BycatchRow>([{ species: 'A', lbs: '100' }], 'lbs');
     sealEffortNodeWeights(nodes, 'lbs');
     sealEffort1Weights('100', details, 'lbs');
+    sealSarBlockWeights(sars, 'lbs');
     expect(rows[0].lbs).toBe('100');
     expect(nodes[0].details?.[0].catchWeight).toBe('100');
     expect(nodes[0].closeUnit).toBeUndefined();
     expect(details[0].catchWeight).toBe('100');
+    expect(sars[0].wt).toBe('100');
+    expect(sars[0].closeUnit).toBeUndefined();
   });
 });

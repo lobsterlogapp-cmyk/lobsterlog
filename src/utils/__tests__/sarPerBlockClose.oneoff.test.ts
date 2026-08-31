@@ -62,9 +62,13 @@ test('per-block stamps and notes emit per node; block-1 flat keys ride the first
   expect(nodes[1]).toContain('<REM>Second encounter</REM>');
   expect(nodes[2]).not.toContain('<REM>'); // no note, no rem.sar → REM omitted
 
-  // block 1 first: its species/coords are the flat-key values
+  // block 1 first: its species/coords are the flat-key values.
+  // S153B (U4) RE-PIN: the flat key stores sarLat '44.1500'; clampCoord4 rounds to 4 dp
+  // without padding, so String(Math.round(44.15 * 10000) / 10000) === '44.15'. What this line
+  // guards — that node[0] carries BLOCK 1's value and not some other block's — is untouched:
+  // 44.15 is still block 1's coordinate and no other block's.
   expect(nodes[0]).toContain('<SPECIE_ID>35427</SPECIE_ID>');
-  expect(nodes[0]).toContain('<LAT MODE="G">44.1500</LAT>');
+  expect(nodes[0]).toContain('<LAT MODE="G">44.15</LAT>');
 
   // All blocks individually closed → the send guard does NOT demand the card-level key
   expect(sarBlocksAllClosed(log.data)).toBe(true);

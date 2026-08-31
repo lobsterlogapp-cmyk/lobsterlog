@@ -452,10 +452,24 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
       const sarMode = s.gpsSrc === 'gps' ? 'G' : 'M';
       body += `    <SAR>\n`;
       body += tag('SAR_DT', toDate12(localToUtcIso(s.date ?? '', s.time ?? '')), '      ');
-      body += `      <LAT MODE="${sarMode}">${xmlEscape(s.lat ?? '')}</LAT>\n`;
-      body += `      <LONG MODE="${sarMode}">${xmlEscape(s.lng ?? '')}</LONG>\n`;
+      // S153B (U4): clamp to the XSD's ≤4-decimal LAT/LONG limit at emit, the SAME shared
+      // clampCoord4 the EFFORT_DETAIL coordinates (:388–389) and the Form 222 coordinates
+      // (dfoForm222Generator :214–215) have used since S90. SAR was the last raw coordinate
+      // emit in the app — a hand-typed 43.4500 transmitted verbatim while the identical
+      // figure typed on the effort card went out as 43.45. Emit-only: the stored and
+      // displayed value is never mutated, exactly as on the other two paths.
+      body += `      <LAT MODE="${sarMode}">${xmlEscape(clampCoord4(s.lat ?? ''))}</LAT>\n`;
+      body += `      <LONG MODE="${sarMode}">${xmlEscape(clampCoord4(s.lng ?? ''))}</LONG>\n`;
       body += tag('SPECIE_ID',     s.species ?? '', '      ');
       body += tag('NB_SPCMN',      s.nbSpcmn ?? '', '      ');
+      // S153B: SAR.WT — optional (XSD sar_type minOccurs=0; Subforms row 36 Optional on all
+      // four subforms), emitted between NB_SPCMN and SPCMN_COND_ID per the XSD sequence.
+      // Reads the BLOCK's own unit tag, exactly as every other weight reads its group's
+      // (storedWeightUnit: a tag PRESENT means the number is already kilograms; absent means
+      // pounds — R5). allowZero because Rule 789 names Sar.Wt among the elements a harvester
+      // may use to declare a quantity of 0. A blank weight emits nothing — tag() drops it,
+      // which is the other half of 789: an empty value must never be read as a 0.
+      body += tag('WT',            kgStr(s.wt ?? '', storedWeightUnit(s.closeUnit), true), '      ');
       body += tag('SPCMN_COND_ID', s.condId ?? '', '      ');
       // S124 Phase 2: one closure per SAR block (Rule 1503, §5.2.1). Block 1's close rides the
       // legacy d.dgCloseSar; blocks 2..n carry their own s.closeDt. Absent → falls back to

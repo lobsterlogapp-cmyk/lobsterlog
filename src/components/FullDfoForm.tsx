@@ -86,6 +86,8 @@ import {
   sealPersonalUseWeight,
   sealTransferWeight,
   sealHailInWeight,
+  sealSarBlock1Weight,
+  sealSarBlockWeights,
 } from '../utils/dfoLogStorage';
 import type { WeightUnit } from '../utils/dfoLogStorage';
 import { triggerBackup } from '../utils/dfoBackup';
@@ -162,8 +164,15 @@ const CLOSE_DATA_KEYS = [
 // written from their own `closeUnits` state, spread into the data map beside `...closes`.
 // FOUR keys, not nine: only the groups that (a) seal a weight AND (b) have no per-row or
 // per-node home of their own. Bait and bycatch tag their ROWS; efforts 2+ tag their NODE;
-// SAR, HLOUT and LANDING seal no weight at all. Effort 1 is here because it lives in the
+// HLOUT and LANDING seal no weight at all. Effort 1 is here because it lives in the
 // legacy flat keys and has no node to carry it.
+//
+// ⚠ S153B: SAR now seals a weight too (SAR.WT), but it is deliberately NOT a fifth key here.
+// This array mirrors CLOSE_DATA_KEYS, whose SAR member is `dgCloseSar` — the LEGACY CARD
+// stamp, which no longer closes anything (S135 ruling 4: only blocks close). Block 1's real
+// stamp is the flat `sarCloseDt`, so its tag is the flat `sarCloseUnit`, hydrated and written
+// with the other sar* scalars; blocks 2+ tag their own ExtraSarDetail. Pairing the tag with
+// `dgCloseSar` here would hang it off a stamp that is never written.
 const CLOSE_UNIT_DATA_KEYS = [
   'dgCloseEffortUnit', 'dgClosePconsPersonalUnit', 'dgCloseTransferUnit', 'dgCloseHlinUnit',
 ] as const;
@@ -521,6 +530,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // SAR detail fields (S66b): NB_SPCMN count, SPCMN_COND_ID condition, and the LAT/LONG
   // MODE provenance flag (mirrors gpsSrc — 'gps' on capture, 'manual' on manual edit).
   const [sarNbSpcmn, setSarNbSpcmn] = useState('');
+  // S153B: SAR.WT — block 1's weight and the unit it was CLOSED in. Both are NEW FLAT data
+  // keys beside the other sar* scalars, because block 1 has no node to carry them: sarWt sits
+  // with sarNbSpcmn/sarCondId, and sarCloseUnit sits beside block 1's own sarCloseDt exactly
+  // as dgCloseEffortUnit sits beside dgCloseEffort. Blocks 2+ carry wt/closeUnit on their own
+  // ExtraSarDetail. sarCloseUnit is written by the close doors (Phase 2), never typed.
+  const [sarWt, setSarWt] = useState('');
+  const [sarCloseUnit, setSarCloseUnit] = useState('');
   const [sarCondId, setSarCondId] = useState('');
   const [sarCondPickerOpen, setSarCondPickerOpen] = useState(false);
   // S121 multi-SAR: ADDITIONAL species-at-risk encounters (SAR node 2..n). Block 1 stays
@@ -713,6 +729,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             setSarDate(d.sarDate || '');
             setSarTime(d.sarTime || '');
             setSarNbSpcmn(d.sarNbSpcmn || '');
+            // S153B: SAR.WT and block 1's unit tag (both absent on pre-S153B logs → '')
+            setSarWt(d.sarWt || '');
+            setSarCloseUnit(d.sarCloseUnit || '');
             setSarCondId(d.sarCondId || '');
             setSarGpsSrc(d.sarGpsSrc === 'gps' ? 'gps' : 'manual');
             // S135: block 1's own stamp/note (absent on pre-S135 logs)
@@ -923,10 +942,16 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     sarYes: String(sarYes),
     sarSpecies, sarSpeciesOther, sarWhat, sarLat, sarLng, sarDate, sarTime,
     sarNbSpcmn, sarCondId, sarGpsSrc,
+    // S153B: SAR.WT rides with the other sar* scalars (always written, like sarNbSpcmn — an
+    // empty string is the field's own empty state, and tag() drops it at emit).
+    sarWt,
     // S135: block 1's own stamp/note — written only when set, so an untouched legacy
     // log keeps its exact stored shape (the extraSars rationale below)
     ...(sarCloseDt ? { sarCloseDt } : {}),
     ...(sarNote ? { sarNote } : {}),
+    // S153B: block 1's unit tag — written ONLY when set, exactly like its stamp above, so a
+    // log that never closed a SAR block keeps its stored shape byte-for-byte.
+    ...(sarCloseUnit ? { sarCloseUnit } : {}),
     // S121: additional SAR encounters — key written only when blocks exist (see
     // extraEffortDetails above for the rationale)
     ...(extraSars.length > 0 ? { extraSars: JSON.stringify(extraSars) } : {}),
@@ -2658,10 +2683,14 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     }
   };
 
+  // S153B: `valueOverride` lets a caller show something other than the raw stored string —
+  // needed by SAR.WT, because a CLOSED block stores kilograms (R1) but must read back in the
+  // unit it was closed in (R2 + Option 2). Every other call site omits it and is unchanged.
   const extraSarInput = (
     idx: number, label: string, key: keyof ExtraSarDetail,
     placeholder: string, keyboardType: any = 'default', isReq: boolean = false,
-    onChange?: (v: string) => void
+    onChange?: (v: string) => void,
+    valueOverride?: string
   ) => (
     <View style={styles.fieldRow}>
       <View style={styles.labelRow}>
@@ -2669,7 +2698,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       </View>
       <TextInput
         style={[styles.input, readOnly && styles.inputReadOnly]}
-        value={(extraSars[idx]?.[key] as string) ?? ''}
+        value={valueOverride ?? ((extraSars[idx]?.[key] as string) ?? '')}
         onChangeText={onChange ?? ((v: string) => updateExtraSar(idx, { [key]: v }))}
         placeholder={placeholder}
         placeholderTextColor="#94A3B8"
@@ -2820,6 +2849,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         />
       </View>
       {extraSarInput(i, t('form234.sarNbSpcmnLabel'), 'nbSpcmn', '0', 'numeric', isRequired('sarNbSpcmn'))}
+      {/* S153B: SAR.WT on blocks 2+ — same slot, same optional-and-unmarked rule as block 1,
+          reading THIS block's own closeUnit tag (blocks may carry different units — R4).
+          A closed block stores kilograms and is shown back in the unit it was closed in
+          (R2, Option 2), which is what the value override is for. */}
+      {extraSarInput(i, wLabel('form234.sarWtLabel', !!sarBlockClosedStamp(s), s.closeUnit),
+        'wt', '0', 'numeric', isRequired('sarWt'), undefined,
+        showWeight(s.wt ?? '', !!sarBlockClosedStamp(s), s.closeUnit))}
       <View style={styles.fieldRow}>
         <Text style={styles.label}>{t('form234.sarCondLabel')}{isRequired('sarCondId') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
         <TouchableOpacity
@@ -2901,8 +2937,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // SAME sarBlocksFromData reader as the emit and the send guard (they cannot disagree).
   const liveSarData = (): Record<string, string | undefined> => ({
     sarSpecies, sarLat, sarLng, sarGpsSrc, sarDate, sarTime, sarNbSpcmn, sarCondId,
+    sarWt,
     ...(sarCloseDt ? { sarCloseDt } : {}),
     ...(sarNote ? { sarNote } : {}),
+    ...(sarCloseUnit ? { sarCloseUnit } : {}),
     ...(closes['dgCloseSar'] ? { dgCloseSar: closes['dgCloseSar'] } : {}),
     ...(extraSars.length > 0 ? { extraSars: JSON.stringify(extraSars) } : {}),
   });
@@ -3127,12 +3165,16 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     return effortMissingRows(e.fmaId ? Number(e.fmaId) : null, lvl, groups);
   };
 
+  // S153B: sarWt rides here so the block's own close door checks a TYPED weight before
+  // sealing it (ruling A). It is optional, so a blank never produces a bullet — only a value
+  // outside the XSD weight range does, while the field is still editable.
   const sarBlockValues = (uiIdx: number): FieldValues => {
-    if (uiIdx === 0) return { sarDate, sarTime, sarSpecies, sarNbSpcmn, sarCondId, sarLat, sarLng };
+    if (uiIdx === 0) return { sarDate, sarTime, sarSpecies, sarNbSpcmn, sarWt, sarCondId, sarLat, sarLng };
     const s = extraSars[uiIdx - 1];
     return {
       sarDate: s?.date ?? '', sarTime: s?.time ?? '', sarSpecies: s?.species ?? '',
-      sarNbSpcmn: s?.nbSpcmn ?? '', sarCondId: s?.condId ?? '', sarLat: s?.lat ?? '', sarLng: s?.lng ?? '',
+      sarNbSpcmn: s?.nbSpcmn ?? '', sarWt: s?.wt ?? '',
+      sarCondId: s?.condId ?? '', sarLat: s?.lat ?? '', sarLng: s?.lng ?? '',
     };
   };
 
@@ -3557,15 +3599,27 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         {
           text: t('form234.closeConfirmYes'),
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
             const nowIso = new Date().toISOString();
+            // S153B: this BLOCK seals its own SAR.WT, so it converts and tags on its own — its
+            // neighbours in the same card are untouched (R4: two blocks of one log may end up
+            // carrying different units). Same shape as closeBaitRow.
+            const unit = await currentWeightUnit();
             if (uiIdx === 0) {
+              // Block 1's weight and tag are FLAT keys, so both go into state AND into the
+              // saved map in the same tick — buildLogData() rebuilds from state on every later
+              // save, so a stale state would put the pounds figure back under a 'kg' tag (R10).
+              const wtKg = sealSarBlock1Weight(sarWt, unit);
+              setSarWt(wtKg);
+              setSarCloseUnit(unit);
               setSarCloseDt(nowIso);
               if (isLoaded && !editingCompleted) {
-                void saveLog({ ...buildDraftLog(), data: { ...buildLogData(), sarCloseDt: nowIso } });
+                void saveLog({ ...buildDraftLog(), data: { ...buildLogData(),
+                  sarWt: wtKg, sarCloseUnit: unit, sarCloseDt: nowIso } });
               }
             } else {
-              const next = extraSars.map((en, i) => (i === uiIdx - 1 ? { ...en, closeDt: nowIso } : en));
+              const next = sealSarBlockWeights(extraSars, unit, uiIdx - 1)
+                .map((en, i) => (i === uiIdx - 1 ? { ...en, closeDt: nowIso } : en));
               setExtraSars(next);
               if (isLoaded && !editingCompleted) {
                 void saveLog({ ...buildDraftLog(), data: { ...buildLogData(), extraSars: JSON.stringify(next) } });
@@ -3606,16 +3660,29 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         {
           text: t('form234.closeConfirmYes'),
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
             const nowIso = new Date().toISOString();
-            // Single-sourced stamping (skip-never-restamp): block 1 keeps an earlier close.
-            const stamped = stampOpenSarBlocks(sarCloseDt || undefined, JSON.stringify(extraSars), nowIso);
+            // S153B: ONE unit for this door — every block it seals is sealed in the same
+            // instant, so they all take the toggle's value at that instant. Blocks already
+            // closed keep their own number and their own tag (R2), which is what makes R4
+            // reachable: an earlier block may carry a different unit from these.
+            const unit = await currentWeightUnit();
+            // Block 1 converts only if it is STILL OPEN — the same skip-never-restamp rule its
+            // stamp follows, read through the same predicate the bullet loop above uses (so a
+            // legacy dgCloseSar card-close counts as closed here too).
+            const b1Open = !sarBlockClosedStamp(sarBlocksFromData(liveSarData())[0]);
+            const wt1 = b1Open ? sealSarBlock1Weight(sarWt, unit) : sarWt;
+            // Convert every open block, THEN stamp — the closeAllOpenBaitRows shape exactly.
+            const converted = sealSarBlockWeights(extraSars, unit);
+            const stamped = stampOpenSarBlocks(sarCloseDt || undefined, JSON.stringify(converted), nowIso);
             const closeNext = stamped.sarCloseDt;
             const extrasNext = JSON.parse(stamped.extraSars) as ExtraSarDetail[];
+            if (b1Open) { setSarWt(wt1); setSarCloseUnit(unit); }
             setSarCloseDt(closeNext);
             setExtraSars(extrasNext);
             if (isLoaded && !editingCompleted) {
               void saveLog({ ...buildDraftLog(), data: { ...buildLogData(),
+                ...(b1Open ? { sarWt: wt1, sarCloseUnit: unit } : {}),
                 sarCloseDt: closeNext,
                 ...(extrasNext.length > 0 ? { extraSars: JSON.stringify(extrasNext) } : {}),
               } });
@@ -3843,6 +3910,31 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     // W-2 mixed variant when any bullet is a wrong-not-blank value), the W-1 whole-log
     // title, and the R-B group checks fold in as bullets (the CHECKS are unchanged — only
     // their wrapper; "is there a row / an answer?" stays app chrome outside the table).
+    // ── S153B (founder ruling): THIS DOOR CHECKS WHAT IS STILL OPEN ────────────────────────
+    // A closed occurrence is NOT re-inspected here. Once a section, row, effort or SAR block
+    // has been sealed by its own Close & Save, no later door looks at it again.
+    //
+    // WHY. A refusal is only worth making where the man can act on it. A closed body renders
+    // under `pointerEvents: 'none'`, so a bullet naming a field inside one asks him to fix
+    // something he cannot reach — a wall, not a door. Every SECTION-level door already works
+    // this way (closeSarBlock returns on sarBlockClosedStamp; closeAllOpenSarBlocks skips
+    // closed blocks when it builds bullets; closeBaitRow returns on baitRowClosed). This
+    // twelfth door was the only one that reported on sealed occurrences, in EVERY container —
+    // not just SAR. The protection moves upstream instead: each occurrence's own close door
+    // refuses a bad value while the field is still editable, so nothing bad gets sealed.
+    //
+    // It also matches what this door DOES: it closes every still-open group. It never re-closes
+    // a sealed one, so inspecting sealed ones was never part of the job.
+    //
+    // ACCEPTED COST, on the record (founder): a bad value sealed by some other route now passes
+    // here silently, the log is marked complete, and he meets the wall at send as a raw
+    // validator string rather than a sentence in his own language.
+    //
+    // DELIBERATELY NOT FILTERED — the three R-B chrome bullets below (bycatch "Yes but no
+    // rows", the transfer answer, and Rule 33's cross-log overlap). None is a per-occurrence
+    // field check: they ask "is there a row / an answer?" and "does this log clash with
+    // another?", which is the app-chrome-vs-table distinction §14 already draws. Nothing they
+    // name lives inside a frozen body.
     const missing: string[] = [];
     let anyMixed = false;
     const push = (m: MissingField, prefix = '') => {
@@ -3874,11 +3966,17 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     // SAR/MM indicator answers ride these rows (they are table fields, kind 'answered').
     if (effortYes) {
       const multi = extraEffortNodes.length > 0;
-      const r1 = effort1MissingRows();
-      anyMixed = anyMixed || r1.mixed;
-      r1.rows.forEach(r =>
-        missing.push(multi ? `${t('form234.effortNodeTitle', { n: 1 })} — ${r}` : r));
+      // S153B (founder ruling): a CLOSED occurrence is not re-inspected here. Effort 1's trap
+      // groups close WITH effort 1 (they share dgCloseEffort), so the one stamp covers the
+      // whole effort-1 family — level fields and every group.
+      if (!isClosed('dgCloseEffort')) {
+        const r1 = effort1MissingRows();
+        anyMixed = anyMixed || r1.mixed;
+        r1.rows.forEach(r =>
+          missing.push(multi ? `${t('form234.effortNodeTitle', { n: 1 })} — ${r}` : r));
+      }
       extraEffortNodes.forEach((e, i) => {
+        if (e.closeDt) return;  // S153B: sealed by its own Close & Save — not this door's business
         const rn = nodeMissingRows(e);
         anyMixed = anyMixed || rn.mixed;
         rn.rows.forEach(r =>
@@ -3888,8 +3986,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       // SAR blocks — mandatory once ANY effort answered Yes (S136 P4 pool).
       const anySarYes = sarYes === true || extraEffortNodes.some(e => e.sarYes === 'true');
       if (anySarYes) {
-        const blocks = 1 + extraSars.length;
+        // S153B: read the block list through the ONE reader so "which block is closed?" is
+        // answered here exactly as the SAR card's own close-all answers it — including the
+        // legacy card-level dgCloseSar, which sealed every block at once.
+        const sarBlocks = sarBlocksFromData(liveSarData());
+        const blocks = sarBlocks.length;
         for (let i = 0; i < blocks; i++) {
+          if (sarBlockClosedStamp(sarBlocks[i])) continue;  // S153B: sealed — skip
           missingInContainer('sar', { subformId, fmaId }, sarBlockValues(i)).forEach(m =>
             push(m, blocks > 1 ? `${t('form234.sarBlockTitle', { n: i + 1 })} — ` : ''));
         }
@@ -3899,18 +4002,27 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     // BAIT / BYCATCH rows — mandatory-once-used members. The add-sheet builds complete rows,
     // so these fire only on hydrated/legacy drafts (the old per-row alert chain, now table
     // rows with the close-alls' row prefixes).
-    baitEntries.forEach((e, i) =>
+    // S153B: closed rows skipped — baitRowClosed/bycatchRowClosed are the SAME predicates the
+    // per-row close doors and the card close-alls use, so all three agree about a sealed row.
+    baitEntries.forEach((e, i) => {
+      if (baitRowClosed(e)) return;
       baitRowMissing(e).forEach(m =>
-        push(m, `${e.type?.trim() || t('form234.baitRowTitle', { n: i + 1 })} — `)));
-    bycatchEntries.forEach((e, i) =>
+        push(m, `${e.type?.trim() || t('form234.baitRowTitle', { n: i + 1 })} — `));
+    });
+    bycatchEntries.forEach((e, i) => {
+      if (bycatchRowClosed(e)) return;
       bycatchRowMissing(e).forEach(m =>
-        push(m, `${e.species?.trim() || t('form234.bycatchRowTitle', { n: i + 1 })} — `)));
+        push(m, `${e.species?.trim() || t('form234.bycatchRowTitle', { n: i + 1 })} — `));
+    });
 
     // LANDING — Port Landed is table-mandatory on ALL FOUR regions; the old list omitted it
     // on 89/90 (the recon's R4 hole, closed here).
     // S147: the SAME values the Landing card's own close builds, so the two doors cannot
     // disagree about a timestamp.
-    missingInContainer('landing', { subformId, fmaId }, landingValues()).forEach(m => push(m));
+    // S153B: skipped once the Landing card is sealed by its own close.
+    if (!isClosed('dgCloseLanding')) {
+      missingInContainer('landing', { subformId, fmaId }, landingValues()).forEach(m => push(m));
+    }
 
     // HAIL — when any effort fishes 38b/41 on MAR (Rules 2024/2025); ETA + total weight join
     // on the 38b trigger only (Rules 660/661) — same ctx shape as sectionMissingRows.
@@ -3924,13 +4036,19 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     // from the same two keys the send-time hail refusal already uses to name these cards
     // (CLOSE_SECTION_NAME_KEY, DfoLogsListScreen) — the two refusals about the same two cards
     // now say the same words. No new strings.
+    // S153B: each hail card is skipped once IT is sealed — separately, because HLIN and HLOUT
+    // close on their own stamps and one can be sealed while the other is still open.
     if (subformId === 90 && hailRequired) {
-      missingInContainer('hlin', { subformId, effortFmaIds: hail38b ? [DFO_FMA_38B] : [] }, {
-        hlinCompany, hlinConfirmNo, hlinEta, hlinTotalWeight,
-      }).forEach(m => push(m, `${t('form234.hlinSection')} — `));
-      missingInContainer('hlout', { subformId, fmaId }, {
-        hloutCompany, hloutConfirmNo,
-      }).forEach(m => push(m, `${t('form234.hloutSection')} — `));
+      if (!isClosed('dgCloseHlin')) {
+        missingInContainer('hlin', { subformId, effortFmaIds: hail38b ? [DFO_FMA_38B] : [] }, {
+          hlinCompany, hlinConfirmNo, hlinEta, hlinTotalWeight,
+        }).forEach(m => push(m, `${t('form234.hlinSection')} — `));
+      }
+      if (!isClosed('dgCloseHlout')) {
+        missingInContainer('hlout', { subformId, fmaId }, {
+          hloutCompany, hloutConfirmNo,
+        }).forEach(m => push(m, `${t('form234.hloutSection')} — `));
+      }
     }
 
     // TRANSFER (QC 88) — the full container when a transfer is recorded (time, weight, the
@@ -3949,7 +4067,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         sailDate, sailTime: timeSailed,  // S147 Phase 3 — Rule 248
         transferWt, transferToVrn, transferToPndNum, carrierVrn, useCrInd,
       };
-      if (transferYes === true) {
+      // S153B: both transfer paths skip once the Transfers card is sealed — the carrier-VRN
+      // path too, since that field lives on the same card and freezes with it.
+      if (isClosed('dgCloseTransfer')) {
+        // sealed — not this door's business
+      } else if (transferYes === true) {
         missingInContainer('transfer', { subformId, fmaId }, transferValues)
           .forEach(m => push(m));
       } else if (useCrInd === 'Y') {
@@ -4017,7 +4139,16 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       if (weightData.extraEffortDetails !== undefined) {
         try { setExtraEfforts(JSON.parse(weightData.extraEffortDetails) as ExtraEffortDetail[]); } catch { /* noop */ }
       }
-      const tagEntries = Object.entries(weightData).filter(([k]) => k.endsWith('Unit'));
+      // S153B: SAR block 1's pair lives in its OWN state, beside its own flat stamp — not in
+      // the closeUnits record, which mirrors CLOSE_DATA_KEYS (whose SAR member is the legacy
+      // dgCloseSar). Both are still spread into the saved map by `...weightData` below.
+      if (weightData.sarWt !== undefined) setSarWt(weightData.sarWt);
+      if (weightData.sarCloseUnit !== undefined) setSarCloseUnit(weightData.sarCloseUnit);
+      // ...so sarCloseUnit is excluded here despite ending in 'Unit'. Without the exclusion it
+      // would land in closeUnits under a key nothing reads, and block 1's label would go on
+      // showing the toggle's unit after the block was sealed.
+      const tagEntries = Object.entries(weightData)
+        .filter(([k]) => k.endsWith('Unit') && k !== 'sarCloseUnit');
       if (tagEntries.length) setCloseUnits(prev => ({ ...prev, ...Object.fromEntries(tagEntries) }));
       const log: DfoLog = {
         id: tripId,
@@ -4114,8 +4245,19 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           ? (JSON.parse(stampOpenRows(JSON.stringify(sealBycatchRowWeights(bycatchEntries, unit)), stamp)) as BycatchEntry[])
           : null;
         const sarOpenHere = openUsed.includes('dgCloseSar');
+        // S153B: SAR is no longer the one member of this door that stamps without sealing.
+        // Block 1's converted weight and tag ride `weightData` (the channel this door already
+        // uses for every scalar weight it seals); blocks 2+ convert inside the array below,
+        // before the stamper wraps it — the bait/bycatch shape.
+        if (sarOpenHere && !sarBlockClosedStamp(sarBlocksFromData(liveSarData())[0])) {
+          weightData.sarWt = sealSarBlock1Weight(sarWt, unit);
+          weightData.sarCloseUnit = unit;
+        }
         // Single-sourced stamping (skip-never-restamp), same helper as the card's close-all.
-        const sarStamped = sarOpenHere ? stampOpenSarBlocks(sarCloseDt || undefined, JSON.stringify(extraSars), stamp) : null;
+        const sarStamped = sarOpenHere
+          ? stampOpenSarBlocks(sarCloseDt || undefined,
+              JSON.stringify(sealSarBlockWeights(extraSars, unit)), stamp)
+          : null;
         const sarCloseNext = sarStamped ? sarStamped.sarCloseDt : null;
         const extraSarsNext = sarStamped ? (JSON.parse(sarStamped.extraSars) as ExtraSarDetail[]) : null;
         Alert.alert(
@@ -5065,6 +5207,17 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               !!(sarCloseDt || closes['dgCloseSar']) // S140 P3: sealed display
             )}
                 {renderField(t('form234.sarNbSpcmnLabel'), sarNbSpcmn, setSarNbSpcmn, '0', false, false, 'numeric', isRequired('sarNbSpcmn'))}
+                {/* S153B: SAR.WT — OPTIONAL and UNMARKED (no asterisk; the table's state is
+                    'optional', so isRequired returns false and nothing here forces a value).
+                    Placed between the count and the condition to match the XSD sar_type
+                    sequence and the dictionary's ELEMENT_ORDER, so the card reads in the
+                    order the wire carries. The label takes its unit from the shared wLabel
+                    (the tag when closed, the toggle when open — R2/R3). */}
+                {renderField(
+                  wLabel('form234.sarWtLabel', !!(sarCloseDt || closes['dgCloseSar']), sarCloseUnit),
+                  showWeight(sarWt, !!(sarCloseDt || closes['dgCloseSar']), sarCloseUnit),
+                  setSarWt, '0', false, false, 'numeric', isRequired('sarWt'),
+                )}
                 <View style={styles.fieldRow}>
                   <Text style={styles.label}>{t('form234.sarCondLabel')}{isRequired('sarCondId') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
                   <TouchableOpacity

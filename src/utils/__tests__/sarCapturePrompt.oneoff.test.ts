@@ -118,8 +118,16 @@ test('hand-entered blocks emit MODE="M"; a captured block emits MODE="G"', () =>
   }]);
 
   const xml = generateElogXml(closeAllGroups(log), profile);
-  expect(xml).toContain('<LAT MODE="M">44.2000</LAT>');
-  expect(xml).toContain('<LONG MODE="M">-66.7000</LONG>');
-  expect(xml).toContain('<LAT MODE="G">44.3000</LAT>');
-  expect(xml).toContain('<LONG MODE="G">-66.8000</LONG>');
+  // S153B (U4) RE-PIN, four values. The fixture stores trailing-zero coordinates
+  // (44.2000 / -66.7000 / 44.3000 / -66.8000); clampCoord4 rounds to 4 dp WITHOUT padding —
+  // String(Math.round(n * 10000) / 10000) — so they emit as 44.2 / -66.7 / 44.3 / -66.8.
+  // All four derived from that definition, not copied from the generator.
+  // ⚠ WHAT THIS TEST GUARDS IS THE MODE ATTRIBUTE, NOT THE DIGITS: block 1 hand-entered must
+  // say MODE="M" and block 2 captured must say MODE="G" (§11.3 provenance — a denied or failed
+  // fix must never claim a satellite). Every MODE letter here is unchanged, and each digit
+  // string is still unique to its own block, so the pairing is still what is being asserted.
+  expect(xml).toContain('<LAT MODE="M">44.2</LAT>');
+  expect(xml).toContain('<LONG MODE="M">-66.7</LONG>');
+  expect(xml).toContain('<LAT MODE="G">44.3</LAT>');
+  expect(xml).toContain('<LONG MODE="G">-66.8</LONG>');
 });

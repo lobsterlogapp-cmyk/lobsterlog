@@ -53,6 +53,18 @@ function withHail(log: any): any {
 
 const count = (xml: string, frag: string): number => xml.split(frag).length - 1;
 
+// S153B (U4) RE-PIN — the SAR LAT/LONG lines only. This fixture stores sarLat '44.1500' and
+// sarLng '-66.6000'. Until S153B the SAR node was the ONE coordinate emit in the app that went
+// out RAW, so those trailing zeros transmitted verbatim. They now pass through the shared
+// clampCoord4 that EFFORT_DETAIL and Form 222 have used since S90:
+//     String(Math.round(n * 10000) / 10000)   — rounds to 4 dp, does NOT pad
+// so 44.1500 -> 44.15 and -66.6000 -> -66.6. Both new values were derived from that definition
+// (node, in isolation), NOT copied out of the generator's output.
+// What this baseline was written to pin is UNCHANGED: that a single-SAR log survives S121's
+// multi-SAR refactor byte-for-byte. Only the coordinate laundering it never covered has moved
+// underneath it — and note the EFFORT_DETAIL coordinates in this same document (44.1234 /
+// -66.5432) did NOT move, because they were already in clamped form and have been clamped
+// since S90. That contrast, inside one pinned document, is the byte-identity proof.
 const PRE_S121_SAR_BASELINE = `<?xml version="1.0" encoding="UTF-8"?>
 <ELOG>
   <GENERAL_INFO>
@@ -78,8 +90,8 @@ const PRE_S121_SAR_BASELINE = `<?xml version="1.0" encoding="UTF-8"?>
     </BAIT_USED>
     <SAR>
       <SAR_DT>202606101215</SAR_DT>
-      <LAT MODE="G">44.1500</LAT>
-      <LONG MODE="G">-66.6000</LONG>
+      <LAT MODE="G">44.15</LAT>
+      <LONG MODE="G">-66.6</LONG>
       <SPECIE_ID>35427</SPECIE_ID>
       <NB_SPCMN>1</NB_SPCMN>
       <SPCMN_COND_ID>38996</SPCMN_COND_ID>
@@ -148,8 +160,11 @@ test('two-SAR log emits two complete SAR nodes in order and validates', () => {
   expect(xml).toContain('<SPECIE_ID>35110</SPECIE_ID>');
   // Encounter order preserved: block 1 first
   expect(xml.indexOf('<SPECIE_ID>35427</SPECIE_ID>')).toBeLessThan(xml.indexOf('<SPECIE_ID>35110</SPECIE_ID>'));
-  // The second encounter carries its own coords/mode/count/condition
-  expect(xml).toContain('<LAT MODE="M">44.3000</LAT>');
+  // The second encounter carries its own coords/mode/count/condition.
+  // S153B (U4) RE-PIN: this block stores lat '44.3000'; clampCoord4 rounds to 4 dp without
+  // padding, so String(Math.round(44.3 * 10000) / 10000) === '44.3'. The MODE="M" half of the
+  // assertion — what this line was really written to guard — is untouched.
+  expect(xml).toContain('<LAT MODE="M">44.3</LAT>');
   expect(xml).toContain('<NB_SPCMN>2</NB_SPCMN>');
   expect(xml).toContain('<SPCMN_COND_ID>38997</SPCMN_COND_ID>');
   const validation = validateElogXml(xml, 90);

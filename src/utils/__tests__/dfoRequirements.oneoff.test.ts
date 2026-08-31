@@ -384,15 +384,29 @@ describe('value checks: a sealed invalid value is the same dead end as a sealed 
       .toEqual([]); // clampCoord4 launders this at emit — rejecting it would be a NEW check
   });
 
-  test('SAR GPS: full validator format — 5 decimals IS invalid (SAR coords emit unclamped)', () => {
+  // S153B REWRITE. This test used to be titled "5 decimals IS invalid (SAR coords emit
+  // unclamped)" and asserted a precision refusal. BOTH halves of that changed, deliberately:
+  //   Phase 3 (U4) put the SAR emit through clampCoord4, so SAR coordinates no longer emit
+  //     unclamped — the title's premise died.
+  //   Ruling R-c then dropped the ≤4-decimal check and moved the range test onto the CLAMPED
+  //     value: check the box only, trim silently, no precision refusal. SAR now behaves exactly
+  //     like the effort card, which has answered this question since S90 (see the effort test
+  //     above: "clampCoord4 launders this at emit — rejecting it would be a NEW check").
+  //   Phase 4 (U5) replaced the borrowed effort window with DFO's own Rules 172/173 box.
+  // The range boundary itself is pinned from both sides in sarWeight.oneoff.test.ts.
+  test('SAR GPS: excess precision is trimmed, not refused (R-c); the BOX is what is checked', () => {
     const sar = {
       sarDate: '2026-06-10', sarTime: '08:00', sarSpecies: '1234', sarNbSpcmn: '1',
       sarCondId: '5678', sarLat: '44.1234', sarLng: '-66.5432',
     };
     expect(missingInContainer('sar', ctx(90, 28599), sar)).toEqual([]);
-    expect(missingInContainer('sar', ctx(90, 28599), { ...sar, sarLat: '44.12345' })
-      .map(m => ({ f: m.fieldKey, r: m.reason }))).toEqual([{ f: 'sarGps', r: 'invalid' }]);
+    // 5 decimals: clamped to 44.1235, inside the box → accepted, where it once was refused.
+    expect(missingInContainer('sar', ctx(90, 28599), { ...sar, sarLat: '44.12345' })).toEqual([]);
+    // -30 is outside Rule 173's box (and was outside the old effort window too) → still refused.
     expect(missingInContainer('sar', ctx(90, 28599), { ...sar, sarLng: '-30' })
+      .map(m => ({ f: m.fieldKey, r: m.reason }))).toEqual([{ f: 'sarGps', r: 'invalid' }]);
+    // Shape is still caught, by Number.isFinite rather than by a pattern.
+    expect(missingInContainer('sar', ctx(90, 28599), { ...sar, sarLat: '44.5N' })
       .map(m => m.reason)).toEqual(['invalid']);
   });
 
