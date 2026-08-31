@@ -481,6 +481,28 @@ export const DFO_REQUIREMENTS_TABLE: FieldRequirement[] = [
       ? (isLobster(values, 'catchSpecieId') ? 'mandatory' : 'blocked') : 'blocked'),
     note: 'CATCH.NB_SPCMN_KEPT — NL 91: Rule 976 mandates it on the lobster catch, 977 blocks ' +
       'it otherwise; row 93 blocks it on 88/89/90.' },
+  { fieldKey: 'nbSpcmnDisc', container: 'effort', labelKey: 'form234.nbSpcmnDiscLabel',
+    kind: 'per-subform',
+    state: per({ 88: 'optional', 91: 'optional' }),   // 89/90 fall through to 'blocked'
+    isInvalid: simpleInvalid('nbSpcmnDisc', v => /^\d{1,4}$/.test(v.trim())),
+    checkDescribe: 'a whole number from 0 to 9999',
+    note: 'CATCH.NB_SPCMN_DISC — Optional on QC 88 and NL 91, Blocked on GLF 89 and MAR 90 ' +
+      '(Subforms_requirements_234.xlsx row 95, Element_id 197; same verdict in the French ' +
+      'sheet and in the pre-2026-08-14 package). Two rules name it and NEITHER makes it ' +
+      'mandatory: Rule 630 pairs it with KEPT_WT as an either/or that Rule 631 already ' +
+      'satisfies on every lobster catch, and Rule 789 governs how a typed value behaves, not ' +
+      'whether one is required. So it is UNMARKED by construction — the sarWt shape (S153B): ' +
+      'isFieldRequired only returns true for “mandatory”, so no asterisk; missingInContainer ' +
+      'reports a blank only when the state is mandatory, so no close-gate demand; ' +
+      'containerProgress counts only mandatory entries, so the completion meter does not move ' +
+      'and getCompletionDetails needs no entry for it. It is here for the one thing an ' +
+      'optional field still owes — a TYPED value must be valid — exactly as logbookUidRefered ' +
+      'is (S117): a trap group seals under the effort close and its body then renders ' +
+      'pointerEvents:"none", so a sealed bad count is a permanently unsendable logbook with ' +
+      'nothing left to edit. The check MIRRORS the send validator’s own cap ' +
+      '(dfoXmlGenerator NB_SPCMN_DISC /^\\d{1,4}$/, S154 Option A) rather than choosing a ' +
+      'range — same regex, same bound, so the door can never be narrower than the send door. ' +
+      'Rule 789 names this element, so a typed 0 is a real declaration and passes.' },
   { fieldKey: 'trapSize', container: 'effort', labelKey: 'form234.trapSizeLabel',
     kind: 'per-subform', state: per({ 91: 'mandatory' }),
     note: 'EFFORT_DETAIL.TRP_SZ_ID (row 79): NL only.' },

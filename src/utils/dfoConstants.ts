@@ -1519,7 +1519,7 @@ export const DFO_SUBFORM_FIELD_CONFIG: Record<number, SubformFieldConfig> = {
   // gpsCoords (EFFORT_DETAIL.LAT/LONG) Mandatory for QC/GLF — Subforms_requirements rows 82/83
   // (S110 G1); Blocked for NL (absent from 91); MAR governed by Rule 3059 (38b-only emit).
   88: {
-    visible:  ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'baitEntries', 'crewNb', 'mammalIncident', 'sarIncident', 'lostGear', 'catchWeight', 'trapHauls', 'fmaId', 'departurePort', 'portId', 'gpsCoords'],
+    visible:  ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'baitEntries', 'crewNb', 'mammalIncident', 'sarIncident', 'lostGear', 'catchWeight', 'trapHauls', 'fmaId', 'departurePort', 'portId', 'gpsCoords', 'nbSpcmnDisc'],
     required: ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'fmaId', 'catchWeight', 'trapHauls', 'crewNb', 'departurePort', 'portId', 'gpsCoords'],
   },
   // ── GLF (subform 89) ────────────────────────────────────
@@ -1542,9 +1542,13 @@ export const DFO_SUBFORM_FIELD_CONFIG: Record<number, SubformFieldConfig> = {
   // row 79; gearSubtypeId (EFFORT_BY_GEAR.GEAR_SBTYP_ID) mandatory for NL only — row 75.
   // nbSpcmnKept (CATCH.NB_SPCMN_KEPT) NL only — mandatory on the lobster catch (Rule 976),
   // blocked for 88/89/90 (row 93) — S110 Phase 2.
+  // nbSpcmnDisc (CATCH.NB_SPCMN_DISC) QC-88 + NL-91 — OPTIONAL on both (row 95, Element_id 197),
+  // Blocked on GLF-89/MAR-90 (absent from their config = not rendered). S154 U2. It is in
+  // `visible` ONLY, never `required`: DFO marks it Optional and no rule compels it, so the
+  // asterisk comes from dfoRequirements (which answers 'optional' → unmarked), not from here.
   // All blocked for 88/89/90 (absent from their config = not rendered, not required).
   91: {
-    visible:  ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'baitEntries', 'mammalIncident', 'sarIncident', 'lostGear', 'catchWeight', 'trapHauls', 'fmaId', 'departurePort', 'portId', 'trapSize', 'gearSubtypeId', 'nbSpcmnKept'],
+    visible:  ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'baitEntries', 'mammalIncident', 'sarIncident', 'lostGear', 'catchWeight', 'trapHauls', 'fmaId', 'departurePort', 'portId', 'trapSize', 'gearSubtypeId', 'nbSpcmnKept', 'nbSpcmnDisc'],
     required: ['sailTime', 'haulStartTime', 'haulEndTime', 'landingTime', 'soakDuration', 'fmaId', 'catchWeight', 'trapHauls', 'departurePort', 'portId', 'trapSize', 'gearSubtypeId', 'nbSpcmnKept'],
   },
 };

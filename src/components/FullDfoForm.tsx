@@ -436,6 +436,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // NL-only (S110 Phase 2): CATCH.NB_SPCMN_KEPT — mandatory on the NL lobster catch
   // (Rule 976), blocked for QC/GLF/MAR (Subforms row 93).
   const [nbSpcmnKept, setNbSpcmnKept] = useState('');
+  // QC/NL (S154 U2): CATCH.NB_SPCMN_DISC — the count thrown back. OPTIONAL on both regions
+  // (Subforms row 95), blocked on GLF/MAR, so it is rendered unmarked and never demanded.
+  const [nbSpcmnDisc, setNbSpcmnDisc] = useState('');
   const [hlinCompany, setHlinCompany] = useState('');
   const [hlinConfirmNo, setHlinConfirmNo] = useState('');
   const [hlinEta, setHlinEta] = useState('');
@@ -751,6 +754,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           // MAR-specific fields
           setNbSpcmnBrd(d.nbSpcmnBrd || '');
           setNbSpcmnKept(d.nbSpcmnKept || '');
+          setNbSpcmnDisc(d.nbSpcmnDisc || '');
           setHlinCompany(d.hlinCompany || '');
           setHlinConfirmNo(d.hlinConfirmNo || '');
           setHlinEta(d.hlinEta || '');
@@ -960,6 +964,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     nbSpcmnBrd,
     // NL-specific (S110 Phase 2)
     nbSpcmnKept,
+    // QC/NL (S154 U2) — optional discard count
+    nbSpcmnDisc,
     hlinCompany, hlinConfirmNo, hlinEta, hlinTotalWeight,
     hloutCompany, hloutConfirmNo,
   });
@@ -1235,7 +1241,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const hasEffortData = (): boolean =>
     !!(catchWeight.trim() || trapHauls.trim() || timeStartedHauling.trim() || timeStoppedHauling.trim() ||
        soakDuration.trim() || gpsLat.trim() || gpsLng.trim() || trapSize || gearSubtypeId ||
-       nbSpcmnKept.trim() || nbSpcmnBrd.trim() || vNotchCount.trim() || nbVntchYou.trim() ||
+       nbSpcmnKept.trim() || nbSpcmnDisc.trim() || nbSpcmnBrd.trim() || vNotchCount.trim() || nbVntchYou.trim() ||
        licNo.trim() || extraEfforts.length > 0 || extraEffortNodes.length > 0);
 
   // Clear every Catch & Effort / GPS field (all EFFORT / EFFORT_DETAIL) so a later Yes re-opens
@@ -1251,7 +1257,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     setSoakDuration('');
     setGpsLat(''); setGpsLng(''); setGpsSrc('manual');
     setTrapSize(''); setGearSubtypeId('');
-    setNbSpcmnKept(''); setNbSpcmnBrd('');
+    setNbSpcmnKept(''); setNbSpcmnDisc(''); setNbSpcmnBrd('');
     setVNotchCount(''); setNbVntchYou('');
     setLicNo(''); setLicEditing(false); // S136: the licence override is effort data too
     setBlock1Collapsed(false);
@@ -1668,7 +1674,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         setGpsLat(first.gpsLat ?? ''); setGpsLng(first.gpsLng ?? '');
         setGpsSrc(first.gpsSrc === 'gps' ? 'gps' : 'manual');
         setTrapSize(first.trapSize ?? '');
-        setNbSpcmnKept(first.nbSpcmnKept ?? ''); setNbSpcmnBrd(first.nbSpcmnBrd ?? '');
+        setNbSpcmnKept(first.nbSpcmnKept ?? ''); setNbSpcmnDisc(first.nbSpcmnDisc ?? '');
+        setNbSpcmnBrd(first.nbSpcmnBrd ?? '');
         setVNotchCount(first.vNotchCount ?? ''); setNbVntchYou(first.nbVntchYou ?? '');
         setExtraEfforts(rest);
         setExtraCollapsed(prev => {
@@ -1703,7 +1710,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     statSectId: statSectId ? String(statSectId) : '', statSectDisplay,
     catchWeight, trapHauls, soakDuration,
     gpsLat, gpsLng, gpsSrc, trapSize,
-    nbSpcmnKept, nbSpcmnBrd, vNotchCount, nbVntchYou,
+    nbSpcmnKept, nbSpcmnDisc, nbSpcmnBrd, vNotchCount, nbVntchYou,
   });
 
   // ── S136 Phase 4: fishing efforts 2..n ───────────────────────────────────────────────
@@ -1817,7 +1824,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         setGpsLat(g1?.gpsLat ?? ''); setGpsLng(g1?.gpsLng ?? '');
         setGpsSrc(g1?.gpsSrc === 'gps' ? 'gps' : 'manual');
         setTrapSize(g1?.trapSize ?? '');
-        setNbSpcmnKept(g1?.nbSpcmnKept ?? ''); setNbSpcmnBrd(g1?.nbSpcmnBrd ?? '');
+        setNbSpcmnKept(g1?.nbSpcmnKept ?? ''); setNbSpcmnDisc(g1?.nbSpcmnDisc ?? '');
+        setNbSpcmnBrd(g1?.nbSpcmnBrd ?? '');
         setVNotchCount(g1?.vNotchCount ?? ''); setNbVntchYou(g1?.nbVntchYou ?? '');
         setExtraEfforts(gRest);
         setBlock1Collapsed(false);
@@ -2126,6 +2134,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               nodeGroupField(nodeIdx, gIdx, t('form234.nbVntchYouLabel'), 'nbVntchYou', 'numeric', isFieldRequired('nbVntchYou', { subformId, fmaId: nodeFma }))}
             {subformId === 91 &&
               nodeGroupField(nodeIdx, gIdx, t('form234.nbSpcmnKeptLabel'), 'nbSpcmnKept', 'numeric', isFieldRequired('nbSpcmnKept', { subformId, fmaId: nodeFma }))}
+            {/* NB_SPCMN_DISC — same config gate again; region is per-LOG, not per-effort */}
+            {isVisible('nbSpcmnDisc') &&
+              nodeGroupField(nodeIdx, gIdx, t('form234.nbSpcmnDiscLabel'), 'nbSpcmnDisc', 'numeric', isFieldRequired('nbSpcmnDisc', { subformId, fmaId: nodeFma }))}
             {subformId === 91 && (
               <View style={styles.fieldRow}>
                 <Text style={styles.label}>{t('form234.trapSizeLabel')}{isFieldRequired('trapSize', { subformId, fmaId: nodeFma }) && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
@@ -2528,6 +2539,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             {/* NL: specimens kept + trap size */}
             {subformId === 91 &&
               extraField(i, t('form234.nbSpcmnKeptLabel'), 'nbSpcmnKept', 'numeric', isRequired('nbSpcmnKept'))}
+            {/* NB_SPCMN_DISC — same config gate as group 1, so the region test lives in ONE place */}
+            {isVisible('nbSpcmnDisc') &&
+              extraField(i, t('form234.nbSpcmnDiscLabel'), 'nbSpcmnDisc', 'numeric', isRequired('nbSpcmnDisc'))}
             {subformId === 91 && (
               <View style={styles.fieldRow}>
                 <Text style={styles.label}>{t('form234.trapSizeLabel')}{isRequired('trapSize') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
@@ -3100,7 +3114,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     gpsLat: g.gpsLat ?? '', gpsLng: g.gpsLng ?? '',
     gridId: g.gridDisplay ?? '', lgridCodeId: g.lgridDisplay ?? '', statSectId: g.statSectDisplay ?? '',
     vNotchCount: g.vNotchCount ?? '', nbVntchYou: g.nbVntchYou ?? '',
-    nbSpcmnBrd: g.nbSpcmnBrd ?? '', nbSpcmnKept: g.nbSpcmnKept ?? '', trapSize: g.trapSize ?? '',
+    nbSpcmnBrd: g.nbSpcmnBrd ?? '', nbSpcmnKept: g.nbSpcmnKept ?? '',
+    // S154 (U2): the discard count rides here so the group's own close door checks a TYPED
+    // value before sealing it (R2). Optional, so a blank never produces a bullet — only a
+    // count outside DFO's 0–9999 does, while the field is still editable.
+    nbSpcmnDisc: g.nbSpcmnDisc ?? '',
+    trapSize: g.trapSize ?? '',
   });
 
   // Rows for ONE fishing effort: effort-level fields once, then every trap group with its
@@ -3146,6 +3165,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       gpsLat, gpsLng,
       gridId: gridDisplay, lgridCodeId: lgridDisplay, statSectId: statSectDisplay,
       vNotchCount, nbVntchYou, nbSpcmnBrd, nbSpcmnKept, trapSize,
+      // S154 (U2) — the Phase 3 carry: group 1 of effort 1 is fed by THIS map, not by
+      // groupValues(), so without this line the close door would never check its typed value.
+      nbSpcmnDisc,
     };
     return effortMissingRows(fmaId, lvlAndG1, [lvlAndG1, ...extraEfforts.map(groupValues)]);
   };
@@ -4764,6 +4786,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               pixel-identical to pre-S110 (S110 Phase 2). */}
           {isVisible('nbSpcmnKept') &&
             renderField(t('form234.nbSpcmnKeptLabel'), nbSpcmnKept, setNbSpcmnKept, '0', false, false, 'numeric', isRequired('nbSpcmnKept'))}
+          {/* NB_SPCMN_DISC (S154 U2): QC(88) + NL(91) only — Optional on both (Subforms row 95),
+              blocked on GLF/MAR, so it is absent from their `visible` config and never renders.
+              UNMARKED: isRequired asks the shared table, which answers 'optional', so no asterisk.
+              XSD catch_type order — it follows NB_SPCMN_KEPT where that exists (NL) and takes the
+              same slot where it does not (QC, where row 93 blocks the kept count). */}
+          {isVisible('nbSpcmnDisc') &&
+            renderField(t('form234.nbSpcmnDiscLabel'), nbSpcmnDisc, setNbSpcmnDisc, '0', false, false, 'numeric', isRequired('nbSpcmnDisc'))}
           {/* NB_VNTCH: mandatory in Rule 624's 28-FMA list (QC), blocked elsewhere.
               NB_VNTCH_YOU: shown across Rule 625's 47 FMAs — starred on Rule 626's 28, shown
               unstarred on the 19 NL FMAs where it is optional, absent elsewhere. FMA-gated only. */}

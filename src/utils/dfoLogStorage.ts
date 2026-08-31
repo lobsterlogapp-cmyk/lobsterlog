@@ -432,6 +432,12 @@ export interface ExtraEffortDetail {
   gpsLat?: string; gpsLng?: string; gpsSrc?: string;
   trapSize?: string;                             // NL TRP_SZ_ID
   nbSpcmnKept?: string;                          // NL CATCH count (Rule 976)
+  // S154 (U2): CATCH.NB_SPCMN_DISC — the number of specimens thrown back. Optional on QC(88)
+  // and NL(91), Blocked on GLF(89) and MAR(90) (Subforms_requirements_234.xlsx row 95,
+  // Element_id 197). Sits between nbSpcmnKept and nbSpcmnBrd to mirror the XSD catch_type
+  // sequence (KEPT_WT → NB_SPCMN_KEPT → NB_SPCMN_DISC → SPECIE_FRM_ID → NB_SPCMN_BRD), so the
+  // field list and the emit read in the same order — the ExtraSarDetail.wt convention (S153B).
+  nbSpcmnDisc?: string;                          // QC/NL CATCH count (row 95; Rules 630/789)
   nbSpcmnBrd?: string;                           // MAR 38b CATCH count (Rule 654)
   vNotchCount?: string; nbVntchYou?: string;     // QC FMA-gated v-notch counts
 }
@@ -821,7 +827,7 @@ export function effortsFromData(d: Record<string, string | undefined>): ExtraEff
           lgridCodeId: d.lgridCodeId, gridId: d.gridId, statSectId: d.statSectId,
           catchWeight: d.catchWeight, trapHauls: d.trapHauls, soakDuration: d.soakDuration,
           gpsLat: d.gpsLat, gpsLng: d.gpsLng, gpsSrc: d.gpsSrc, trapSize: d.trapSize,
-          nbSpcmnKept: d.nbSpcmnKept, nbSpcmnBrd: d.nbSpcmnBrd,
+          nbSpcmnKept: d.nbSpcmnKept, nbSpcmnDisc: d.nbSpcmnDisc, nbSpcmnBrd: d.nbSpcmnBrd,
           vNotchCount: d.vNotchCount, nbVntchYou: d.nbVntchYou,
         },
         ...extraDetails,

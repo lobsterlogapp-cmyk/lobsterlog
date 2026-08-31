@@ -135,6 +135,7 @@
     "nbVntchYouLabel": "NB. LOBSTERS V-NOTCHED BY YOU",
     "nbSpcmnBrdLabel": "NB. SPECIMENS BROODSTOCK (NB_SPCMN_BRD)",
     "nbSpcmnKeptLabel": "NUMBER OF SPECIMENS KEPT",
+    "nbSpcmnDiscLabel": "NUMBER OF SPECIMENS DISCARDED",
     "trapSizeLabel": "TRAP SIZE",
     "selectTrapSize": "Select trap size...",
     "trapSizeOption_39682": "Standard",

@@ -411,6 +411,21 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
   if (subformId === 91) {
     effort += tag('NB_SPCMN_KEPT', det.nbSpcmnKept ?? '', '            ');
   }
+  // NB_SPCMN_DISC (S154 U2): the count thrown back. Optional on QC(88) and NL(91), Blocked on
+  // GLF(89) and MAR(90) — Subforms_requirements_234.xlsx row 95, Element_id 197, confirmed in
+  // the French sheet and in the pre-2026-08-14 package. Subform-gated only: unlike NB_SPCMN_BRD
+  // no rule narrows it by fishing area, and unlike NB_SPCMN_KEPT no rule narrows it by species
+  // (Rule 630 pairs it with KEPT_WT as an either/or, already satisfied by Rule 631 on every
+  // lobster catch, so it is never mandatory here — there is no mandatory direction to gate).
+  // ⭐ Rule 789 names this element in its CATCH row, so a TYPED 0 is a real declaration and must
+  // reach the wire, while a blank must never be read as a 0. Plain tag() is exactly that
+  // behaviour — "0" is a non-empty string so it emits, "" and whitespace do not — which is why
+  // this deliberately does NOT go through kgStr()/allowZero (that machinery exists only for the
+  // weight path). Pinned by nbSpcmnDisc.oneoff.test.ts rather than left to luck.
+  // XSD catch_type sequence: after NB_SPCMN_KEPT, before SPECIE_FRM_ID.
+  if (subformId === 88 || subformId === 91) {
+    effort += tag('NB_SPCMN_DISC', det.nbSpcmnDisc ?? '', '            ');
+  }
   effort += tag('SPECIE_FRM_ID', String(DFO_SPECIE_FRM_ID), '            ');
   // NB_SPCMN_BRD: lobster in MAR(90) FMA 38b only — mandatory there (Rule 654),
   // blocked for every other FMA (Rule 655) and species (Rule 653)
@@ -1121,6 +1136,25 @@ export function validateElogXml(xml: string, subformId: number): { valid: boolea
             }
             if (subformId === 90 && get(c, 'NB_SPCMN_DISC').length > 0) {
               errors.push(`${dp}.CATCH[${ci + 1}]: NB_SPCMN_DISC is blocked for MAR(90)`);
+            }
+            // NB_SPCMN_DISC (S154 R5): GLF(89) is blocked too — Subforms row 95 blocks it on
+            // BOTH 89 and 90, but only the MAR half above had a guard. Harmless while nothing
+            // emitted the element; live from S154, when QC/NL gained the box. Every sibling on
+            // this card already carries both directions.
+            if (subformId === 89 && get(c, 'NB_SPCMN_DISC').length > 0) {
+              errors.push(`${dp}.CATCH[${ci + 1}]: NB_SPCMN_DISC is blocked for GLF(89) (row 95)`);
+            }
+            // NB_SPCMN_DISC (S154, Option A): DFO's own integer_04 bound — 0…9999 (XSD
+            // …Homard_20260624.xsd:132-137). The shared `int` leaf check is format-only
+            // (/^\d+$/, no maximum), so without this a five-digit count would pass the app and
+            // bounce at DFO with the section already sealed under pointerEvents:'none'. Same
+            // shape and same message as the 222's NB_SPCMN_BEST cap on the identical XSD type
+            // (dfoForm222Generator.ts:385), and the close door mirrors THIS check rather than
+            // choosing its own. Refuses bad documents only — zero-diff on the wire for any
+            // valid value, so it is not part of the §10 requalification line.
+            const discNode = get(c, 'NB_SPCMN_DISC')[0];
+            if (discNode && !/^\d{1,4}$/.test(discNode.text)) {
+              errors.push(`${dp}.CATCH[${ci + 1}]: NB_SPCMN_DISC must be an integer 0-9999, got: ${discNode.text}`);
             }
             // NB_SPCMN_KEPT (S110 Phase 2): blocked for QC(88)/GLF(89) too (Subforms row 93);
             // NL(91) — mandatory on the lobster catch (Rule 976), blocked on any
