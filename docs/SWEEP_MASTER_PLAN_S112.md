@@ -169,6 +169,20 @@ Each printed line is one valid FIN–VRN–LIC combination. Read the row; never 
 ⚠ Avoid the `DFOCC…` and `6ASU…` rows, and GLF `1D1400466` / `1D1400467` — the only rows
 where VRN ≠ LIC.
 
+⚠ **RUN-BOOK CHECK, added 2026-08-31 — move all three fields together at every region switch.**
+After changing region on the profile, re-read **FIN, licence and VRN** on screen and confirm all
+three are the row above for the region you are now in. Nothing in the app checks it and nothing at
+DFO refuses it. On a **logbook (234)** send **no validator looks at the VRN's shape at all** — the
+only thing asked is whether the box is empty (`validateElogXml`, `dfoXmlGenerator.ts:857`), and
+Rule 528, the 4-to-6-digits rule, belongs to Forms **222 and 233** and is not in the 234 package.
+On a **222** send the VRN must be 4–6 digits, and on a **233** only if it is filled in
+(`isValidFormVrn`, `submitDfoXml.ts:22`) — but that counts digits, not regions. **Nothing anywhere
+compares the VRN against the FIN, the licence or the region.** So a Maritimes VRN on a Quebec send
+passes every gate — as one did on CONF 164060 and CONF 164062, both accepted WS0000.
+**That was deliberate on the founder's own admin-gated account and is not a
+defect** (`docs/GATE_S154_U2_NB_SPCMN_DISC.md` §12.3, withdrawn and annotated) — but on the sweep the
+identity is graded evidence, so it is checked by hand, per send, against the table.
+
 ---
 
 ## 5. THE VERIFY GATE — run after every send, before the next
