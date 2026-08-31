@@ -1997,10 +1997,14 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   };
 
   // One numeric/text field of an extra effort's trap group (the extraField shape).
+  // S154B: `valueOverride` is the extraSarInput shape (S153B) — this helper is addressed by
+  // KEY, so a caller that must transform what it shows (a closed weight read back in its own
+  // unit) has no other way in. Only the catch weight passes it; every other field is untouched.
   const nodeGroupField = (
     nodeIdx: number, gIdx: number, label: string, key: keyof ExtraEffortDetail,
     keyboardType: any = 'numeric', isReq: boolean = false,
-    onChange?: (v: string) => void
+    onChange?: (v: string) => void,
+    valueOverride?: string
   ) => (
     <View style={styles.fieldRow}>
       <View style={styles.labelRow}>
@@ -2008,7 +2012,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       </View>
       <TextInput
         style={[styles.input, readOnly && styles.inputReadOnly]}
-        value={(extraEffortNodes[nodeIdx]?.details?.[gIdx]?.[key] as string) ?? ''}
+        value={valueOverride ?? ((extraEffortNodes[nodeIdx]?.details?.[gIdx]?.[key] as string) ?? '')}
         onChangeText={onChange ?? ((v: string) => updateNodeGroup(nodeIdx, gIdx, { [key]: v }))}
         placeholder="0"
         placeholderTextColor="#94A3B8"
@@ -2047,7 +2051,14 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         </View>
         {collapsed ? (
           <TouchableOpacity onPress={() => setNodeGroupCollapsed(prev => ({ ...prev, [`${nodeIdx}:${gIdx}`]: false }))}>
-            <Text style={styles.effortBlockSummary} numberOfLines={1}>{extraSummary(g)}</Text>
+            {/* S154B — THE FIX. This summary used to inherit EFFORT 1's close stamp and unit tag
+                from inside extraSummary while describing a group of THIS node. Two ways that went
+                wrong: a closed node under an open effort 1 printed its raw stored kilograms, and
+                an OPEN node under an effort 1 closed on lbs printed the weight multiplied by
+                2.20462 — a wrong number in a box the harvester could still edit. It now reads the
+                node's own stamps: the SAME pair of expressions the group's weight field uses
+                above, so the collapsed line and the open card can never disagree. */}
+            <Text style={styles.effortBlockSummary} numberOfLines={1}>{extraSummary(g, !!extraEffortNodes[nodeIdx]?.closeDt, extraEffortNodes[nodeIdx]?.closeUnit)}</Text>
           </TouchableOpacity>
         ) : (
           <>
@@ -2124,7 +2135,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 )}
               </View>
             )}
-            {nodeGroupField(nodeIdx, gIdx, wLabel('form234.catchWeightLabel', !!extraEffortNodes[nodeIdx]?.closeDt, extraEffortNodes[nodeIdx]?.closeUnit), 'catchWeight', 'numeric', isRequired('catchWeight'))}
+            {/* S154B: the VALUE takes the same closed-flag and the same tag as the LABEL beside
+                it. Before this, only the label converted — a group closed on lbs drew its raw
+                stored kilograms under an (LBS) heading. The node's OWN closeDt/closeUnit, never
+                effort 1's. An open group is shown untouched (showWeight's open branch). */}
+            {nodeGroupField(nodeIdx, gIdx, wLabel('form234.catchWeightLabel', !!extraEffortNodes[nodeIdx]?.closeDt, extraEffortNodes[nodeIdx]?.closeUnit), 'catchWeight', 'numeric', isRequired('catchWeight'), undefined,
+              showWeight(extraEffortNodes[nodeIdx]?.details?.[gIdx]?.catchWeight ?? '', !!extraEffortNodes[nodeIdx]?.closeDt, extraEffortNodes[nodeIdx]?.closeUnit))}
             {nodeGroupField(nodeIdx, gIdx, t('form234.trapHaulsLabel'), 'trapHauls', 'numeric', isRequired('trapHauls'))}
             {subformId !== 90 &&
               nodeGroupField(nodeIdx, gIdx, t('form234.soakDurationLabel'), 'soakDuration', 'decimal-pad', isRequired('soakDuration'))}
@@ -2384,20 +2400,36 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
 
   // Collapsed one-line summary — S121 STOP-1a ruled format: "Grid 1589 — 420 lbs — 225 hauls".
   // Regions without a grid drop that segment; NL leads with its Statistical Section.
-  const extraSummary = (e: ExtraEffortDetail): string => {
+  //
+  // S154B: the close stamp and unit tag are now PARAMETERS, and they are REQUIRED.
+  // They used to be read from inside here as `isClosed('dgCloseEffort')` and
+  // `closeUnits.dgCloseEffortUnit` — effort 1's stamps. That is right for the two effort-1
+  // callers and WRONG for the third, which summarises a trap group of an effort 2+ NODE, whose
+  // close state and unit are its own. Reading effort 1 from inside a shared helper is what made
+  // one caller silently wrong, so nothing is inherited any more: each caller names its own.
+  //
+  // ⚠ REQUIRED, not optional — deliberately different from the S153B/S154B `valueOverride`
+  // shape. There, the parameter is optional because ~20 unrelated callers must not be forced to
+  // reason about a weight they do not draw (R2). Here there are exactly THREE callers and the
+  // failure mode IS forgetting, so the compiler is made to ask. An optional parameter defaulting
+  // to effort 1's stamps would leave this same defect one new call site away.
+  const extraSummary = (e: ExtraEffortDetail, isGroupClosed: boolean, closeTag?: string): string => {
     const parts: string[] = [];
     if (subformId === 90 && e.lgridDisplay) parts.push(t('form234.summaryLgrid', { g: e.lgridDisplay }));
     if (subformId === 88 && e.gridDisplay) parts.push(t('form234.summaryGrid', { g: e.gridDisplay }));
     if (subformId === 91 && e.statSectDisplay) parts.push(e.statSectDisplay);
-    if (e.catchWeight?.trim()) parts.push(wSuffix(e.catchWeight.trim(), isClosed('dgCloseEffort'), closeUnits.dgCloseEffortUnit));
+    if (e.catchWeight?.trim()) parts.push(wSuffix(e.catchWeight.trim(), isGroupClosed, closeTag));
     if (e.trapHauls?.trim()) parts.push(t('form234.haulsSuffix', { n: e.trapHauls.trim() }));
     return parts.length > 0 ? parts.join(' — ') : t('form234.effortBlockEmpty');
   };
 
+  // S154B: same `valueOverride` as nodeGroupField and extraSarInput, for the same reason —
+  // the helper takes a KEY, so a closed weight cannot be back-converted without it.
   const extraField = (
     idx: number, label: string, key: keyof ExtraEffortDetail,
     keyboardType: any = 'numeric', isReq: boolean = false,
-    onChange?: (v: string) => void
+    onChange?: (v: string) => void,
+    valueOverride?: string
   ) => (
     <View style={styles.fieldRow}>
       <View style={styles.labelRow}>
@@ -2405,7 +2437,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       </View>
       <TextInput
         style={[styles.input, readOnly && styles.inputReadOnly]}
-        value={(extraEfforts[idx]?.[key] as string) ?? ''}
+        value={valueOverride ?? ((extraEfforts[idx]?.[key] as string) ?? '')}
         onChangeText={onChange ?? ((v: string) => updateExtra(idx, { [key]: v }))}
         placeholder="0"
         placeholderTextColor="#94A3B8"
@@ -2439,7 +2471,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         </View>
         {collapsed ? (
           <TouchableOpacity onPress={() => setExtraCollapsed(prev => ({ ...prev, [i]: false }))}>
-            <Text style={styles.effortBlockSummary} numberOfLines={1}>{extraSummary(e)}</Text>
+            {/* S154B — CORRECT TODAY, AND UNCHANGED. This is a trap group of EFFORT 1, so
+                effort 1's stamps are the right ones. The two expressions below are the exact
+                text that used to sit inside extraSummary; they moved out to the call site, they
+                did not change. Behaviour here is identical before and after. */}
+            <Text style={styles.effortBlockSummary} numberOfLines={1}>{extraSummary(e, isClosed('dgCloseEffort'), closeUnits.dgCloseEffortUnit)}</Text>
           </TouchableOpacity>
         ) : (
           <>
@@ -2525,7 +2561,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 )}
               </View>
             )}
-            {extraField(i, wLabel('form234.catchWeightLabel', isClosed('dgCloseEffort'), closeUnits.dgCloseEffortUnit), 'catchWeight', 'numeric', isRequired('catchWeight'))}
+            {/* S154B: the VALUE now takes the same closed-flag and tag as the LABEL, the way
+                group 1 of this same effort already did at the renderField site. Effort 1's
+                groups close together (sealEffort1Weights), so the flat dgCloseEffort stamp
+                is the right one here — unlike a node, which carries its own. */}
+            {extraField(i, wLabel('form234.catchWeightLabel', isClosed('dgCloseEffort'), closeUnits.dgCloseEffortUnit), 'catchWeight', 'numeric', isRequired('catchWeight'), undefined,
+              showWeight(extraEfforts[i]?.catchWeight ?? '', isClosed('dgCloseEffort'), closeUnits.dgCloseEffortUnit))}
             {extraField(i, t('form234.trapHaulsLabel'), 'trapHauls', 'numeric', isRequired('trapHauls'))}
             {/* SOAKED_DUR: blocked for MAR(90); per-EFFORT_DETAIL for 88/89/91 */}
             {subformId !== 90 &&
@@ -4675,7 +4716,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             </View>
             {block1Collapsed ? (
               <TouchableOpacity onPress={() => setBlock1Collapsed(false)}>
-                <Text style={styles.effortBlockSummary} numberOfLines={1}>{extraSummary(block1Detail())}</Text>
+                {/* S154B — CORRECT TODAY, AND UNCHANGED. Group 1 of effort 1: block1Detail()
+                    wraps the flat catchWeight, which closes under the same dgCloseEffort stamp
+                    its weight field already reads. Same two expressions as before, moved from
+                    inside extraSummary to here verbatim. Behaviour identical before and after. */}
+                <Text style={styles.effortBlockSummary} numberOfLines={1}>{extraSummary(block1Detail(), isClosed('dgCloseEffort'), closeUnits.dgCloseEffortUnit)}</Text>
               </TouchableOpacity>
             ) : (<>
                     {/* LGRID Selector — shown for any FMA that has a grid list (≡ the 13
