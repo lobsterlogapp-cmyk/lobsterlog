@@ -300,6 +300,9 @@ describe('Tier 1: the seven "no door is safe" fields', () => {
     expect(fieldRequirement('carrierVrn')!.state(ctx(90), { useCrInd: 'Y' })).toBe('blocked');
     const missing = missingInContainer('transfer', ctx(88), {
       useCrInd: 'Y', transferTime: '15:00', transferWt: '50', transferToVrn: '106461',
+      // S154D R1: the FROM pair is a real requirement now, so a values object that omits
+      // it refuses for TWO reasons and this test could no longer isolate the carrier.
+      transferFromVrn: '106462',
     });
     expect(missing).toEqual([
       { fieldKey: 'carrierVrn', labelKey: 'form234.carrierVrnLabel', reason: 'blank' },
@@ -444,7 +447,10 @@ describe('value checks: a sealed invalid value is the same dead end as a sealed 
   });
 
   test('transfer TO pair: exactly one (Rule 252) — zero and two both refuse', () => {
-    const base = { useCrInd: 'N', transferTime: '15:00', transferWt: '50' };
+    // S154D R1: transferFromVrn keeps Rule 251 satisfied so the assertions below stay
+    // about the TO pair alone — which is what this test is named for.
+    const base = { useCrInd: 'N', transferTime: '15:00', transferWt: '50',
+      transferFromVrn: '106462' };
     expect(missingInContainer('transfer', ctx(88), { ...base, transferToVrn: '106461' }))
       .toEqual([]);
     expect(missingInContainer('transfer', ctx(88), base)).toEqual([
@@ -586,7 +592,8 @@ describe('agreement (234): where the validator has a direction, the table matche
     delete qc.data.transferToVrn;
     expect(validateElogXml(gen(qc), 88).errors.some(e => e.includes('Rule 252'))).toBe(true);
     expect(missingInContainer('transfer', ctx(88),
-      { useCrInd: 'N', transferTime: '15:00', transferWt: '50' })
+      { useCrInd: 'N', transferTime: '15:00', transferWt: '50',
+        transferFromVrn: '106462' })   // S154D R1 — isolate the TO pair
       .map(m => m.reason)).toEqual(['pair-none']);
   });
 

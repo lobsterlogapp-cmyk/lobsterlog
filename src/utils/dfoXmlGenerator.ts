@@ -29,6 +29,21 @@ function xmlEscape(s: string): string {
     .replace(/'/g, '&apos;');
 }
 
+// S154D R4: the inverse, used ONLY by the validator's length cap. The parser at :617 stores
+// element text exactly as it appears on the wire, so a name typed as  L'Étoile  is held as
+// the 6-characters-longer  L&apos;Étoile . DFO's maxLength restricts the DECODED value, so
+// measuring the escaped form would refuse a legal document — one apostrophe costs 5 of the
+// 50 characters DFO allows. &amp; is decoded LAST so that an escaped  &amp;lt;  round-trips
+// to  &lt;  rather than collapsing all the way to  < .
+function xmlUnescape(s: string): string {
+  return s
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
 // Combines dateFished (YYYY-MM-DD) and a HH:MM time into a UTC ISO 8601 string,
 // treating the inputs as device-local time. A blank/whitespace time returns '' (NOT a
 // midnight default), so the absence surfaces structurally — tag() drops the element and
@@ -556,8 +571,18 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
     body += `    </LANDING>\n`;
   }
   // TRANSFER / TRANSFER_DTL: QC(88) only, Blocked for GLF/MAR/NL (89/90/91).
-  // FROM side is always this vessel (Rule 251: one of FROM_VRN/FROM_PND_NUM);
-  // TO side is a vessel VRN or a pond number, never both (Rule 252).
+  // BOTH ends are harvester-entered, and each is an exclusive pair: exactly one of
+  // FROM_VRN/FROM_PND_NUM (Rule 251) and exactly one of TO_VRN/TO_PND_NUM (Rule 252).
+  // The French fact sheet is what settles "exactly": « un seul des deux éléments suivants
+  // DOIT OBLIGATOIREMENT contenir une valeur » — never both, never neither, whenever the
+  // node exists (FS-NAT-234-12-FR:1901-1906; the English at :1854 is ambiguous alone).
+  //
+  // S154D R1: FROM_VRN used to be `captainProfile.vesselNumber` — the app silently declared
+  // the harvester's OWN vessel as the source of every Quebec transfer, whether or not that
+  // is what happened, and Rule 251 was satisfied by an assertion nobody made. That stops.
+  // Both boxes start empty and nothing reaches the wire unless he typed it; a transfer with
+  // no source is REFUSED at :1256 rather than invented into compliance.
+  //
   // TRANSFER_DTL: lobster only (Rule 249: SPECIE_ID 1312), Round (Rule 250: 4691).
   if (subformId === 88 && d.transferYes === 'true') {
     // Rule 789: a typed 0 is a declared quantity. Without allowZero the guard below deleted
@@ -573,9 +598,20 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
     if (trnsfWtKg) {
       body += `    <TRANSFER>\n`;
       body += tag('TRNSF_DT', trnsfDt, '      ');
-      body += tag('FROM_VRN', captainProfile.vesselNumber, '      ');
+      // XSD transfer_type sequence (…Homard_20260624 000000.xsd:377-392) puts each vessel
+      // NAME between the two members of its own exclusive pair:
+      //   FROM_VRN → FROM_VNAME → FROM_PND_NUM → TO_VRN → TO_VNAME → TO_PND_NUM
+      // so each pair is written as two separate conditionals rather than one if/else — an
+      // if/else cannot leave room for the name that belongs between its branches. The pond
+      // wins when storage somehow holds both (unreachable through the card, which clears one
+      // box as the other is typed): one element on the wire keeps the document sendable,
+      // which is what the TO half has always done.
+      if (!d.transferFromPndNum) body += tag('FROM_VRN', d.transferFromVrn ?? '', '      ');
+      body += tag('FROM_VNAME', d.transferFromVname ?? '', '      ');
+      if (d.transferFromPndNum) body += tag('FROM_PND_NUM', d.transferFromPndNum, '      ');
+      if (!d.transferToPndNum) body += tag('TO_VRN', d.transferToVrn ?? '', '      ');
+      body += tag('TO_VNAME', d.transferToVname ?? '', '      ');
       if (d.transferToPndNum) body += tag('TO_PND_NUM', d.transferToPndNum, '      ');
-      else body += tag('TO_VRN', d.transferToVrn ?? '', '      ');
       body += tag('DG_CLOSE_DT', d.dgCloseTransfer ? toCloseTimestamp(d.dgCloseTransfer) : '', '      ');
       // REM: 'transfer' note fans across TRANSFER and TRANSFER_DTL (same text). On TRANSFER
       // it is the last child before TRANSFER_DTL per transfer_type sequence.
@@ -665,8 +701,13 @@ const LEAF_CHECKS: Record<LeafType, { ok: (v: string) => boolean; want: string }
 interface ChildSpec {
   name: string;
   min: number;
-  max: number; // Infinity = unbounded
+  max: number; // Infinity = unbounded — OCCURRENCES, not characters
   type?: LeafType;        // leaf element with a typed text value
+  // S154D R4: the XSD maxLength for a string leaf (string_12 → 12, string_50 → 50 …).
+  // Measured against the DECODED text. Populated on the six TRANSFER strings this session;
+  // the other 23 `type: 'string'` entries in this file still carry NO cap — that is a filed
+  // class finding (GATE_S154D §5), deliberately not swept here.
+  maxLen?: number;
   children?: ChildSpec[]; // complex element with an ordered xs:sequence
   // neither type nor children → contents not validated (e.g. TRANSFER, deferred Item 18)
 }
@@ -788,12 +829,14 @@ const TRIP_SPEC: ChildSpec[] = [
   // TRANSFER — XSD transfer_type (QC-88 only; Rules 248-252)
   { name: 'TRANSFER', min: 0, max: Infinity, children: [
     { name: 'TRNSF_DT',     min: 1, max: 1, type: 'date_12' },
-    { name: 'FROM_VRN',     min: 0, max: 1, type: 'string' },
-    { name: 'FROM_VNAME',   min: 0, max: 1, type: 'string' },
-    { name: 'FROM_PND_NUM', min: 0, max: 1, type: 'string' },
-    { name: 'TO_VRN',       min: 0, max: 1, type: 'string' },
-    { name: 'TO_VNAME',     min: 0, max: 1, type: 'string' },
-    { name: 'TO_PND_NUM',   min: 0, max: 1, type: 'string' },
+    // maxLen values are the XSD simple types at …Homard_20260624 000000.xsd:377-384 —
+    // string_12 (:48) / string_50 (:78) / string_30 (:66).
+    { name: 'FROM_VRN',     min: 0, max: 1, type: 'string', maxLen: 12 },
+    { name: 'FROM_VNAME',   min: 0, max: 1, type: 'string', maxLen: 50 },
+    { name: 'FROM_PND_NUM', min: 0, max: 1, type: 'string', maxLen: 30 },
+    { name: 'TO_VRN',       min: 0, max: 1, type: 'string', maxLen: 12 },
+    { name: 'TO_VNAME',     min: 0, max: 1, type: 'string', maxLen: 50 },
+    { name: 'TO_PND_NUM',   min: 0, max: 1, type: 'string', maxLen: 30 },
     { name: 'DG_CLOSE_DT',  min: 1, max: 1, type: 'date_14' },
     { name: 'REM',          min: 0, max: 1, type: 'string' },
     { name: 'TRANSFER_DTL', min: 1, max: Infinity, children: [
@@ -837,6 +880,15 @@ function validateNode(node: XmlNode, spec: ChildSpec, path: string, errors: stri
     }
     const check = LEAF_CHECKS[spec.type];
     if (!check.ok(node.text)) errors.push(`${path}: expected ${check.want}, got "${node.text}"`);
+    // S154D R4: an over-long value passed every in-app gate and bounced at DFO, because
+    // LEAF_CHECKS.string only ever asked whether the text was non-empty. Inclusive: a value
+    // exactly at the limit is legal.
+    if (spec.maxLen !== undefined) {
+      const len = xmlUnescape(node.text).length;
+      if (len > spec.maxLen) {
+        errors.push(`${path}: exceeds ${spec.maxLen} characters (got ${len})`);
+      }
+    }
     return;
   }
   if (!spec.children) return; // contents intentionally unvalidated (TRANSFER)

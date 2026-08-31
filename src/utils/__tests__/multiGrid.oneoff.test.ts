@@ -77,6 +77,11 @@ function makeLog(subformId: number): any {
     log.data.transferYes = 'true';
     log.data.transferTime = '15:00';
     log.data.transferWt = '50';
+    // S154D R1: FROM_VRN is no longer supplied from the profile, so a QC transfer without a
+    // typed source is REFUSED under Rule 251 — and a byte pin on a document DFO would reject
+    // is a weaker pin than one on a legal document. 106462 is a third reserved Quebec vessel
+    // (Test_values p.1), keeping source, destination and carrier three different boats.
+    log.data.transferFromVrn = '106462';
     log.data.transferToVrn = '106461';
     return log;
   }
@@ -184,7 +189,7 @@ const PRE_S121_BASELINE_88 = `<?xml version="1.0" encoding="UTF-8"?>
     </LANDING>
     <TRANSFER>
       <TRNSF_DT>202606101800</TRNSF_DT>
-      <FROM_VRN>123456</FROM_VRN>
+      <FROM_VRN>106462</FROM_VRN>
       <TO_VRN>106461</TO_VRN>
       <DG_CLOSE_DT>20260610150000</DG_CLOSE_DT>
       <TRANSFER_DTL>

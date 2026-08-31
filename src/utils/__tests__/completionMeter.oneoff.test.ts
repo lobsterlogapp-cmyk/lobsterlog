@@ -105,6 +105,9 @@ describe('S141 P4 — table-driven completion meter', () => {
       soakDuration: '2', gpsLat: '48.4488', gpsLng: '-68.5236',
       portLanded: 'Rimouski', timeOfLanding: '14:45',
       transferYes: 'true', transferTime: '10:00', transferWt: '50',
+      // S154D R1: the SOURCE pair is a mandatory unit too now, so a complete QC transfer
+      // needs one filled for the meter to read 100%.
+      transferFromVrn: '106462', transferFromPndNum: '',
       transferToVrn: '104460', transferToPndNum: '', useCrInd: 'N', carrierVrn: '',
     };
     const ok = getCompletionDetails(marLog(qc, 88));

@@ -45,7 +45,10 @@ const landing = (over: Record<string, string> = {}) => ({
 });
 
 const transfer = (over: Record<string, string> = {}) => ({
-  transferWt: '50', transferToVrn: '106461', useCrInd: 'N',
+  // S154D R1: a QC transfer now needs a SOURCE as well as a destination (Rule 251), so the
+  // clean baseline has to carry one — otherwise every clock test below would refuse for a
+  // reason that has nothing to do with the clock.
+  transferWt: '50', transferFromVrn: '106462', transferToVrn: '106461', useCrInd: 'N',
   dateFished: DAY1,
   sailDate: DAY1, sailTime: '05:30',
   transferDate: DAY1, transferTime: '15:00',

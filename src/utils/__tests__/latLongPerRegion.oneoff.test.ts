@@ -68,6 +68,8 @@ function makeLog(subformId: number): any {
     log.data.transferYes = 'true';
     log.data.transferTime = '15:00';
     log.data.transferWt = '50';
+    // S154D R1 — Rule 251 needs a source; the profile no longer supplies one.
+    log.data.transferFromVrn = '106462';
     log.data.transferToVrn = '106461';
     return log;
   }

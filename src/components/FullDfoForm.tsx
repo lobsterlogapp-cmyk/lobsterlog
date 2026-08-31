@@ -380,6 +380,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // QC(88) only — TRANSFER node fields (Rules 248-252) replace the legacy free-text
   const [transferTime, setTransferTime] = useState('');
   const [transferWt, setTransferWt] = useState('');
+  // S154D (W1 of seven wiring sites): the SOURCE half. Rule 251 makes exactly one of
+  // FROM_VRN / FROM_PND_NUM required once a transfer exists, and until this build the
+  // generator supplied the harvester's OWN vessel number unasked. Both boxes start empty.
+  const [transferFromVrn, setTransferFromVrn] = useState('');
+  const [transferFromPndNum, setTransferFromPndNum] = useState('');
+  const [transferFromVname, setTransferFromVname] = useState('');
+  const [transferToVname, setTransferToVname] = useState('');
   const [transferToVrn, setTransferToVrn] = useState('');
   const [transferToPndNum, setTransferToPndNum] = useState('');
   // QC(88) only — TRIP.USE_CR_IND (Rule 639: initial value 'N') + carrier VRN (Rule 642)
@@ -676,6 +683,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           setTransferTime(d.transferTime || '');
           setTransferDate(d.transferDate || '');  // S147 Phase 5a — blank on every pre-existing log
           setTransferWt(d.transferWt || '');
+          // S154D (W2): no log written before this build carries these four keys, so they
+          // hydrate blank — that `|| ''` IS the no-migration guarantee. An old QC log opens
+          // with an empty source, which is the truth: nobody ever typed one.
+          setTransferFromVrn(d.transferFromVrn || '');
+          setTransferFromPndNum(d.transferFromPndNum || '');
+          setTransferFromVname(d.transferFromVname || '');
+          setTransferToVname(d.transferToVname || '');
           setTransferToVrn(d.transferToVrn || '');
           setTransferToPndNum(d.transferToPndNum || '');
           setUseCrInd(d.useCrInd === 'Y' ? 'Y' : 'N');
@@ -934,7 +948,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     // because a toggle flip always happens while this form is unmounted, so the next mount
     // has to be able to tell what unit it is looking at.
     [DRAFT_WEIGHT_UNIT_KEY]: unitPref,
-    transferTime, transferDate, transferWt, transferToVrn, transferToPndNum,
+    transferTime, transferDate, transferWt,
+    // S154D (W3): the four new keys ride the same data map as their siblings — no DfoLog
+    // interface change, no migration (see dfoLogStorage.ts:472).
+    transferFromVrn, transferFromPndNum, transferFromVname, transferToVname,
+    transferToVrn, transferToPndNum,
     useCrInd, carrierVrn, prtnshpId: String(prtnshpId),
     trapSize,
     gearSubtypeId,
@@ -3279,10 +3297,16 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       case 'dgCloseTransfer':
         // S147 Phase 5a: transferDate + dateFished complete the date threading deferred at
         // Phase 1 §1.2 — the field exists now, so the transfer objects join the other eight.
+        // S154D (FEED SITE F1 of three): the FROM pair and both names. ⚠ NOTHING IN THIS REPO
+        // CAN TEST THIS OBJECT — it is a literal inside a React component and all 75 suites are
+        // utils. A key missing here gives a close door blind to the field, with every test
+        // green. F3 (the meter, in dfoLogStorage) was caught by a failing test; F1 and F2 have
+        // no such net, which is why Phase 5 mutation-checks them and the walk exercises them.
         return rowsOf(missingInContainer('transfer', ctx, {
           transferTime, transferDate, dateFished,
           sailDate, sailTime: timeSailed,  // S147 Phase 3 — Rule 248
-          transferWt, transferToVrn, transferToPndNum, carrierVrn, useCrInd,
+          transferWt, transferFromVrn, transferFromPndNum, transferFromVname, transferToVname,
+          transferToVrn, transferToPndNum, carrierVrn, useCrInd,
         }));
       case 'dgCloseHlin':
         return rowsOf(missingInContainer('hlin', { subformId, effortFmaIds: hail38b ? [DFO_FMA_38B] : [] }, {
@@ -3759,7 +3783,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const renderField = (
     label: string, value: string, setter: (v: string) => void,
     placeholder: string, isProblem: boolean = false,
-    fieldReadOnly: boolean = false, keyboardType: any = 'default', isReq: boolean = false
+    fieldReadOnly: boolean = false, keyboardType: any = 'default', isReq: boolean = false,
+    // S154D R4: the XSD maxLength for this field, so an over-long value cannot be typed in
+    // the first place. OPTIONAL and undefined by default — every one of the ~20 existing call
+    // sites keeps today's behaviour (RN treats an undefined maxLength as no limit), so this
+    // parameter can only ever affect a call site that asks for it. The 222/233 screens have
+    // used maxLength on their free-text fields since S111; the logbook had it only on notes.
+    maxLength?: number,
   ) => (
     <View style={styles.fieldRow}>
       <View style={styles.labelRow}>
@@ -3774,6 +3804,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         placeholderTextColor="#94A3B8"
         editable={!readOnly && !fieldReadOnly}
         keyboardType={keyboardType}
+        maxLength={maxLength}
       />
     </View>
   );
@@ -4126,9 +4157,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       }
       const transferValues = {
         // S147 Phase 5a — see sectionMissingRows.
+        // S154D (FEED SITE F2 of three) — same four keys as F1 above. If these two objects
+        // ever disagree, the card's own Close button and the whole-log save gate refuse
+        // different things on the same data, which is the worst kind of bug to find on a boat.
         transferTime, transferDate, dateFished,
         sailDate, sailTime: timeSailed,  // S147 Phase 3 — Rule 248
-        transferWt, transferToVrn, transferToPndNum, carrierVrn, useCrInd,
+        transferWt, transferFromVrn, transferFromPndNum, transferFromVname, transferToVname,
+        transferToVrn, transferToPndNum, carrierVrn, useCrInd,
       };
       // S153B: both transfer paths skip once the Transfers card is sealed — the carrier-VRN
       // path too, since that field lives on the same card and freezes with it.
@@ -5389,7 +5424,17 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             </View>
             {renderYesNoToggle(t('form234.transfersQuestion'), transferYes, (val) => {
               setTransferYes(val);
-              if (!val) { setTransfers(''); setTransferTime(''); setTransferDate(''); setTransferWt(''); setTransferToVrn(''); setTransferToPndNum(''); }
+              // S154D (W4): the four new setters MUST be cleared here too. R7 rules that the
+              // group-used formula needs no change BECAUSE these boxes live inside
+              // `transferYes === true` — a value cannot exist unless the group is used. That
+              // argument only holds if answering No empties them; otherwise four values sit on
+              // a log that says no transfer happened, with no close door that will ever look
+              // at them.
+              if (!val) {
+                setTransfers(''); setTransferTime(''); setTransferDate(''); setTransferWt('');
+                setTransferFromVrn(''); setTransferFromPndNum(''); setTransferFromVname('');
+                setTransferToVname(''); setTransferToVrn(''); setTransferToPndNum('');
+              }
             })}
             {transferYes === true && (
               <View style={styles.incidentBlock}>
@@ -5399,10 +5444,31 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                     key is unchanged — its four siblings are also worded "TIME" and render date+time. */}
                 {renderTimestampField(t('form234.transferTimeLabel'), formatDateTimeDisplay(transferDate, transferTime), 'transfer', false, isRequired('transferTime'), undefined, isClosed('dgCloseTransfer'))}
                 {renderField(wLabel('form234.transferWtLabel', isClosed('dgCloseTransfer'), closeUnits.dgCloseTransferUnit), showWeight(transferWt, isClosed('dgCloseTransfer'), closeUnits.dgCloseTransferUnit), setTransferWt, '0', false, false, 'numeric', isRequired('transferWt'))}
+                {/* S154D (W5) — Rule 251: exactly ONE of the FROM pair, mirroring the TO pair
+                    below box-for-box (R2). Each box clears the other as it is typed, both are
+                    marked, one hint sits under the pair. The vessel NAME goes between them on
+                    the wire (XSD :378-380) but LAST on screen, so the two mutually-clearing
+                    boxes stay adjacent and the pair reads as one question — the emit orders
+                    itself independently at dfoXmlGenerator.ts:576-581.
+                    maxLength (R4) makes an over-long value untypeable: 12 / 30 / 50, straight
+                    from the XSD simple types.
+                    ⚠ The VRN box carries the SAME '0' placeholder as its shipped mirror below,
+                    and the pond box the same blank one — matching the card, per the S154 §12.2
+                    precedent (U2 kept its siblings' placeholder deliberately; changing it is a
+                    decision about every box at once, not one field's call). The '0' is a poor
+                    hint for a vessel number and it is now on two boxes instead of one — flagged
+                    in the gate doc, not fixed here. It matters MORE on a pond box, which is why
+                    that one stays blank: DFO's own instruction is to write 0 when a pond has no
+                    number, so a grey 0 there would read as an answer already given. */}
+                {renderField(t('form234.transferFromVrnLabel'), transferFromVrn, (v: string) => { setTransferFromVrn(v); if (v) setTransferFromPndNum(''); }, '0', false, false, 'numeric', isRequired('transferFromVrn'), 12)}
+                {renderField(t('form234.transferFromPndNumLabel'), transferFromPndNum, (v: string) => { setTransferFromPndNum(v); if (v) setTransferFromVrn(''); }, '', false, false, 'default', isRequired('transferFromPndNum'), 30)}
+                <Text style={styles.emptyHint}>{t('form234.transferFromHint')}</Text>
+                {renderField(t('form234.transferFromVnameLabel'), transferFromVname, setTransferFromVname, '', false, false, 'default', isRequired('transferFromVname'), 50)}
                 {/* Rule 252: exactly ONE of the TO pair — both members marked (S140 P2) */}
-                {renderField(t('form234.transferToVrnLabel'), transferToVrn, (v: string) => { setTransferToVrn(v); if (v) setTransferToPndNum(''); }, '0', false, false, 'numeric', isRequired('transferToVrn'))}
-                {renderField(t('form234.transferToPndNumLabel'), transferToPndNum, (v: string) => { setTransferToPndNum(v); if (v) setTransferToVrn(''); }, '', false, false, 'default', isRequired('transferToPndNum'))}
+                {renderField(t('form234.transferToVrnLabel'), transferToVrn, (v: string) => { setTransferToVrn(v); if (v) setTransferToPndNum(''); }, '0', false, false, 'numeric', isRequired('transferToVrn'), 12)}
+                {renderField(t('form234.transferToPndNumLabel'), transferToPndNum, (v: string) => { setTransferToPndNum(v); if (v) setTransferToVrn(''); }, '', false, false, 'default', isRequired('transferToPndNum'), 30)}
                 <Text style={styles.emptyHint}>{t('form234.transferToHint')}</Text>
+                {renderField(t('form234.transferToVnameLabel'), transferToVname, setTransferToVname, '', false, false, 'default', isRequired('transferToVname'), 50)}
               </View>
             )}
             </View>

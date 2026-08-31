@@ -96,6 +96,10 @@ function makeLog(subformId: number): any {
     log.data.transferYes = 'true';
     log.data.transferTime = '15:00';
     log.data.transferWt = '50';
+    // S154D R1: Rule 251 needs a SOURCE too, and the app no longer supplies one from the
+    // profile. Without this the document is invalid for a reason that has nothing to do with
+    // NB_SPCMN_DISC — the same trap the comment above records for the carrier/partnership.
+    log.data.transferFromVrn = '106462';
     log.data.transferToVrn = '106461';
     return log;
   }

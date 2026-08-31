@@ -630,14 +630,51 @@ export const DFO_REQUIREMENTS_TABLE: FieldRequirement[] = [
   { fieldKey: 'transferWt', container: 'transfer', labelKey: 'form234.transferWtLabel',
     kind: 'per-subform', state: per({ 88: 'mandatory' }),
     note: 'TRANSFER_DTL.WT (row 117).' },
+  // S154D: the SOURCE pair. Rule 251 is the twin of Rule 252 below, and the French fact
+  // sheet is what makes "exactly" unambiguous — « un seul des deux éléments suivants DOIT
+  // OBLIGATOIREMENT contenir une valeur » (FS-NAT-234-12-FR:1901-1906). Rows 106/107 of
+  // Subforms_requirements_234.xlsx, Optional QC-88 / Blocked elsewhere per element; the rule
+  // is what makes the PAIR mandatory once a transfer exists.
+  // transferFromVrn is listed FIRST so a broken pair reports under its key, matching the TO
+  // pair's behaviour (the engine names whichever member it meets first).
+  // ⚠ This REPLACES the old `transferFrom` app-supplied row, which documented the generator
+  // writing the harvester's own vessel number into FROM_VRN unasked. R1 ended that: the box
+  // is his to fill, so the requirement is a real pair now instead of a note about a default.
+  { fieldKey: 'transferFromVrn', container: 'transfer', labelKey: 'form234.transferFromVrnLabel',
+    kind: 'exactly-one-of-a-pair', pairWith: 'transferFromPndNum',
+    state: per({ 88: 'mandatory' }),
+    note: 'Rule 251: exactly one of FROM_VRN / FROM_PND_NUM once the TRANSFER node exists.' },
+  { fieldKey: 'transferFromPndNum', container: 'transfer', labelKey: 'form234.transferFromPndNumLabel',
+    kind: 'exactly-one-of-a-pair', pairWith: 'transferFromVrn',
+    state: per({ 88: 'mandatory' }),
+    note: 'Rule 251 — see transferFromVrn. DFO’s dictionary (XML_dictionary.csv:767) says to ' +
+      'write 0 when the pond has no number, so "0" is a VALUE here and satisfies the pair.' },
   { fieldKey: 'transferToVrn', container: 'transfer', labelKey: 'form234.transferToVrnLabel',
     kind: 'exactly-one-of-a-pair', pairWith: 'transferToPndNum',
     state: per({ 88: 'mandatory' }),
-    note: 'Rule 252: exactly one of TO_VRN / TO_PND_NUM. (The FROM pair, Rule 251, is ' +
-      'app-supplied — the profile’s own vessel number.)' },
+    note: 'Rule 252: exactly one of TO_VRN / TO_PND_NUM.' },
   { fieldKey: 'transferToPndNum', container: 'transfer', labelKey: 'form234.transferToPndNumLabel',
     kind: 'exactly-one-of-a-pair', pairWith: 'transferToVrn',
     state: per({ 88: 'mandatory' }), note: 'Rule 252 — see transferToVrn.' },
+  // The two vessel NAMES: Optional on QC (rows 108/111), Blocked elsewhere, named by no rule
+  // (R5: no format check). They are checked-when-typed for LENGTH only, the sarWt /
+  // logbookUidRefered pattern — a sealed over-long name is the same dead end as a sealed
+  // blank, and the close door can name the field where the send validator can only name the
+  // element. R6: plain text, never starred.
+  { fieldKey: 'transferFromVname', container: 'transfer', labelKey: 'form234.transferFromVnameLabel',
+    kind: 'per-subform',
+    state: per({ 88: 'optional' }),
+    isInvalid: simpleInvalid('transferFromVname', v => v.length <= 50),
+    checkDescribe: 'at most 50 characters',
+    note: 'TRANSFER.FROM_VNAME — string_50 (XSD :379), minOccurs=0, Optional QC-88 only ' +
+      '(row 108). Unmarked by construction: isFieldRequired only returns true for mandatory.' },
+  { fieldKey: 'transferToVname', container: 'transfer', labelKey: 'form234.transferToVnameLabel',
+    kind: 'per-subform',
+    state: per({ 88: 'optional' }),
+    isInvalid: simpleInvalid('transferToVname', v => v.length <= 50),
+    checkDescribe: 'at most 50 characters',
+    note: 'TRANSFER.TO_VNAME — string_50 (XSD :382), minOccurs=0, Optional QC-88 only ' +
+      '(row 111).' },
   { fieldKey: 'carrierVrn', container: 'transfer', labelKey: 'form234.carrierVrnLabel',
     kind: 'depends-on-another-answer',
     state: (ctx, values) => (ctx.subformId === 88 && String(values.useCrInd ?? '') === 'Y'
@@ -645,9 +682,6 @@ export const DFO_REQUIREMENTS_TABLE: FieldRequirement[] = [
     note: 'LANDING.VRN — Rule 642 mandates it when the carrier question is Yes; Rule 641 ' +
       'blocks it otherwise. A LANDING element that SEALS UNDER THE TRANSFER CLOSE (recon-' +
       'proven). Tier-1 field (on logs that also record a transfer).' },
-  { fieldKey: 'transferFrom', container: 'transfer', labelKey: null, kind: 'app-supplied',
-    state: per({ 88: 'mandatory' }),
-    note: 'Rule 251 FROM pair — the app writes the profile’s own vessel number.' },
 
   // ── PERSONAL USE — close button only renders when non-blank; the check is a formality ──
   { fieldKey: 'personalUse', container: 'personalUse', labelKey: 'form234.personalUseLabel',

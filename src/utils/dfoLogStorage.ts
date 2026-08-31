@@ -1189,6 +1189,14 @@ export const getCompletionDetails = (log: DfoLog): CompletionDetails => {
     dateFished: log.dateFished || d.dateFished,
     sailDate: d.sailDate, sailTime: d.timeSailed,  // S147 Phase 3 — Rule 248
     transferWt: d.transferWt,
+    // S154D (feed site F3 of three): the SOURCE pair and both vessel names. The meter counts
+    // the FROM pair as one mandatory unit exactly like the TO pair, so omitting these keys
+    // here would raise the denominator and never the numerator — a QC transfer that the close
+    // door accepts would sit forever at 95%. This was caught by completionMeter's own test,
+    // which is the only reason a missed feed is visible at all: the other two feeds are inside
+    // a React component and no test in this repo can see them.
+    transferFromVrn: d.transferFromVrn, transferFromPndNum: d.transferFromPndNum,
+    transferFromVname: d.transferFromVname, transferToVname: d.transferToVname,
     transferToVrn: d.transferToVrn, transferToPndNum: d.transferToPndNum,
     carrierVrn: d.carrierVrn, useCrInd: d.useCrInd,
   };

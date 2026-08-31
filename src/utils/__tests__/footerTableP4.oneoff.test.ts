@@ -55,7 +55,10 @@ describe('S141 P4 — newly refused classes (R3.1)', () => {
   });
 
   test('Transfer destination: exactly ONE of VRN / pound — both filled now refused (Rule 252)', () => {
-    const values = { transferTime: '10:00', transferWt: '50', carrierVrn: '', useCrInd: 'N' };
+    // S154D R1: a source keeps Rule 251 satisfied, so `one` can still be length 0 and the
+    // assertions stay about the DESTINATION pair, which is what this test is named for.
+    const values = { transferTime: '10:00', transferWt: '50', carrierVrn: '', useCrInd: 'N',
+      transferFromVrn: '106462' };
     const both = missingInContainer('transfer', { subformId: 88 },
       { ...values, transferToVrn: '104460', transferToPndNum: 'P12' });
     expect(both.map(m => m.reason)).toContain('pair-both');

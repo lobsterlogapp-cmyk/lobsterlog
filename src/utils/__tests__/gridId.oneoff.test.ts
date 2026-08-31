@@ -67,6 +67,8 @@ function qcLog(fmaId: string, gridId?: string): any {
       transferYes: 'true',
       transferTime: '15:00',
       transferWt: '50',
+      // S154D R1 — Rule 251 needs a source; the profile no longer supplies one.
+      transferFromVrn: '106462',
       transferToVrn: '106461',
     },
   };

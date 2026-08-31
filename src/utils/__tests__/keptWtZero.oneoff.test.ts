@@ -87,6 +87,11 @@ function qc88Log(): any {
   log.data.carrierVrn = '106460';
   log.data.transferYes = 'true';
   log.data.transferTime = '15:00';
+  // S154D R1: a QC transfer now needs a SOURCE as well as a destination — Rule 251 forces
+  // one of FROM_VRN/FROM_PND_NUM, and the app no longer supplies the harvester's own VRN on
+  // his behalf. 106462 is a third reserved Quebec vessel (Test_values p.1), so source,
+  // destination and carrier are three different boats, as a real transfer would be.
+  log.data.transferFromVrn = '106462';
   log.data.transferToVrn = '106461';
   return log;
 }
@@ -176,7 +181,11 @@ describe('Rule 789 (a): a typed 0 is a declared quantity and reaches the transmi
     expect(xml).toContain('<WT>0.00</WT>');
     // everything the old guard deleted along with the weight:
     expect(xml).toContain('<TRNSF_DT>');
-    expect(xml).toContain('<FROM_VRN>123456</FROM_VRN>');
+    // S154D R1: this used to read <FROM_VRN>123456</FROM_VRN> — the PROFILE's vessel number,
+    // which the generator supplied unasked. It now carries what the harvester typed, and
+    // 123456 (the fixture profile's VRN) must not appear in the transfer at all.
+    expect(xml).toContain('<FROM_VRN>106462</FROM_VRN>');
+    expect(xml).not.toContain('<FROM_VRN>123456</FROM_VRN>');
     expect(xml).toContain('<TO_VRN>106461</TO_VRN>');
     // BOTH copies of the harvester's own note
     expect((xml.match(/<REM>Transfer remark<\/REM>/g) ?? [])).toHaveLength(2);
