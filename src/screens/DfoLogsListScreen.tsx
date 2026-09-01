@@ -212,6 +212,14 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
     let xml = '';
     let soap = '';
     let fileName = '';
+    // S156 defect 93: §13.3.1 wants the vessel number, the trip number and the XSD result on every
+    // transmission ATTEMPT, failures included — and the failure closure below could not reach any
+    // of them. captainProfile and validation are consts inside the try, one scope level in; these
+    // two holders put their values in the closure's reach exactly as xml/soap/fileName already do.
+    // The trip number needs no holder: `log` is this function's own parameter and the closure
+    // already reads it two lines into the record.
+    let vrnAtSend = '';
+    let xsdValid: boolean | undefined;
 
     // S148 defect 87 / R-A: wsErrCode is written ONLY when DFO actually sent a code. The HTTP
     // 4xx/5xx and timeout/network callers pass nothing, so the sheet's "DFO response code" row
@@ -233,6 +241,17 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
         failureKind,
         ...(wsErrCode && { wsErrCode }),
         ...(fileName && { fileName }),
+        // S156 defect 93 — the §13.3.1 snapshot, same three fields the success record writes at
+        // the bottom of this function, now captured for a FAILED attempt too. Each is guarded so
+        // an unknown value stays ABSENT: an empty string would claim this app knows the vessel
+        // number is "". tripNum reads straight off `log` in the success literal's own wording, so
+        // the two records cannot drift apart on how they fetch the same field. xsdValid IS guarded
+        // here although the success literal writes it bare — that literal is only ever reached
+        // after validateElogXml has run, whereas the catch below can be entered by a throw from
+        // loadCaptainProfile or generateElogXml, before validation exists.
+        ...(vrnAtSend && { vrn: vrnAtSend }),
+        ...(log.tripNum !== undefined && { tripNum: log.tripNum }),
+        ...(xsdValid !== undefined && { xsdValid }),
         xmlSnapshot: xml,
         soapSnapshot: soap,
       };
@@ -241,6 +260,8 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
 
     try {
       const captainProfile = await loadCaptainProfile();
+      // S156 defect 93: hand the failure closure the vessel number as it was at send time.
+      vrnAtSend = captainProfile.vesselNumber;
 
       // Captain Profile must be complete before anything can be sent to DFO.
       const profileCheck = isProfileComplete(captainProfile);
@@ -284,6 +305,8 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
       xml = generateElogXml(log, captainProfile);
 
       const validation = validateElogXml(xml, log.subformId ?? 90);
+      // S156 defect 93: same, for the XSD result. Stays undefined if we never got this far.
+      xsdValid = validation.valid;
       // S142 defect 52: the validator now refuses a 38b/41 MAR log with no hail (Rules
       // 2024/2025) and a hail group whose company code is missing. Both are the same job
       // from the deck — finish the hail card — so they share ONE message in the harvester's
