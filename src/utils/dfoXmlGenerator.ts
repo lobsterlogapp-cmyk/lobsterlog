@@ -8,7 +8,7 @@ import forge from 'node-forge';
 import { DfoLog, ExtraSarDetail, ExtraEffortNode, sarBlocksFromData, effortsFromData, fishesHailArea, storedWeightUnit, LBS_PER_KG } from './dfoLogStorage';
 import type { WeightUnit } from './dfoLogStorage';
 import { CaptainProfile } from './captainStorage';
-import { getDfoBaitTypeList, baitConditionState, getDfoPconsSpeciesList, DFO_SPECIE_FRM_ID, DFO_PCONS_OTHER_SIZE_ID, DFO_GEAR_ID, DFO_SOFT_VER, DFO_CIE_ID, DFO_FORM_VER_ID, DFO_HLIN_COMPANY_LIST, DFO_HLOUT_COMPANY_LIST, DFO_FMA_HLIN_REQUIRED, DFO_FMA_LGRID_REQUIRED, DFO_SUBFORM_REGISTRY, DFO_FMA_38B, DFO_FMA_NB_VNTCH, DFO_FMA_NB_VNTCH_YOU, DFO_FMA_STAT_SECT_REQUIRED, DFO_STAT_SECT_BY_FMA, DFO_FMA_GRID_MAP, DFO_GRID_BLOCKED_FMA, clampCoord4, effortCoordsEntryAllowed } from './dfoConstants';
+import { getDfoBaitTypeList, baitConditionState, getDfoPconsSpeciesList, DFO_SPECIE_FRM_ID, DFO_GEAR_ID, DFO_SOFT_VER, DFO_CIE_ID, DFO_FORM_VER_ID, DFO_HLIN_COMPANY_LIST, DFO_HLOUT_COMPANY_LIST, DFO_FMA_HLIN_REQUIRED, DFO_FMA_LGRID_REQUIRED, DFO_SUBFORM_REGISTRY, DFO_FMA_38B, DFO_FMA_NB_VNTCH, DFO_FMA_NB_VNTCH_YOU, DFO_FMA_STAT_SECT_REQUIRED, DFO_STAT_SECT_BY_FMA, DFO_FMA_GRID_MAP, DFO_GRID_BLOCKED_FMA, clampCoord4, effortCoordsEntryAllowed } from './dfoConstants';
 import { MV_PARTNERSHIP_TYPE, MV_GRID } from '../data/reftables';
 
 export function generateReportUid(): string {
@@ -188,7 +188,9 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
     // dgClosePconsBycatch for legacy rows without their own. The NOTE does not — see the
     // REM lines below.
     // S153: closeUnit as on the bait row above.
-    const bycatch: { species: string; lbs: string; usage?: string; closeDt?: string; closeUnit?: WeightUnit; note?: string }[] = JSON.parse(d.bycatchEntries || '[]');
+    // S158: specieSzId is the harvester's PCONS.SPECIE_SZ_ID pick (GLF-89 only). Optional on
+    // the shape because rows saved before S158 do not carry it — see the szLine comment below.
+    const bycatch: { species: string; lbs: string; usage?: string; specieSzId?: string; closeDt?: string; closeUnit?: WeightUnit; note?: string }[] = JSON.parse(d.bycatchEntries || '[]');
     // S124 Phase 2: PCONS closes per occurrence — one for the bycatch block, one for personal
     // use (Rule 1505, §5.2.1). S125 Phase 9: each DG_CLOSE_DT comes ONLY from its real stored
     // stamp — no now() fallback (the legacy shared `dgClosePcons` fallback is gone). Absent → the
@@ -204,12 +206,25 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
       // dropped the whole bycatch PCONS row — species, size, usage, close stamp and note.
       const wt = kgStr(e.lbs, storedWeightUnit(e.closeUnit), true);
       if (!wt) continue;
-      const szId = specieId === '1312' ? '826' : String(DFO_PCONS_OTHER_SIZE_ID);
       // SPECIE_SZ_ID: Mandatory for GLF(89) ONLY; Blocked for QC(88)/MAR(90)/NL(91) per
       // Subforms_requirements_234.xlsx row 56 (Session 59 recon — the sheet is stricter
-      // than the XSD, which lists it optional). Overturns the earlier 88/89/91-emit
-      // resolution. Lobster 826 / non-lobster 10670 value logic unchanged for the 89 case.
-      const szLine = subformId === 89 ? `      <SPECIE_SZ_ID>${szId}</SPECIE_SZ_ID>\n` : '';
+      // than the XSD, which lists it optional). The subform gate is unchanged.
+      //
+      // S158 (defect 133) — THE VALUE IS NOW THE HARVESTER'S. It used to be derived here:
+      // 826 (Small) for lobster, 10670 (Unsized) for everything else. DFO asks the harvester
+      // what size the catch was; the app answered for him, and two Gulf logs went to DFO
+      // carrying a size nobody had stated. There is no lobster/non-lobster distinction left
+      // to make — he states the size for whatever the row holds, so the whole conditional is
+      // gone rather than rewired.
+      //
+      // A blank cannot normally reach here: the Add Bycatch sheet refuses to create or edit a
+      // sizeless Gulf row, and the close door refuses to seal one (S158 Phase 2, the two
+      // doors). If one ever does, the element is OMITTED and validateElogXml's long-standing
+      // "SPECIE_SZ_ID is mandatory for GLF(89)" (:1336 below) blocks the send. Omitting and
+      // refusing is right; inventing a value is what this change exists to stop.
+      const szLine = subformId === 89 && (e.specieSzId ?? '').trim()
+        ? `      <SPECIE_SZ_ID>${xmlEscape(String(e.specieSzId).trim())}</SPECIE_SZ_ID>\n`
+        : '';
       const usgLine = subformId === 90 && e.usage ? `      <USG_ID>${xmlEscape(e.usage)}</USG_ID>\n` : '';
       // S134 Phase 3: the row's own stamp wins; the card-level stamp is the fallback.
       const rowClose = e.closeDt ? toCloseTimestamp(e.closeDt) : bycatchClose;

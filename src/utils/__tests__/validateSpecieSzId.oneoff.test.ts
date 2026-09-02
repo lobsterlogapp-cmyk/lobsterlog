@@ -40,7 +40,10 @@ function baseLog(subformId: number, regId: number): any {
       // S134: a bycatch entry keeps a PCONS node in every doc — the personal-use node no
       // longer emits off MAR(90), so it can't be this suite's SPECIE_SZ_ID anchor anymore.
       // 'Lobster' (1312) is on all four PCONS species lists.
-      bycatchEntries: JSON.stringify([{ species: 'Lobster', lbs: '40' }]),
+      // S158: the row now carries the size the harvester picked. It is deliberately 828
+      // (Large) on a LOBSTER row — the pre-S158 generator derived 826 (Small) for lobster, so
+      // any test that still passes with 826 on the wire would be passing on the old code path.
+      bycatchEntries: JSON.stringify([{ species: 'Lobster', lbs: '40', specieSzId: '828' }]),
       personalUse: '10',
       dgClosePcons: '2026-06-10T15:00:00.000Z',
       mmYes: 'false',
@@ -126,9 +129,31 @@ test('GLF-89 WITH value emits SPECIE_SZ_ID and trips neither guard (negative con
   const xml = generateElogXml(makeLog(89), profile);
   expect(xml).toContain('<SPECIE_SZ_ID>');
 
+  // S158: it must be the size the HARVESTER picked, exactly once, and it must not be the value
+  // the old code derived. The fixture row is Lobster with 828 chosen; pre-S158 this line was
+  // `specieId === '1312' ? '826' : …`, so 826 here would mean the derivation is still alive.
+  expect(xml).toContain('<SPECIE_SZ_ID>828</SPECIE_SZ_ID>');
+  expect(xml).not.toContain('<SPECIE_SZ_ID>826</SPECIE_SZ_ID>');
+  expect((xml.match(/<SPECIE_SZ_ID>/g) ?? []).length).toBe(1);
+
   const { errors } = validateElogXml(xml, 89);
   expect(errors.some(e => e.includes(MANDATORY_MSG))).toBe(false);
   expect(errors.some(e => e.includes('blocked'))).toBe(false);
+});
+
+// S158 — the omit-and-refuse path. A Gulf row with no stored size cannot normally be produced
+// (the sheet refuses to create one, the close door refuses to seal one), but if one ever
+// reaches the generator the element must be OMITTED and the send BLOCKED — never invented.
+test('GLF-89 with a sizeless row emits nothing and the send is refused (S158)', () => {
+  const log = makeLog(89);
+  log.data.bycatchEntries = JSON.stringify([{ species: 'Lobster', lbs: '40' }]);
+  const xml = generateElogXml(log, profile);
+
+  expect(xml).toContain('<PCONS>');            // the row itself still emits
+  expect(xml).not.toContain('<SPECIE_SZ_ID>'); // but no size is invented for it
+
+  const { errors } = validateElogXml(xml, 89);
+  expect(errors.some(e => e.includes(MANDATORY_MSG))).toBe(true);
 });
 
 test.each([88, 90, 91])('subform %s with an injected SPECIE_SZ_ID trips the blocked guard', (sf) => {

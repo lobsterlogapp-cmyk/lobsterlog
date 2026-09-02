@@ -1426,14 +1426,13 @@ export const DFO_HLOUT_COMPANY_LIST = [
   { codeId: 25097, label: 'Baywatch Dockside Monitoring' },
 ] as const;
 
-// ─── PCONS Species sizes (Rules 651a, 651b, 283a-d) ─────────
-// For Lobster (1312): Small/Canner (826) or Large/Market (828)
-// For all other species: Unsized (10670)
-export const DFO_PCONS_LOBSTER_SIZE_LIST = [
-  { codeId: 826, label: 'Small/Canner' },   // Rule 283c override
-  { codeId: 828, label: 'Large/Market' },   // Rule 283a override
-] as const;
-export const DFO_PCONS_OTHER_SIZE_ID = 10670; // Unsized
+// ─── PCONS Species sizes — RETIRED S158 (ruling R3) ─────────
+// This held DFO_PCONS_LOBSTER_SIZE_LIST (826 'Small/Canner', 828 'Large/Market') and
+// DFO_PCONS_OTHER_SIZE_ID (10670 'Unsized'). Both are gone. The size the harvester picks is
+// now a real field on the Add Bycatch sheet, and its options come from the ingested reftable
+// MV_SPECIES_SIZE (all eight rows) in DFO's own wording — 'Small' and 'Large', not the
+// canner/market wording, which appeared in no DFO table. The list was never referenced by any
+// code even before this: it rendered nothing, so 828 had no producible path.
 
 // ─── MAR Ports (NS, NB, PEI) ────────────────────────────────
 // DFO_MAR_PORT_LIST — Maritimes port set (NS + NB + PEI). Formerly a hand-typed
