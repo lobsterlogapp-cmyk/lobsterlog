@@ -64,6 +64,9 @@ export const PORTS_BY_PROVINCE: Record<number, ${iface}[]> = (() => {
   // supply descFr by codeId at render only).
   { csv: 'MV_BAIT_TYPE_rel8.csv', module: 'mvBaitType', exportName: 'MV_BAIT_TYPE', iface: 'DfoBaitType' },
   { csv: 'MV_SPECIES_rel48.csv', module: 'mvSpecies', exportName: 'MV_SPECIES', iface: 'DfoSpecies' },
+  // S158 — PCONS.SPECIE_SZ_ID (Mandatory GLF-89, Blocked 88/90/91; Subforms row 56). Eight
+  // sizes; CODE_ID/DESC_FRE/DESC_ENG are all in the shared COLUMN_MAP, so no override.
+  { csv: 'MV_SPECIES_SIZE_rel2.csv', module: 'mvSpeciesSize', exportName: 'MV_SPECIES_SIZE', iface: 'DfoSpeciesSize' },
   { csv: 'MV_SPECIMENS_CONDITION_rel1.csv', module: 'mvSpecimensCondition', exportName: 'MV_SPECIMENS_CONDITION', iface: 'DfoSpecimensCondition' },
   { csv: 'MV_SAR_LIST_rel8.csv', module: 'mvSarList', exportName: 'MV_SAR_LIST', iface: 'DfoSarList' },
   { csv: 'MV_BAIT_CONDITION_rel2.csv', module: 'mvBaitCondition', exportName: 'MV_BAIT_CONDITION', iface: 'DfoBaitCondition' },
