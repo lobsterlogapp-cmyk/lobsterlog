@@ -575,10 +575,16 @@ export const DFO_REQUIREMENTS_TABLE: FieldRequirement[] = [
   { fieldKey: 'usage', container: 'bycatchRow', labelKey: 'form234.usageLabel',
     kind: 'per-subform', state: per({ 90: 'mandatory' }),
     note: 'PCONS.USG_ID (row 58): MAR only.' },
-  { fieldKey: 'specieSzId', container: 'bycatchRow', labelKey: null, kind: 'app-supplied',
-    state: per({ 89: 'mandatory' }),
-    note: 'PCONS.SPECIE_SZ_ID (row 56): GLF-mandatory, but the app derives it (826 lobster / ' +
-      '10670 unsized) — never typed, can never be blank.' },
+  { fieldKey: 'specieSzId', container: 'bycatchRow', labelKey: 'form234.bycatchSizeLabel',
+    kind: 'per-subform', state: per({ 89: 'mandatory' }),
+    note: 'PCONS.SPECIE_SZ_ID (row 56): Mandatory GLF-89, Blocked 88/90/91 — per() defaults the ' +
+      'other three to blocked, which IS row 56. S158: was kind app-supplied ("the app derives it, ' +
+      '826 lobster / 10670 unsized — never typed, can never be blank"), which was true and was the ' +
+      'defect: DFO asks the harvester for a size and the app answered for him. Now a real field on ' +
+      'the Add Bycatch sheet, so the star, the close door and the meter all see it. The send ' +
+      'validator has always carried "mandatory for GLF(89)" (dfoXmlGenerator :1336) and could never ' +
+      'fire while the generator supplied a value; the close door has to catch a blank FIRST so a man ' +
+      'never meets it on the wharf at send time.' },
 
   // ── LANDING ──
   { fieldKey: 'portId', container: 'landing', labelKey: 'form234.portLandedLabel',

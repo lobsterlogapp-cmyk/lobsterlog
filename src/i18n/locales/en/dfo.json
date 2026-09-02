@@ -329,7 +329,9 @@
     "unitShort_kg": "KG",
     "unitLower_lbs": "lbs",
     "unitLower_kg": "kg",
-    "labelWithUnit": "{{label}} ({{unit}})"
+    "labelWithUnit": "{{label}} ({{unit}})",
+    "bycatchSizeLabel": "SIZE",
+    "pleaseSelectSize": "Please select a size."
   },
   "help": {
     "title": "Help & Support",

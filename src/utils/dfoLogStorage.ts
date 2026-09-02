@@ -1218,8 +1218,11 @@ export const getCompletionDetails = (log: DfoLog): CompletionDetails => {
 
   // Row-based optional groups: only what is MISSING counts (see the R-C note above).
   bycatchRows.forEach(r => {
+    // S158 (R3): specieSzId added — the meter counts what the close door counts. Leaving it out
+    // would show a Gulf log at 100% while a row still refuses to close.
     const p = containerProgress('bycatchRow', ctx, {
       species: r.species ?? '', lbs: r.lbs ?? '', usage: r.usage ?? '',
+      specieSzId: r.specieSzId ?? '',
     });
     addMissingOnly(p.total - p.filled);
   });

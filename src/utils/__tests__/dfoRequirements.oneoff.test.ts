@@ -209,9 +209,13 @@ describe('golden: per-subform answers', () => {
   test('app-supplied fields are documentation — never required, never in a gate list', () => {
     // reportDate left this list at P2: reclassified mandatory (S140 P2 ruling 1) so its
     // on-screen star survives the repoint — it is prefilled, so gates never find it blank.
+    // specieSzId left this list at S158 for the opposite reason: it was app-supplied because the
+    // app INVENTED the value (826 lobster / 10670 otherwise) on a field DFO asks the harvester
+    // to fill. It is now a real per-subform field — its assertions live in the add-sheet test
+    // below, and the whole point is that a gate CAN now find it blank.
     for (const [f, container] of [
       ['operName', 'trip'], ['lgbkUid', 'trip'], ['useCrInd', 'trip'],
-      ['targetSpecies', 'effort'], ['specieSzId', 'bycatchRow'],
+      ['targetSpecies', 'effort'],
       ['fin', 'form233'],
     ] as const) {
       expect(isFieldRequired(f, ctx(88))).toBe(false);
@@ -767,6 +771,25 @@ describe('P2 marks: the table answers every star the screens now draw', () => {
     }
     expect(isFieldRequired('usage', ctx(90), {}, 'bycatchRow')).toBe(true);
     expect(isFieldRequired('usage', ctx(88), {}, 'bycatchRow')).toBe(false);
+  });
+
+  // S158 (defect 133) — PCONS.SPECIE_SZ_ID, Subforms_requirements_234.xlsx row 56.
+  test('bycatch size: marked on GLF only, and the close door reports it blank there (row 56)', () => {
+    expect(isFieldRequired('specieSzId', ctx(89), {}, 'bycatchRow')).toBe(true);
+    for (const sf of [88, 90, 91]) {
+      expect(isFieldRequired('specieSzId', ctx(sf), {}, 'bycatchRow')).toBe(false);
+    }
+    // A row saved before S158 carries no size (ruling R4). On GLF the close door must refuse it;
+    // on the other three it must stay silent, because there the element is BLOCKED.
+    const legacyRow = { species: 'Crab, Rock', lbs: '40' };
+    expect(missingInContainer('bycatchRow', ctx(89), legacyRow).map(m => m.fieldKey))
+      .toEqual(['specieSzId']);
+    for (const sf of [88, 91]) {
+      expect(missingInContainer('bycatchRow', ctx(sf), legacyRow)).toEqual([]);
+    }
+    // A row WITH a size closes clean on GLF.
+    expect(missingInContainer('bycatchRow', ctx(89), { ...legacyRow, specieSzId: '827' }))
+      .toEqual([]);
   });
 
   test('the 222 five + coordinates mark only when the interaction answer is Yes (Rules 593/594)', () => {

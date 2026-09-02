@@ -123,7 +123,7 @@ import { useTranslation } from 'react-i18next';
 import CrewSelector from './CrewSelector';
 import DfoPortSelector from './DfoPortSelector';
 import { CrewMember } from '../utils/crewStorage';
-import { MV_CATCH_USAGE, MV_PARTNERSHIP_TYPE, MV_SAR_LIST, MV_SPECIMENS_CONDITION, MV_BAIT_CONDITION, MV_GRID, MV_BAIT_TYPE, MV_SPECIES } from '../data/reftables';
+import { MV_CATCH_USAGE, MV_PARTNERSHIP_TYPE, MV_SAR_LIST, MV_SPECIMENS_CONDITION, MV_BAIT_CONDITION, MV_GRID, MV_BAIT_TYPE, MV_SPECIES, MV_SPECIES_SIZE } from '../data/reftables';
 
 export interface FullDfoFormHandle {
   saveDraft: () => Promise<void>;
@@ -149,7 +149,11 @@ type BaitEntry = { type: string; lbs: string; condition?: number; closeDt?: stri
 // fall back to the card-level dgClosePconsBycatch STAMP at emit. S142 (defect 44): there is
 // no longer a note fallback — a row with no note of its own emits no REM.
 // S153 Phase 1: closeUnit as on BaitEntry above — same shape, same reason, same fallback.
-type BycatchEntry = { species: string; lbs: string; usage?: string; closeDt?: string; closeUnit?: WeightUnit; note?: string; };
+// S158 (defect 133): specieSzId is the PCONS.SPECIE_SZ_ID the harvester picks — Mandatory on
+// GLF(89), Blocked on 88/90/91 (Subforms row 56). OPTIONAL on the type, like usage: rows saved
+// before S158 carry no size and must read BLANK (ruling R4 — never pre-seed the value the app
+// used to invent). The close door is what asks him for it.
+type BycatchEntry = { species: string; lbs: string; usage?: string; specieSzId?: string; closeDt?: string; closeUnit?: WeightUnit; note?: string; };
 
 // S124 Phase 3: the dgClose* data-map keys the generator reads for DG_CLOSE_DT, one per
 // closeable Form-234 data group (§5.2.1). PCONS has two occurrences (bycatch + personal use);
@@ -591,6 +595,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // BT_COND_ID (bait condition) — held only while a 'mandatory' bait type is selected
   const [sheetCondition, setSheetCondition] = useState<number | null>(null);
   const [sheetConditionOpen, setSheetConditionOpen] = useState(false);
+  // S158: PCONS.SPECIE_SZ_ID (bycatch size) — held as the STRING codeId, matching how usage is
+  // held and how the row stores it. Rendered on GLF(89) only; the other three never open it.
+  const [sheetSpecieSzId, setSheetSpecieSzId] = useState('');
+  const [sheetSizeOpen, setSheetSizeOpen] = useState(false);
   // S134: per-row bait note (Ruling B) + edit-in-place. sheetEditIndex null = adding a new
   // row; a number = the bait row being EDITED — confirm must UPDATE that row, never append
   // (an append here would double the bait weight sent to DFO).
@@ -1462,6 +1470,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     setSheetUsage('');
     setSheetCondition(null);
     setSheetConditionOpen(false);
+    setSheetSpecieSzId('');     // S158: a new row starts with no size — he picks it
+    setSheetSizeOpen(false);
     setSheetDropdownOpen(false);
     setSheetNote('');           // S134: a new row starts with a fresh, empty note (Ruling B)
     setSheetEditIndex(null);    // S134: add mode
@@ -1503,6 +1513,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     setSheetUsage(e.usage ?? '');
     setSheetCondition(null);
     setSheetConditionOpen(false);
+    // S158 ruling R4: a row saved before this change carries no size and reads BLANK. The old
+    // derived value (826 lobster / 10670 otherwise) is NEVER seeded back — the app must not
+    // put words in his mouth twice. Blank here, and the close door asks him.
+    setSheetSpecieSzId(e.specieSzId ?? '');
+    setSheetSizeOpen(false);
     setSheetDropdownOpen(false);
     setSheetNote(e.note ?? '');
     setSheetEditIndex(index);
@@ -1521,6 +1536,14 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     }
     if (sheetMode === 'bycatch' && subformId === 90 && !sheetUsage) {
       Alert.alert(t('form234.missingTitle'), t('form234.pleaseSelectUsage'));
+      return;
+    }
+    // S158: PCONS.SPECIE_SZ_ID is Mandatory on GLF(89) (Subforms row 56) — the usage HARD BLOCK
+    // one line above, mirrored. This is the FIRST of the two doors: it stops a sizeless row
+    // being created at all. The close door (bycatchRowMissing → the requirements table) is the
+    // second, and it is the one that catches rows saved before this change.
+    if (sheetMode === 'bycatch' && subformId === 89 && !sheetSpecieSzId) {
+      Alert.alert(t('form234.missingTitle'), t('form234.pleaseSelectSize'));
       return;
     }
     if (sheetMode === 'bait') {
@@ -1561,10 +1584,16 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       if (sheetEditIndex != null) {
         // S134 Phase 3 edit-in-place: UPDATE the row — appending here would double the
         // bycatch weight sent to DFO.
+        // S158 (W2): specieSzId joins the named members. The spread preserves an existing size,
+        // but without naming it here the sheet could not CHANGE one — an edit would silently
+        // keep the old pick.
         setBycatchEntries(prev => prev.map((en, i) =>
-          i === sheetEditIndex ? { ...en, species: finalType, lbs: sheetLbs.trim(), usage: sheetUsage || undefined, note } : en));
+          i === sheetEditIndex ? { ...en, species: finalType, lbs: sheetLbs.trim(), usage: sheetUsage || undefined, specieSzId: sheetSpecieSzId || undefined, note } : en));
       } else {
-        const newRow: BycatchEntry = { species: finalType, lbs: sheetLbs.trim(), usage: sheetUsage || undefined, note };
+        // S158 (W1): this literal names every member a new row gets. A member missing HERE is
+        // never written at all, and TypeScript cannot warn — every member past species/lbs is
+        // optional.
+        const newRow: BycatchEntry = { species: finalType, lbs: sheetLbs.trim(), usage: sheetUsage || undefined, specieSzId: sheetSpecieSzId || undefined, note };
         // S134 Phase 3: adopt-on-add — a NEW row must never inherit a close through the
         // legacy card-stamp fallback (same one value-preserving rewrite as bait).
         const legacyCardStamp = closes['dgClosePconsBycatch'];
@@ -3268,9 +3297,14 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     });
   };
 
+  // S158 (R2): specieSzId added — this is THE close door for the size. A row saved before this
+  // change has no size, so on GLF(89) it reports missing here and the row refuses to close
+  // until he picks one (ruling R4). Without this line the star would appear on a field no gate
+  // checked, and the blank would travel all the way to the send validator.
   const bycatchRowMissing = (e: BycatchEntry): MissingField[] =>
     missingInContainer('bycatchRow', { subformId, fmaId }, {
       species: e.species ?? '', lbs: e.lbs ?? '', usage: e.usage ?? '',
+      specieSzId: e.specieSzId ?? '',
     });
 
   // The generic closeSection serves five stamps — each maps to its table container.
@@ -5670,6 +5704,46 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                         >
                           <Text style={[styles.dropdownItemText, sheetCondition === c.codeId && styles.dropdownItemTextActive]}>
                             {refDesc(c, isFr)}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </>
+              )}
+
+              {/* S158 — PCONS.SPECIE_SZ_ID. Mandatory on GLF(89), BLOCKED on 88/90/91
+                  (Subforms_requirements_234.xlsx row 56), so ruling R2: on the other three this
+                  renders NOTHING — no label, no empty control. The gate is the same inline
+                  subform conditional the MAR-only USAGE field uses further down; the shape of the
+                  control is the bait CONDITION dropdown above, and it sits in the same slot,
+                  between the species and the weight, which is also its XSD order (SPECIE_SZ_ID
+                  before WT). All eight MV_SPECIES_SIZE rows are offered (ruling R1) in DFO's own
+                  wording (ruling R3) — descFr in French via refDesc, exactly like bait condition,
+                  so there are no per-option i18n keys to drift. */}
+              {sheetMode === 'bycatch' && subformId === 89 && (
+                <>
+                  <Text style={[styles.sheetLabel, { marginTop: 14 }]}>
+                    {t('form234.bycatchSizeLabel')}{isFieldRequired('specieSzId', { subformId, fmaId }, {}, 'bycatchRow') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}
+                  </Text>
+                  <TouchableOpacity style={styles.dropdownBtn} onPress={() => setSheetSizeOpen(o => !o)}>
+                    <Text style={[styles.dropdownBtnText, !sheetSpecieSzId && styles.dropdownPlaceholder]}>
+                      {sheetSpecieSzId
+                        ? refDesc(MV_SPECIES_SIZE.find(s => String(s.codeId) === sheetSpecieSzId), isFr) ?? t('form234.selectPlaceholder')
+                        : t('form234.selectPlaceholder')}
+                    </Text>
+                    <ChevronDown size={16} color="#64748B" />
+                  </TouchableOpacity>
+                  {sheetSizeOpen && (
+                    <View style={styles.dropdownList}>
+                      {MV_SPECIES_SIZE.map(s => (
+                        <TouchableOpacity
+                          key={s.codeId}
+                          style={[styles.dropdownItem, sheetSpecieSzId === String(s.codeId) && styles.dropdownItemActive]}
+                          onPress={() => { setSheetSpecieSzId(String(s.codeId)); setSheetSizeOpen(false); }}
+                        >
+                          <Text style={[styles.dropdownItemText, sheetSpecieSzId === String(s.codeId) && styles.dropdownItemTextActive]}>
+                            {refDesc(s, isFr)}
                           </Text>
                         </TouchableOpacity>
                       ))}
