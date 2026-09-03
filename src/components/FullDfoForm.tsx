@@ -1553,7 +1553,14 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   };
 
   const handleSheetConfirm = () => {
-    const finalType = sheetSelectedType === 'Other' ? sheetCustomType.trim() : sheetSelectedType;
+    // S159 (R4): a bait 'Other' stores DFO's own list label — the generator's label match
+    // then emits BT_TYP_ID 814. The wire never carries the harvester's typed text; his
+    // description lives in the row's NOTE (emitted as this occurrence's REM). The
+    // custom-text path survives ONLY for the bycatch legacy-reopen (no bycatch list
+    // offers 'Other'). A legacy free-text bait row that reopens as Other and is saved
+    // converts to the lawful 814 shape — visibly, with the note required below.
+    const finalType = sheetSelectedType === 'Other' && sheetMode === 'bycatch'
+      ? sheetCustomType.trim() : sheetSelectedType;
     if (!finalType) {
       Alert.alert(t('form234.missingTitle'), sheetMode === 'bait' ? t('form234.pleaseSelectBait') : t('form234.pleaseSelectSpecies'));
       return;
@@ -1572,6 +1579,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     // second, and it is the one that catches rows saved before this change.
     if (sheetMode === 'bycatch' && subformId === 89 && !sheetSpecieSzId) {
       Alert.alert(t('form234.missingTitle'), t('form234.pleaseSelectSize'));
+      return;
+    }
+    // S159 (R4): bait 'Other' (814) requires the description in the row's NOTE — the
+    // door, not the lock: refused HERE, before the row exists, never after it seals.
+    // Same dialog as the S158 size refusal one block up (one pattern, not two).
+    if (sheetMode === 'bait' && sheetSelectedType === 'Other' && !sheetNote.trim()) {
+      Alert.alert(t('form234.missingTitle'), t('form234.pleaseDescribeBaitNote'));
       return;
     }
     if (sheetMode === 'bait') {
@@ -3328,6 +3342,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       type: e.type ?? '', lbs: e.lbs ?? '',
       condition: e.condition != null ? String(e.condition) : '',
       baitTypeCodeId: String(codeId),
+      // S159 (R4): the second door for the Other(814) note — the sheet gate is the first.
+      note: e.note ?? '',
     });
   };
 
@@ -5711,15 +5727,23 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 </View>
               )}
 
-              {sheetSelectedType === 'Other' && (
+              {/* S159 (R4): the free-text name box survives ONLY for the bycatch
+                  legacy-reopen. A bait 'Other' has no name box — the wire carries DFO's
+                  own code 814 and the description goes in the NOTE below (required). */}
+              {sheetSelectedType === 'Other' && sheetMode === 'bycatch' && (
                 <TextInput
                   style={[styles.input, { marginTop: 8 }]}
                   value={sheetCustomType}
                   onChangeText={setSheetCustomType}
-                  placeholder={sheetMode === 'bait' ? t('form234.enterBaitType') : t('form234.enterSpecies')}
+                  placeholder={t('form234.enterSpecies')}
                   placeholderTextColor="#94A3B8"
                   autoFocus
                 />
+              )}
+              {sheetSelectedType === 'Other' && sheetMode === 'bait' && (
+                <Text style={[styles.emptyHint, { marginTop: 8, marginBottom: 0 }]}>
+                  {t('form234.baitOtherDescribeLine')}
+                </Text>
               )}
 
               {/* BT_COND_ID — only when the rule makes condition mandatory for this type/region
@@ -5839,17 +5863,25 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               />
 
               {/* S134 (Ruling B / Phase 3 B2): per-row note — one REM per BAIT_USED / PCONS
-                  occurrence. Optional (unmarked-means-optional, the screen convention). */}
+                  occurrence. Optional (unmarked-means-optional, the screen convention) —
+                  EXCEPT bait 'Other' (S159 R4): the requirements row makes the note
+                  mandatory when the bait-type codeId is 814, and the star follows it. */}
               {(sheetMode === 'bait' || sheetMode === 'bycatch') && (
                 <>
                   <Text style={[styles.sheetLabel, { marginTop: 14 }]}>
                     {sheetMode === 'bait' ? t('form234.baitNoteLabel') : t('form234.bycatchNoteLabel')}
+                    {sheetMode === 'bait' && isFieldRequired('note', { subformId, fmaId }, { baitTypeCodeId: String(sheetSelectedCodeId ?? 0) }, 'baitRow') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}
                   </Text>
                   <TextInput
                     style={[styles.input, { minHeight: 60, textAlignVertical: 'top' }]}
                     value={sheetNote}
                     onChangeText={setSheetNote}
-                    placeholder={sheetMode === 'bait' ? t('form234.baitNotePlaceholder') : t('form234.bycatchNotePlaceholder')}
+                    placeholder={sheetMode === 'bait'
+                      // S159 walk defect: on a bait Other the note is REQUIRED — the label's
+                      // star and the box's own hint must make the same claim (the S155
+                      // principle). Every other note keeps the shared optional wording.
+                      ? (sheetSelectedType === 'Other' ? t('form234.baitNoteRequiredPlaceholder') : t('form234.baitNotePlaceholder'))
+                      : t('form234.bycatchNotePlaceholder')}
                     placeholderTextColor="#94A3B8"
                     multiline
                     maxLength={2000}

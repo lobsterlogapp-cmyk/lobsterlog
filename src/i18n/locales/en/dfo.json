@@ -331,7 +331,10 @@
     "unitLower_kg": "kg",
     "labelWithUnit": "{{label}} ({{unit}})",
     "bycatchSizeLabel": "SIZE",
-    "pleaseSelectSize": "Please select a size."
+    "pleaseSelectSize": "Please select a size.",
+    "baitOtherDescribeLine": "Describe the bait in the note below.",
+    "pleaseDescribeBaitNote": "Please describe the bait in the note.",
+    "baitNoteRequiredPlaceholder": "Describe the bait (required)"
   },
   "help": {
     "title": "Help & Support",

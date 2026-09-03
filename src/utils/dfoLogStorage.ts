@@ -1239,6 +1239,9 @@ export const getCompletionDetails = (log: DfoLog): CompletionDetails => {
       type: r.type ?? '', lbs: r.lbs ?? '',
       condition: r.condition != null ? String(r.condition) : '',
       baitTypeCodeId: String(codeId),
+      // S159 (R4): the meter counts what the close door counts (the S158 R3 principle) —
+      // an Other(814) row's blank note must show as missing, not as 100%.
+      note: r.note ?? '',
     });
     addMissingOnly(p.total - p.filled);
   });

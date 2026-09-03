@@ -332,7 +332,10 @@
     "unitLower_kg": "kg",
     "labelWithUnit": "{{label}} ({{unit}})",
     "bycatchSizeLabel": "GROSSEUR",
-    "pleaseSelectSize": "Sélectionnez une grosseur."
+    "pleaseSelectSize": "Sélectionnez une grosseur.",
+    "baitOtherDescribeLine": "Décrivez l’appât dans la note ci-dessous.",
+    "pleaseDescribeBaitNote": "Décrivez l’appât dans la note.",
+    "baitNoteRequiredPlaceholder": "Décrivez l’appât (obligatoire)"
   },
   "help": {
     "title": "Aide et soutien",

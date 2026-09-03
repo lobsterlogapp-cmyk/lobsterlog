@@ -566,6 +566,16 @@ export const DFO_REQUIREMENTS_TABLE: FieldRequirement[] = [
       '3060 (MAR: blocked only for refuse/electronic/synthetic) run in opposite directions; ' +
       'the existing baitConditionState formula is absorbed unchanged. Pass the row’s bait ' +
       'type codeId as values.baitTypeCodeId.' },
+  { fieldKey: 'note', container: 'baitRow', labelKey: 'form234.baitNoteLabel',
+    kind: 'depends-on-another-answer',
+    state: (_ctx, values) =>
+      Number(values.baitTypeCodeId ?? 0) === 814 ? 'mandatory' : 'optional',
+    note: 'BAIT_USED.REM — S159 R4: on a bait Other (814, MAR list) the wire carries DFO’s ' +
+      'own code and the harvester’s description rides this row’s REM, so the note is ' +
+      'mandatory exactly then. Every other bait type keeps it optional. The sheet gate is ' +
+      'the first door (refused before the row exists); this row is the close door. No ' +
+      'legacy row can trip it — the old path stored the typed text, never the label ' +
+      '\'Other\'.' },
 
   // ── BYCATCH ROW — same add-sheet armour ──
   { fieldKey: 'species', container: 'bycatchRow', labelKey: 'form234.speciesLabel',
