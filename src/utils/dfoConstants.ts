@@ -1429,10 +1429,20 @@ export const DFO_HLOUT_COMPANY_LIST = [
 // ─── PCONS Species sizes — RETIRED S158 (ruling R3) ─────────
 // This held DFO_PCONS_LOBSTER_SIZE_LIST (826 'Small/Canner', 828 'Large/Market') and
 // DFO_PCONS_OTHER_SIZE_ID (10670 'Unsized'). Both are gone. The size the harvester picks is
-// now a real field on the Add Bycatch sheet, and its options come from the ingested reftable
-// MV_SPECIES_SIZE (all eight rows) in DFO's own wording — 'Small' and 'Large', not the
-// canner/market wording, which appeared in no DFO table. The list was never referenced by any
-// code even before this: it rendered nothing, so 828 had no producible path.
+// now a real field on the Add Bycatch sheet, sourced from the ingested reftable
+// MV_SPECIES_SIZE. ⚠ S159 correction: the S158 claim that the canner/market wording
+// "appeared in no DFO table" was true of the reftable but wrong about the fact sheet —
+// Rules 283a–d MANDATE it as displayed text ("must be 'Large/Market' instead of 'Large'"),
+// the same override-the-reftable fence class as Rule 663 above. Hence the map below.
+
+// ─── PCONS bycatch size wording — Rules 283a–d fence (S159 R3) ──────────────
+// The fact sheet mandates the description the client application DISPLAYS for two size
+// codes, overriding the MV_SPECIES_SIZE reftable wording. Display-only: the stored and
+// emitted value stays the codeId; no XML byte moves.
+export const DFO_SPECIE_SZ_LABEL_OVERRIDE: Record<number, { en: string; fr: string }> = {
+  826: { en: 'Small/Canner', fr: 'Petit/Canner' }, // Rules 283c (EN) / 283d (FR)
+  828: { en: 'Large/Market', fr: 'Gros/Market' },  // Rules 283a (EN) / 283b (FR)
+};
 
 // ─── MAR Ports (NS, NB, PEI) ────────────────────────────────
 // DFO_MAR_PORT_LIST — Maritimes port set (NS + NB + PEI). Formerly a hand-typed

@@ -116,6 +116,7 @@ import {
   DFO_GEAR_SUBTYPE_LIST,
   DFO_HLIN_COMPANY_LIST,
   DFO_HLOUT_COMPANY_LIST,
+  DFO_SPECIE_SZ_LABEL_OVERRIDE,
   clampCoord4,
 } from '../utils/dfoConstants';
 import { loadCaptainProfile } from '../utils/captainStorage';
@@ -197,6 +198,15 @@ const BYCATCH_USAGE_OPTIONS = PCONS_USAGE_CODE_IDS
 // fallback (S98 pattern). Display-only; stored values stay the codeId.
 const refDesc = (r: { descEn: string; descFr?: string } | undefined, isFr: boolean) =>
   r ? (isFr && r.descFr) || r.descEn : undefined;
+
+// S159 (R3) — bycatch size display only: Rules 283a–d mandate the displayed wording for
+// 826/828, overriding the MV_SPECIES_SIZE reftable; every other code falls through to
+// refDesc. The stored/emitted value stays the codeId — no XML byte moves.
+const sizeDesc = (s: { codeId: number; descEn: string; descFr?: string } | undefined, isFr: boolean) => {
+  if (!s) return undefined;
+  const fence = DFO_SPECIE_SZ_LABEL_OVERRIDE[s.codeId];
+  return fence ? (isFr ? fence.fr : fence.en) : refDesc(s, isFr);
+};
 
 // S101b Round C (L1/L3) — FR display for the bait-type and catch/bycatch species labels,
 // keyed by codeId from the vendored MV tables. Display-only: BaitEntry.type /
@@ -5718,9 +5728,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                   subform conditional the MAR-only USAGE field uses further down; the shape of the
                   control is the bait CONDITION dropdown above, and it sits in the same slot,
                   between the species and the weight, which is also its XSD order (SPECIE_SZ_ID
-                  before WT). All eight MV_SPECIES_SIZE rows are offered (ruling R1) in DFO's own
-                  wording (ruling R3) — descFr in French via refDesc, exactly like bait condition,
-                  so there are no per-option i18n keys to drift. */}
+                  before WT). All eight MV_SPECIES_SIZE rows are offered (S158 ruling R1) —
+                  descFr in French, so there are no per-option i18n keys to drift. S159 (R3):
+                  the wording for 826/828 is the Rules 283a–d fence via sizeDesc, not the raw
+                  reftable. */}
               {sheetMode === 'bycatch' && subformId === 89 && (
                 <>
                   <Text style={[styles.sheetLabel, { marginTop: 14 }]}>
@@ -5729,7 +5740,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                   <TouchableOpacity style={styles.dropdownBtn} onPress={() => setSheetSizeOpen(o => !o)}>
                     <Text style={[styles.dropdownBtnText, !sheetSpecieSzId && styles.dropdownPlaceholder]}>
                       {sheetSpecieSzId
-                        ? refDesc(MV_SPECIES_SIZE.find(s => String(s.codeId) === sheetSpecieSzId), isFr) ?? t('form234.selectPlaceholder')
+                        ? sizeDesc(MV_SPECIES_SIZE.find(s => String(s.codeId) === sheetSpecieSzId), isFr) ?? t('form234.selectPlaceholder')
                         : t('form234.selectPlaceholder')}
                     </Text>
                     <ChevronDown size={16} color="#64748B" />
@@ -5743,7 +5754,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                           onPress={() => { setSheetSpecieSzId(String(s.codeId)); setSheetSizeOpen(false); }}
                         >
                           <Text style={[styles.dropdownItemText, sheetSpecieSzId === String(s.codeId) && styles.dropdownItemTextActive]}>
-                            {refDesc(s, isFr)}
+                            {sizeDesc(s, isFr)}
                           </Text>
                         </TouchableOpacity>
                       ))}
