@@ -118,6 +118,7 @@ import {
   DFO_HLOUT_COMPANY_LIST,
   DFO_SPECIE_SZ_LABEL_OVERRIDE,
   glfLegalSpecieSzIds,
+  DFO_SAR_SPECIES_OFFERED,
   clampCoord4,
 } from '../utils/dfoConstants';
 import { loadCaptainProfile } from '../utils/captainStorage';
@@ -2953,7 +2954,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       </TouchableOpacity>
       {extraSarDropdown?.idx === i && extraSarDropdown.kind === 'species' && (
         <View style={styles.dropdownList}>
-          {MV_SAR_LIST.map(o => (
+          {/* S159 (P3, Rule 7): options from the six-species whitelist; the DISPLAY of a
+              stored value (above) keeps resolving from the whole reftable, so a legacy
+              off-list species still renders its proper name. */}
+          {DFO_SAR_SPECIES_OFFERED.map(o => (
             <TouchableOpacity
               key={o.codeId}
               style={[styles.dropdownItem, s.species === String(o.codeId) && styles.dropdownItemActive]}
@@ -5391,7 +5395,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               sarSpecies, setSarSpecies,
               sarSpeciesOther, setSarSpeciesOther,
               sarDropdownOpen, setSarDropdownOpen,
-              MV_SAR_LIST,
+              DFO_SAR_SPECIES_OFFERED, // S159 (P3, Rule 7): the six-species whitelist
+
               sarWhat, setSarWhat,
               sarLat, (v: string) => { setSarLat(v); setSarGpsSrc('manual'); },
               sarLng, (v: string) => { setSarLng(v); setSarGpsSrc('manual'); },

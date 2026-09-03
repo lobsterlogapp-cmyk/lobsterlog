@@ -5,7 +5,7 @@
 // DO NOT hand-edit code IDs — they come directly from DFO CSVs
 // ============================================================
 
-import { MV_PORT, MV_PROVINCE } from '../data/reftables';
+import { MV_PORT, MV_PROVINCE, MV_SAR_LIST } from '../data/reftables';
 import { MV_STAT_SECTION_VS_FMA, type DfoStatSectionVsFma } from '../data/reftables';
 
 // Clamp a hand-typed / high-precision coordinate to the XSD's max 4 decimal places before
@@ -1454,6 +1454,23 @@ export const glfLegalSpecieSzIds = (
   speciesCodeId: number | string | null | undefined,
 ): string[] =>
   String(speciesCodeId) === '1312' ? ['826', '828'] : ['10670'];
+
+// ─── SAR species offered — Rule 7 (S159 P3) ─────────────────────────────────
+// "Only these values must be available and considered valid" — one static list of six,
+// everywhere on the 234, no subform or area condition. The MV_SAR_LIST reftable stays
+// WHOLE (it is DFO's table; 17 rows, and stored legacy values still resolve their
+// display from it) — only the OPTION SOURCE narrows, the same shape as P1. Among the
+// eleven rows this removes: 15620, the North Atlantic Right Whale, offered until S159
+// and forbidden by the rule.
+export const DFO_SAR_RULE7_CODE_IDS = new Set([
+  1363,  // Bass, Striped
+  14009, // Shark, White
+  10561, // Turtle, Leatherback Sea
+  4561,  // Turtle, Loggerhead Sea
+  1375,  // Wolffish, Northern
+  1382,  // Wolffish, Spotted
+]);
+export const DFO_SAR_SPECIES_OFFERED = MV_SAR_LIST.filter(r => DFO_SAR_RULE7_CODE_IDS.has(r.codeId));
 
 // ─── MAR Ports (NS, NB, PEI) ────────────────────────────────
 // DFO_MAR_PORT_LIST — Maritimes port set (NS + NB + PEI). Formerly a hand-typed
