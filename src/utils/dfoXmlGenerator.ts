@@ -8,7 +8,7 @@ import forge from 'node-forge';
 import { DfoLog, ExtraSarDetail, ExtraEffortNode, sarBlocksFromData, effortsFromData, fishesHailArea, storedWeightUnit, LBS_PER_KG } from './dfoLogStorage';
 import type { WeightUnit } from './dfoLogStorage';
 import { CaptainProfile } from './captainStorage';
-import { getDfoBaitTypeList, baitConditionState, getDfoPconsSpeciesList, DFO_SPECIE_FRM_ID, DFO_GEAR_ID, DFO_SOFT_VER, DFO_CIE_ID, DFO_FORM_VER_ID, DFO_HLIN_COMPANY_LIST, DFO_HLOUT_COMPANY_LIST, DFO_FMA_HLIN_REQUIRED, DFO_FMA_LGRID_REQUIRED, DFO_SUBFORM_REGISTRY, DFO_FMA_38B, DFO_FMA_NB_VNTCH, DFO_FMA_NB_VNTCH_YOU, DFO_FMA_STAT_SECT_REQUIRED, DFO_STAT_SECT_BY_FMA, DFO_FMA_GRID_MAP, DFO_GRID_BLOCKED_FMA, clampCoord4, effortCoordsEntryAllowed } from './dfoConstants';
+import { getDfoBaitTypeList, baitConditionState, getDfoPconsSpeciesList, DFO_SPECIE_FRM_ID, DFO_GEAR_ID, DFO_SOFT_VER, DFO_CIE_ID, DFO_FORM_VER_ID, DFO_HLIN_COMPANY_LIST, DFO_HLOUT_COMPANY_LIST, DFO_FMA_HLIN_REQUIRED, DFO_FMA_LGRID_REQUIRED, DFO_SUBFORM_REGISTRY, DFO_FMA_38B, DFO_FMA_NB_VNTCH, DFO_FMA_NB_VNTCH_YOU, DFO_FMA_STAT_SECT_REQUIRED, DFO_STAT_SECT_BY_FMA, DFO_FMA_GRID_MAP, DFO_GRID_BLOCKED_FMA, clampCoord4, effortCoordsEntryAllowed, glfLegalSpecieSzIds } from './dfoConstants';
 import { MV_PARTNERSHIP_TYPE, MV_GRID } from '../data/reftables';
 
 export function generateReportUid(): string {
@@ -1353,6 +1353,21 @@ export function validateElogXml(xml: string, subformId: number): { valid: boolea
       }
       if ((subformId === 88 || subformId === 91) && hasSz) {
         errors.push(`${p}.PCONS[${pci + 1}]: SPECIE_SZ_ID is blocked for subform ${subformId}`);
+      }
+      // S159: Rules 651a/b legality on GLF(89) — lobster (1312) may carry only 826/828,
+      // every other species only 10670. Before this check a rule-invalid size TRANSMITTED
+      // (DFO's gateway does not enforce 651b either — CONF 164080/164081 both accepted
+      // with crab+826). Refusing beats transmitting; the sheet now makes an illegal pair
+      // unconstructable, so this fires only on rows stored before S159.
+      if (subformId === 89 && hasSz) {
+        const sz = get(pc, 'SPECIE_SZ_ID')[0]?.text ?? '';
+        const sp = get(pc, 'SPECIE_ID')[0]?.text ?? '';
+        if (!glfLegalSpecieSzIds(sp).includes(sz)) {
+          errors.push(
+            `${p}.PCONS[${pci + 1}]: SPECIE_SZ_ID ${sz} is not a lawful size for ` +
+            `SPECIE_ID ${sp} (Rule ${sp === '1312' ? '651a' : '651b'})`
+          );
+        }
       }
     });
 

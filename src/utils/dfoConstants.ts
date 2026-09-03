@@ -1444,6 +1444,17 @@ export const DFO_SPECIE_SZ_LABEL_OVERRIDE: Record<number, { en: string; fr: stri
   828: { en: 'Large/Market', fr: 'Gros/Market' },  // Rules 283a (EN) / 283b (FR)
 };
 
+// ─── GLF bycatch size legality — Rules 651a/b (S159 R1) ─────────────────────
+// The ONE encoding of the fact sheet's size matrix, consumed by the sheet's option
+// list, the species-change drop, the edit seed AND the send validator — never two
+// lists that agree by coincidence (the S158 P1-class trap). Lobster (1312) → 826
+// Small / 828 Large only (651a); every other species → 10670 Unsized only (651b).
+// Reverses the S158 R1 "offer all eight" ruling, which was made without 651a/b read.
+export const glfLegalSpecieSzIds = (
+  speciesCodeId: number | string | null | undefined,
+): string[] =>
+  String(speciesCodeId) === '1312' ? ['826', '828'] : ['10670'];
+
 // ─── MAR Ports (NS, NB, PEI) ────────────────────────────────
 // DFO_MAR_PORT_LIST — Maritimes port set (NS + NB + PEI). Formerly a hand-typed
 // 2,229-row literal; now a filtered VIEW of the generated MV_PORT table, proven row-for-row

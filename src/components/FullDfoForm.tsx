@@ -117,6 +117,7 @@ import {
   DFO_HLIN_COMPANY_LIST,
   DFO_HLOUT_COMPANY_LIST,
   DFO_SPECIE_SZ_LABEL_OVERRIDE,
+  glfLegalSpecieSzIds,
   clampCoord4,
 } from '../utils/dfoConstants';
 import { loadCaptainProfile } from '../utils/captainStorage';
@@ -1523,10 +1524,22 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     setSheetUsage(e.usage ?? '');
     setSheetCondition(null);
     setSheetConditionOpen(false);
-    // S158 ruling R4: a row saved before this change carries no size and reads BLANK. The old
-    // derived value (826 lobster / 10670 otherwise) is NEVER seeded back — the app must not
-    // put words in his mouth twice. Blank here, and the close door asks him.
-    setSheetSpecieSzId(e.specieSzId ?? '');
+    // S158 ruling R4: a row saved before this change carries no size and reads BLANK — the app
+    // must not put words in his mouth where a CHOICE exists. S159 (R1/R2) narrows that: on GLF
+    // the stored size is seeded only if still legal for the stored species (Rules 651a/b). A
+    // non-lobster row has exactly ONE lawful value, so blank or illegal seeds 10670 — R2's
+    // visible locked auto-fill, not a silent one. A lobster row with a blank/illegal size seeds
+    // blank: two lawful values exist, he picks. Local sheet state only — the stored row moves
+    // only when he saves the sheet.
+    {
+      const stored = e.specieSzId ?? '';
+      if (subformId === 89) {
+        const legal = glfLegalSpecieSzIds(match?.codeId);
+        setSheetSpecieSzId(legal.includes(stored) ? stored : (legal.length === 1 ? legal[0] : ''));
+      } else {
+        setSheetSpecieSzId(stored);
+      }
+    }
     setSheetSizeOpen(false);
     setSheetDropdownOpen(false);
     setSheetNote(e.note ?? '');
@@ -5665,6 +5678,17 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                           setSheetCondition(null);
                           setSheetConditionOpen(false);
                           setSheetDropdownOpen(false);
+                          // S159 (R1/R2): on a Gulf bycatch sheet the legal size set is a
+                          // function of the species — re-derive on every species change. A held
+                          // size still legal is kept; an illegal one is dropped; when exactly
+                          // one size is legal (non-lobster → 10670) it is filled, and the box
+                          // renders it locked — visible, never silent (Rules 651a/b).
+                          if (sheetMode === 'bycatch' && subformId === 89) {
+                            const legal = glfLegalSpecieSzIds(opt.codeId);
+                            setSheetSpecieSzId(prev =>
+                              legal.includes(prev) ? prev : (legal.length === 1 ? legal[0] : ''));
+                            setSheetSizeOpen(false);
+                          }
                         }}
                       >
                         <Text style={[styles.dropdownItemText, sheetSelectedType === opt.label && styles.dropdownItemTextActive]}>
@@ -5728,40 +5752,68 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                   subform conditional the MAR-only USAGE field uses further down; the shape of the
                   control is the bait CONDITION dropdown above, and it sits in the same slot,
                   between the species and the weight, which is also its XSD order (SPECIE_SZ_ID
-                  before WT). All eight MV_SPECIES_SIZE rows are offered (S158 ruling R1) —
-                  descFr in French, so there are no per-option i18n keys to drift. S159 (R3):
-                  the wording for 826/828 is the Rules 283a–d fence via sizeDesc, not the raw
-                  reftable. */}
-              {sheetMode === 'bycatch' && subformId === 89 && (
-                <>
-                  <Text style={[styles.sheetLabel, { marginTop: 14 }]}>
-                    {t('form234.bycatchSizeLabel')}{isFieldRequired('specieSzId', { subformId, fmaId }, {}, 'bycatchRow') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}
-                  </Text>
-                  <TouchableOpacity style={styles.dropdownBtn} onPress={() => setSheetSizeOpen(o => !o)}>
-                    <Text style={[styles.dropdownBtnText, !sheetSpecieSzId && styles.dropdownPlaceholder]}>
-                      {sheetSpecieSzId
-                        ? sizeDesc(MV_SPECIES_SIZE.find(s => String(s.codeId) === sheetSpecieSzId), isFr) ?? t('form234.selectPlaceholder')
-                        : t('form234.selectPlaceholder')}
+                  before WT). S159 (R1/R2, Rules 651a/b): the options are a function of the
+                  species picked above — lobster offers exactly 826/828 (in the Rules 283a–d
+                  fenced wording via sizeDesc), any other species has exactly one lawful size,
+                  so the box renders it FILLED AND LOCKED (visible, no tap — hiding it and
+                  filling silently is the shape of defect 133). No species yet → the box is an
+                  inert placeholder, because the legal set does not exist until the species
+                  does. Reverses the S158 R1 "offer all eight" ruling. */}
+              {sheetMode === 'bycatch' && subformId === 89 && (() => {
+                const szLegal = sheetSelectedType ? glfLegalSpecieSzIds(sheetSelectedCodeId) : null;
+                return (
+                  <>
+                    <Text style={[styles.sheetLabel, { marginTop: 14 }]}>
+                      {t('form234.bycatchSizeLabel')}{isFieldRequired('specieSzId', { subformId, fmaId }, {}, 'bycatchRow') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}
                     </Text>
-                    <ChevronDown size={16} color="#64748B" />
-                  </TouchableOpacity>
-                  {sheetSizeOpen && (
-                    <View style={styles.dropdownList}>
-                      {MV_SPECIES_SIZE.map(s => (
-                        <TouchableOpacity
-                          key={s.codeId}
-                          style={[styles.dropdownItem, sheetSpecieSzId === String(s.codeId) && styles.dropdownItemActive]}
-                          onPress={() => { setSheetSpecieSzId(String(s.codeId)); setSheetSizeOpen(false); }}
-                        >
-                          <Text style={[styles.dropdownItemText, sheetSpecieSzId === String(s.codeId) && styles.dropdownItemTextActive]}>
-                            {sizeDesc(s, isFr)}
+                    {szLegal && szLegal.length > 1 ? (
+                      <>
+                        <TouchableOpacity style={styles.dropdownBtn} onPress={() => setSheetSizeOpen(o => !o)}>
+                          <Text style={[styles.dropdownBtnText, !sheetSpecieSzId && styles.dropdownPlaceholder]}>
+                            {sheetSpecieSzId
+                              ? sizeDesc(MV_SPECIES_SIZE.find(s => String(s.codeId) === sheetSpecieSzId), isFr) ?? t('form234.selectPlaceholder')
+                              : t('form234.selectPlaceholder')}
                           </Text>
+                          <ChevronDown size={16} color="#64748B" />
                         </TouchableOpacity>
-                      ))}
-                    </View>
-                  )}
-                </>
-              )}
+                        {sheetSizeOpen && (
+                          <View style={styles.dropdownList}>
+                            {MV_SPECIES_SIZE.filter(s => szLegal.includes(String(s.codeId))).map(s => (
+                              <TouchableOpacity
+                                key={s.codeId}
+                                style={[styles.dropdownItem, sheetSpecieSzId === String(s.codeId) && styles.dropdownItemActive]}
+                                onPress={() => { setSheetSpecieSzId(String(s.codeId)); setSheetSizeOpen(false); }}
+                              >
+                                <Text style={[styles.dropdownItemText, sheetSpecieSzId === String(s.codeId) && styles.dropdownItemTextActive]}>
+                                  {sizeDesc(s, isFr)}
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        )}
+                      </>
+                    ) : szLegal ? (
+                      // Exactly one lawful size (non-lobster → 10670 Unsized): filled and
+                      // locked. A plain View — no touch target, no chevron. The value shown is
+                      // the value saved: the species-change handler and the edit seed both hold
+                      // sheetSpecieSzId at the one legal id whenever this branch renders.
+                      <View style={styles.dropdownBtn}>
+                        <Text style={styles.dropdownBtnText}>
+                          {sizeDesc(MV_SPECIES_SIZE.find(s => String(s.codeId) === szLegal[0]), isFr)}
+                        </Text>
+                      </View>
+                    ) : (
+                      // No species picked yet — inert placeholder; the species control above
+                      // must be answered first.
+                      <View style={styles.dropdownBtn}>
+                        <Text style={[styles.dropdownBtnText, styles.dropdownPlaceholder]}>
+                          {t('form234.selectPlaceholder')}
+                        </Text>
+                      </View>
+                    )}
+                  </>
+                );
+              })()}
 
               {/* S153: the sheet only ever edits an OPEN row (a closed row has no Edit button), so the
                   unit here is always the live toggle — for BOTH elements this one key serves. */}
