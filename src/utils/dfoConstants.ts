@@ -1793,6 +1793,12 @@ export function baitConditionState(
   return DFO_BAIT_NO_CONDITION.has(baitTypeCodeId) ? 'blocked' : 'mandatory';
 }
 
+// S159 (P1): NO LONGER the bycatch picker's option source. This is the Rule 975a/b/c
+// CATCH matrix, kept as the record of that whitelist — but the bycatch UI feeds PCONS,
+// whose availability rule is 974a/b/c, so the picker and the FR display now read
+// getDfoPconsSpeciesList below (one set for options AND emit). On QC/NL the two differ
+// by 34 species, every one of which was offered, stored, and then refused at send
+// (SPECIE_ID '0'). On GLF/MAR the sets coincide, which is why the gap hid there.
 export function getDfoCatchSpeciesList(subformId: number) {
   switch (subformId) {
     case 89: return DFO_CATCH_SPECIES_GLF;
@@ -1803,6 +1809,9 @@ export function getDfoCatchSpeciesList(subformId: number) {
   }
 }
 
+// S159 (P1): the ONE per-subform species set for the bycatch path — the picker's
+// options, the FR display join, AND the generator's SPECIE_ID emit lookup all read this
+// (Rule 974a: QC/NL → Rock crab + Lobster only; 974b GLF; 974c MAR).
 export function getDfoPconsSpeciesList(subformId: number) {
   switch (subformId) {
     case 89: return DFO_PCONS_SPECIES_GLF;

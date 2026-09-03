@@ -106,7 +106,7 @@ import {
   getDfoFmaList,
   getDfoBaitTypeList,
   baitConditionState,
-  getDfoCatchSpeciesList,
+  getDfoPconsSpeciesList,
   DFO_SUBFORM_FIELD_CONFIG,
   DFO_FMA_38B,
   effortCoordsEntryAllowed,
@@ -1515,7 +1515,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const openBycatchEdit = (index: number) => {
     const e = bycatchEntries[index];
     if (!e) return;
-    const match = getDfoCatchSpeciesList(subformId).find(o => o.label === e.species);
+    // S159 (P1): matched against the PCONS list — the same set the picker offers and the
+    // generator emits from (Rule 974a/b/c). A legacy row holding an old 36-list species
+    // (e.g. 'Crab, Jonah' on QC) matches nothing and reopens as custom 'Other' with the
+    // stored text — same un-emittable row it always was (emit '0' → send refused), now
+    // visibly outside the list instead of dressed as a lawful pick.
+    const match = getDfoPconsSpeciesList(subformId).find(o => o.label === e.species);
     setSheetMode('bycatch');
     setSheetSelectedType(match ? e.species : 'Other');
     setSheetSelectedCodeId(match?.codeId ?? null);
@@ -1641,7 +1646,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const getSheetOptions = (): { label: string; codeId?: number }[] => {
     switch (sheetMode) {
       case 'bait': return getDfoBaitTypeList(subformId).map(b => ({ label: b.label, codeId: b.codeId }));
-      case 'bycatch': return getDfoCatchSpeciesList(subformId).map(s => ({ label: s.label, codeId: s.codeId }));
+      // S159 (P1, Rule 974a/b/c): the option source IS the emit lookup's list — one set,
+      // never two lists agreeing by coincidence (34 of the old 36 QC/NL options had no
+      // emit row and every pick of one died at the send gate).
+      case 'bycatch': return getDfoPconsSpeciesList(subformId).map(s => ({ label: s.label, codeId: s.codeId }));
       default: return [];
     }
   };
@@ -1656,7 +1664,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   };
   const bycatchSpeciesDisplay = (label: string): string => {
     if (!isFr) return label;
-    const row = getDfoCatchSpeciesList(subformId).find(s => s.label === label);
+    // S159 (P1): same PCONS list as the options and the emit. A legacy off-list species
+    // falls back to its stored EN label (the documented fallback) — which is also what
+    // the emit would fail to match, so the odd label is the honest render.
+    const row = getDfoPconsSpeciesList(subformId).find(s => s.label === label);
     return (row && SPECIES_FR.get(row.codeId)) || label;
   };
   const sheetTypeDisplay = (label: string): string =>
