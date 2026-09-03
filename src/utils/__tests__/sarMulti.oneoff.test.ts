@@ -148,18 +148,26 @@ test('single-SAR log emits BYTE-IDENTICAL XML to the pre-multi-SAR generator', (
 
 test('two-SAR log emits two complete SAR nodes in order and validates', () => {
   const log = withHail(makeSarLog());
+  // S159 Phase 6: this is the ONE test in the suite that runs validateElogXml, and its
+  // stored species were the invented S121 fixture ids 35427/35110 — in no reftable, and
+  // now correctly refused by the Rule 7 whitelist check. Repaired by giving THIS test a
+  // lawful source (Leatherback 10561 block 1 / Loggerhead 4561 block 2), never by
+  // weakening the errors-empty assertion (the S154D fixture rule). makeSarLog() itself
+  // keeps 35427 so the PRE_S121_SAR_BASELINE byte pin stays byte-untouched — that pin
+  // test never validates, it compares generator bytes.
+  log.data.sarSpecies = '10561';
   log.data.extraSars = JSON.stringify([{
-    species: '35110', lat: '44.3000', lng: '-66.8000', gpsSrc: 'manual',
+    species: '4561', lat: '44.3000', lng: '-66.8000', gpsSrc: 'manual',
     date: '2026-06-10', time: '11:40', nbSpcmn: '2', condId: '38997',
   }]);
   const xml = generateElogXml(closeAllGroups(log), profile);
   expect(count(xml, '<SAR>')).toBe(2);
   expect(count(xml, '</SAR>')).toBe(2);
   expect(count(xml, '<SAR_DT>')).toBe(2);
-  expect(xml).toContain('<SPECIE_ID>35427</SPECIE_ID>');
-  expect(xml).toContain('<SPECIE_ID>35110</SPECIE_ID>');
+  expect(xml).toContain('<SPECIE_ID>10561</SPECIE_ID>');
+  expect(xml).toContain('<SPECIE_ID>4561</SPECIE_ID>');
   // Encounter order preserved: block 1 first
-  expect(xml.indexOf('<SPECIE_ID>35427</SPECIE_ID>')).toBeLessThan(xml.indexOf('<SPECIE_ID>35110</SPECIE_ID>'));
+  expect(xml.indexOf('<SPECIE_ID>10561</SPECIE_ID>')).toBeLessThan(xml.indexOf('<SPECIE_ID>4561</SPECIE_ID>'));
   // The second encounter carries its own coords/mode/count/condition.
   // S153B (U4) RE-PIN: this block stores lat '44.3000'; clampCoord4 rounds to 4 dp without
   // padding, so String(Math.round(44.3 * 10000) / 10000) === '44.3'. The MODE="M" half of the

@@ -8,7 +8,7 @@ import forge from 'node-forge';
 import { DfoLog, ExtraSarDetail, ExtraEffortNode, sarBlocksFromData, effortsFromData, fishesHailArea, storedWeightUnit, LBS_PER_KG } from './dfoLogStorage';
 import type { WeightUnit } from './dfoLogStorage';
 import { CaptainProfile } from './captainStorage';
-import { getDfoBaitTypeList, baitConditionState, getDfoPconsSpeciesList, DFO_SPECIE_FRM_ID, DFO_GEAR_ID, DFO_SOFT_VER, DFO_CIE_ID, DFO_FORM_VER_ID, DFO_HLIN_COMPANY_LIST, DFO_HLOUT_COMPANY_LIST, DFO_FMA_HLIN_REQUIRED, DFO_FMA_LGRID_REQUIRED, DFO_SUBFORM_REGISTRY, DFO_FMA_38B, DFO_FMA_NB_VNTCH, DFO_FMA_NB_VNTCH_YOU, DFO_FMA_STAT_SECT_REQUIRED, DFO_STAT_SECT_BY_FMA, DFO_FMA_GRID_MAP, DFO_GRID_BLOCKED_FMA, clampCoord4, effortCoordsEntryAllowed, glfLegalSpecieSzIds } from './dfoConstants';
+import { getDfoBaitTypeList, baitConditionState, getDfoPconsSpeciesList, DFO_SPECIE_FRM_ID, DFO_GEAR_ID, DFO_SOFT_VER, DFO_CIE_ID, DFO_FORM_VER_ID, DFO_HLIN_COMPANY_LIST, DFO_HLOUT_COMPANY_LIST, DFO_FMA_HLIN_REQUIRED, DFO_FMA_LGRID_REQUIRED, DFO_SUBFORM_REGISTRY, DFO_FMA_38B, DFO_FMA_NB_VNTCH, DFO_FMA_NB_VNTCH_YOU, DFO_FMA_STAT_SECT_REQUIRED, DFO_STAT_SECT_BY_FMA, DFO_FMA_GRID_MAP, DFO_GRID_BLOCKED_FMA, clampCoord4, effortCoordsEntryAllowed, glfLegalSpecieSzIds, DFO_SAR_RULE7_CODE_IDS } from './dfoConstants';
 import { MV_PARTNERSHIP_TYPE, MV_GRID } from '../data/reftables';
 
 export function generateReportUid(): string {
@@ -1368,6 +1368,23 @@ export function validateElogXml(xml: string, subformId: number): { valid: boolea
             `SPECIE_ID ${sp} (Rule ${sp === '1312' ? '651a' : '651b'})`
           );
         }
+      }
+    });
+
+    // S159 Phase 6: SAR.SPECIE_ID legality — Rule 7 permits exactly six species-at-risk
+    // values, everywhere on the 234 (no subform or area condition). Same pattern as the
+    // Phase-2 651a/b check above; the validator reads the SAME whitelist the picker
+    // offers (DFO_SAR_RULE7_CODE_IDS) — one source of truth, never a second copy. The
+    // picker made an off-list pick unreachable at S159 P3; this closes the door on a
+    // LEGACY stored value, which until now transmitted (the id leaf typed it, nothing
+    // valued it). A missing SPECIE_ID stays the structural spec's error, not this one's.
+    get(trip, 'SAR').forEach((sar, si) => {
+      const sp = get(sar, 'SPECIE_ID')[0]?.text ?? '';
+      if (sp && !DFO_SAR_RULE7_CODE_IDS.has(Number(sp))) {
+        errors.push(
+          `${p}.SAR[${si + 1}]: SPECIE_ID ${sp} is not one of the six Rule 7 ` +
+          `species-at-risk values`
+        );
       }
     });
 
