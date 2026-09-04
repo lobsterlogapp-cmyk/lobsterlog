@@ -18,6 +18,8 @@ import {
   loadAllLogs,
   hasAnyClosedGroup,
   rowsAnyClosed,
+  saveActiveDraft,
+  loadActiveDraft,
   saveTransmissionRecord,
   saveXmlArchiveEntry,
   loadTransmissionRegister,
@@ -77,12 +79,54 @@ test('a fully open draft deletes: ok, gone from the store, register and archive 
   await expectRegisterAndArchiveUnmoved(before);
 });
 
-test('deleting an id that does not exist stays idempotent-ok and moves nothing', async () => {
+test('deleting an id that does not exist is ok BUT flagged notFound, and moves nothing', async () => {
   const log = makeLog();
   await saveLog(log);
   const res = await deleteLog('LL-20991231-999');
-  expect(res).toEqual({ ok: true });
+  expect(res).toEqual({ ok: true, notFound: true });
   expect((await loadAllLogs()).map(l => l.id)).toEqual([log.id]);
+});
+
+test('a real delete never carries the notFound flag', async () => {
+  const log = makeLog();
+  await saveLog(log);
+  const res = await deleteLog(log.id);
+  expect(res).toEqual({ ok: true });
+  expect('notFound' in res).toBe(false);
+});
+
+// --- the S95 crash-scratch (@lobsterlog:dfo_active_draft) ---
+
+test('deleting a log clears a crash-scratch carrying the SAME id (no resurrection orphan)', async () => {
+  const log = makeLog();
+  await saveLog(log);
+  await saveActiveDraft(log);
+  expect(await deleteLog(log.id)).toEqual({ ok: true });
+  expect(await loadActiveDraft()).toBeNull();
+});
+
+test('deleting a log leaves a crash-scratch for a DIFFERENT id alone', async () => {
+  const log = makeLog();
+  const otherScratch = makeLog({ id: 'LL-20260902-001', lgbkUid: 'GHIJKL' });
+  await saveLog(log);
+  await saveActiveDraft(otherScratch);
+  expect(await deleteLog(log.id)).toEqual({ ok: true });
+  expect((await loadActiveDraft())?.id).toBe(otherScratch.id);
+});
+
+test('a REFUSED delete leaves the matching scratch alone (the crash snapshot survives a refusal)', async () => {
+  const log = makeLog({}, { dgCloseEffort: STAMP });
+  await saveLog(log);
+  await saveActiveDraft(log);
+  expect(await deleteLog(log.id)).toEqual({ ok: false, reason: 'closedGroup' });
+  expect((await loadActiveDraft())?.id).toBe(log.id);
+});
+
+test('a notFound delete leaves the scratch alone', async () => {
+  const scratch = makeLog();
+  await saveActiveDraft(scratch);
+  expect(await deleteLog('LL-20991231-999')).toEqual({ ok: true, notFound: true });
+  expect((await loadActiveDraft())?.id).toBe(scratch.id);
 });
 
 // --- refused: one test per closure home ---

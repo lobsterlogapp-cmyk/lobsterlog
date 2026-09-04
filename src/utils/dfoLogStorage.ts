@@ -575,19 +575,33 @@ export const loadLogById = async (id: string): Promise<DfoLog | null> => {
 //                   permits for transmitted groups, which "may" allows.
 //   'closedGroup' — the A.1.2 prohibition itself, via hasAnyClosedGroup (the one predicate).
 //   'error'       — the storage layer failed; nothing was destroyed.
-// Deleting an id that does not exist stays idempotent-ok (today's behaviour, Gate 0 ruling).
+// Deleting an id that does not exist stays ok BUT carries `notFound: true` (Gate 1 ruling,
+// superseding Gate 0's plain idempotent-ok): a wrong-id bug must never look like a successful
+// delete. Nothing is written on that path — there is nothing to remove.
+// On a REAL delete, a matching S95 crash-scratch (same id) is cleared too — otherwise a crash
+// survivor could offer to "restore" a log the harvester just deleted (resurrection orphan).
+// A scratch for a DIFFERENT id is left alone, and a refused delete never touches the scratch
+// (the crash snapshot must survive a refusal). Best-effort: a scratch failure never fails the
+// delete — the scratch is transient device-local crash-safety, not user data.
 // The transmission register and xml_archive are untouched on every path — §13.4 requires it.
 export type DeleteRefusal = 'sent' | 'closedGroup' | 'error';
-export type DeleteLogResult = { ok: true } | { ok: false; reason: DeleteRefusal };
+export type DeleteLogResult =
+  | { ok: true; notFound?: true }
+  | { ok: false; reason: DeleteRefusal };
 
 export const deleteLog = async (id: string): Promise<DeleteLogResult> => {
   try {
     const existing = await loadAllLogs();
     const target = existing.find((l) => l.id === id);
-    if (target?.sentToDfo === true) return { ok: false, reason: 'sent' };
-    if (target && hasAnyClosedGroup(target)) return { ok: false, reason: 'closedGroup' };
+    if (!target) return { ok: true, notFound: true };
+    if (target.sentToDfo === true) return { ok: false, reason: 'sent' };
+    if (hasAnyClosedGroup(target)) return { ok: false, reason: 'closedGroup' };
     const filtered = existing.filter((l) => l.id !== id);
     await AsyncStorage.setItem(dfoKey(DFO_STORE_BASES.dfo_logs), JSON.stringify(filtered));
+    try {
+      const scratch = await loadActiveDraft();
+      if (scratch?.id === id) await clearActiveDraft();
+    } catch { /* best-effort — the delete itself already succeeded */ }
     return { ok: true };
   } catch (err) {
     console.error('Failed to delete DFO log:', err);
