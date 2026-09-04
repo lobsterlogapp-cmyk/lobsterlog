@@ -565,16 +565,33 @@ export const loadLogById = async (id: string): Promise<DfoLog | null> => {
   return all.find((l) => l.id === id) || null;
 };
 
-// Delete a log by id
-export const deleteLog = async (id: string): Promise<boolean> => {
+// --- S160: delete a log by id — REFUSED for sent logs and for logs with any closed group ---
+// The refusal lives HERE, in the function, not only in the hidden button (Gate 0 condition 1;
+// the effortDeleteRefused / S140 P3 pattern): a future caller that skips the render gate can
+// no longer destroy a closed-untransmitted data group (Standard v6.1 A.1.2). Refusal is a
+// returned result the caller can act on — never a throw, never a silent no-op.
+//   'sent'        — checked FIRST, so a sent log (whose groups are also closed) names the
+//                   truer reason. S124 ruled sent logs undeletable; stricter than A.1.2
+//                   permits for transmitted groups, which "may" allows.
+//   'closedGroup' — the A.1.2 prohibition itself, via hasAnyClosedGroup (the one predicate).
+//   'error'       — the storage layer failed; nothing was destroyed.
+// Deleting an id that does not exist stays idempotent-ok (today's behaviour, Gate 0 ruling).
+// The transmission register and xml_archive are untouched on every path — §13.4 requires it.
+export type DeleteRefusal = 'sent' | 'closedGroup' | 'error';
+export type DeleteLogResult = { ok: true } | { ok: false; reason: DeleteRefusal };
+
+export const deleteLog = async (id: string): Promise<DeleteLogResult> => {
   try {
     const existing = await loadAllLogs();
+    const target = existing.find((l) => l.id === id);
+    if (target?.sentToDfo === true) return { ok: false, reason: 'sent' };
+    if (target && hasAnyClosedGroup(target)) return { ok: false, reason: 'closedGroup' };
     const filtered = existing.filter((l) => l.id !== id);
     await AsyncStorage.setItem(dfoKey(DFO_STORE_BASES.dfo_logs), JSON.stringify(filtered));
-    return true;
+    return { ok: true };
   } catch (err) {
     console.error('Failed to delete DFO log:', err);
-    return false;
+    return { ok: false, reason: 'error' };
   }
 };
 
@@ -710,6 +727,18 @@ export function rowsAllClosed(entriesJson?: string): boolean {
 }
 // Bait-named alias kept so the S134 bait-pilot call sites and tests stay untouched.
 export const baitRowsAllClosed = rowsAllClosed;
+
+// S160: the ANY-row twin, for the delete gate. rowsAllClosed answers the SEND question ("is
+// this group finished?"); this answers the DESTRUCTION question ("is anything in here sealed?")
+// — Standard v6.1 A.1.2 prohibits destroying a closed-untransmitted group, and one closed row
+// is one closed occurrence. Same failure posture as rowsAllClosed: an unparseable array reads
+// as no-row-closures (the legacy card keys in hasAnyClosedGroup stay armed either way).
+export function rowsAnyClosed(entriesJson?: string): boolean {
+  try {
+    const rows = JSON.parse(entriesJson || '[]') as { closeDt?: string }[];
+    return rows.some(r => !!r.closeDt);
+  } catch { return false; }
+}
 
 // S134 T1: stamp every still-open row with `stamp`; rows that already carry their own
 // closeDt are untouched (skip, never restamp). Serves bait AND bycatch (S134 Phase 3),
@@ -892,6 +921,39 @@ export function effortDeleteRefused(
   } catch {
     return false;
   }
+}
+
+// --- S160: THE DELETE GATE (Standard v6.1, Appendix A.1.2) ---
+// "Deletion prohibited: This data group is closed and has not yet been transmitted. Data must
+// be transmitted before it can be destroyed." Destroying a whole log destroys every data group
+// in it, so a log containing ANY closed group refuses. This is the ONE predicate the deleteLog
+// guard and every Delete door read (S159 P6 pattern: the guard reads the same rule the button
+// reads, never a second copy) — effortDeleteRefused above is the same idea one level down.
+//
+// STRICT BY RULING (Gate 0): any stamp anywhere refuses — including a stamp on a group the log
+// no longer *uses* (an effortYes flipped to 'false' after dgCloseEffort was stamped). A.1.2
+// keys on the group's STATUS, not on whether the current answers still emit it, and §5.2.1
+// makes a closure irreversible. That is why this is NOT derived from usedDataGroupKeys.
+//
+// The card-level keys listed here are the flat stamps with no per-occurrence reader of their
+// own. dgCloseEffort and dgCloseSar are deliberately ABSENT from the list: the effort and SAR
+// readers below already fold them in (effort 1's stamp IS dgCloseEffort; the legacy dgCloseSar
+// closed every block at once), and naming them twice would be a second copy of that rule.
+// The legacy bait/bycatch card stamps ARE here: nothing writes them since S134, but a legacy
+// log still carries them, and they must refuse even if its rows array is empty or unreadable.
+const CARD_LEVEL_CLOSE_KEYS = [
+  'dgCloseLanding', 'dgClosePconsPersonal', 'dgCloseTransfer',
+  'dgCloseHlin', 'dgCloseHlout',
+  'dgCloseBaitUsed', 'dgClosePconsBycatch',
+] as const;
+
+export function hasAnyClosedGroup(log: Pick<DfoLog, 'data'>): boolean {
+  const d = log.data ?? {};
+  return effortsAnyClosed(d)               // dgCloseEffort + every effort 2+ closeDt
+      || sarBlocksAnyClosed(d)             // dgCloseSar + sarCloseDt + every extraSars closeDt
+      || rowsAnyClosed(d.baitEntries)      // per-row bait closures (S134)
+      || rowsAnyClosed(d.bycatchEntries)   // per-row bycatch closures (S134 P3)
+      || CARD_LEVEL_CLOSE_KEYS.some(k => !!d[k]);
 }
 
 // S137 Phase 6: true when ANY effort answered marine-mammal Yes — effort 1's flat mmYes and
