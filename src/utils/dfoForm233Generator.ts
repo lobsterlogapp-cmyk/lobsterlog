@@ -6,6 +6,9 @@ import { CaptainProfile } from './captainStorage';
 import { buildSaveIncomingFileEnvelope, toCloseTimestamp } from './dfoXmlGenerator';
 import { DFO_CIE_ID, DFO_SOFT_VER } from './dfoConstants';
 import { dfoKey, DFO_STORE_BASES } from './dfoStorageKeys';
+// S160 Phase 3B: the one delete decision + shared result shape (no cycle — dfoLogStorage
+// imports no generator; verified before this import was added).
+import { formEntryDeleteOffered, DeleteLogResult } from './dfoLogStorage';
 
 const THREE_YEARS_MS = 94608000000;
 
@@ -83,12 +86,22 @@ export async function loadForm233EntryByUid(uid: string): Promise<Form233Entry |
 
 // S125 7a: delete one entry by uid (mirrors dfoLogStorage.deleteLog). Used by 7c/Phase 8
 // (draft discard / delete). Rewrites the array without the uid.
-export async function deleteForm233Entry(uid: string): Promise<void> {
+// S160 Phase 3B: the refusal lives in the function (the deleteLog pattern). The 233 is a
+// SINGLE data group (REPORT) — one closeDt is its whole closure census; stamped-and-unsent
+// is the A.1.2-refused state. Decision = dfoLogStorage.destructionOffered (one rule, no
+// per-form copy); result shape shared with deleteLog.
+export async function deleteForm233Entry(uid: string): Promise<DeleteLogResult> {
   const existing = await loadForm233Entries();
+  const target = existing.find(e => e.uid === uid);
+  if (!target) return { ok: true, notFound: true };
+  if (!formEntryDeleteOffered(target)) {
+    return { ok: false, reason: target.sentToDfo === true ? 'sent' : 'closedGroup' };
+  }
   await AsyncStorage.setItem(
     dfoKey(DFO_STORE_BASES.form233_entries),
     JSON.stringify(existing.filter(e => e.uid !== uid)),
   );
+  return { ok: true };
 }
 
 function xmlEscape(s: string): string {

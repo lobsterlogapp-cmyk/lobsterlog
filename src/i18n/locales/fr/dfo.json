@@ -361,6 +361,8 @@
     "draftWarnBody": "{{tripId}} est toujours en cours ({{filled}} champs sur {{total}}). Consultez-le avant d’en commencer un nouveau.",
     "draftWarnReview": "Le consulter",
     "draftWarnDelete": "Supprimer",
+    "draftWarnClosedBody": "Vous avez déjà un journal en cours. Il contient des sections fermées, donc il ne peut pas être supprimé. Terminez-le et transmettez-le au MPO avant d’en commencer un nouveau.",
+    "draftWarnNotNow": "Pas encore",
     "noLogs": "Aucun journal pour l’instant",
     "pending": "En attente",
     "submitted": "Transmis",

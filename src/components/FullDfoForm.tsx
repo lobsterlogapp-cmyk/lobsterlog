@@ -73,6 +73,7 @@ import {
   stampOpenSarBlocks,
   isNoteLocked,
   effortDeleteRefused,
+  closedRowActionRefused,
   LOG_REMARK_KEYS,
   seedRemarksFromLog,
   closedWeightUnit,
@@ -1495,7 +1496,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // no list label is a custom 'Other' entry — reopen it as Other + the stored text.
   const openBaitEdit = (index: number) => {
     const e = baitEntries[index];
-    if (!e) return;
+    // S160 Phase 4: closed row → no edit, structurally (missing row refuses too, as before).
+    if (closedRowActionRefused(e, closes['dgCloseBaitUsed'])) return;
     const match = getDfoBaitTypeList(subformId).find(b => b.label === e.type);
     setSheetMode('bait');
     setSheetSelectedType(match ? e.type : 'Other');
@@ -1515,7 +1517,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // updates the row in place. A stored species matching no list label is a custom 'Other'.
   const openBycatchEdit = (index: number) => {
     const e = bycatchEntries[index];
-    if (!e) return;
+    // S160 Phase 4: closed row → no edit, structurally (missing row refuses too, as before).
+    if (closedRowActionRefused(e, closes['dgClosePconsBycatch'])) return;
     // S159 (P1): matched against the PCONS list — the same set the picker offers and the
     // generator emits from (Rule 974a/b/c). A legacy row holding an old 36-list species
     // (e.g. 'Crab, Jonah' on QC) matches nothing and reopens as custom 'Other' with the
@@ -1652,8 +1655,17 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     setSheetVisible(false);
   };
 
-  const deleteBait = (index: number) => setBaitEntries(prev => prev.filter((_, i) => i !== index));
-  const deleteBycatch = (index: number) => setBycatchEntries(prev => prev.filter((_, i) => i !== index));
+  // S160 Phase 4 (the S140 effortDeleteRefused pattern): a CLOSED row can never be deleted —
+  // structural, not render-only. The trash icons are already hidden on closed rows; these
+  // guards stop any future caller from destroying a closed occurrence (§5.1 rule 6 / A.1.2).
+  const deleteBait = (index: number) => {
+    if (closedRowActionRefused(baitEntries[index], closes['dgCloseBaitUsed'])) return;
+    setBaitEntries(prev => prev.filter((_, i) => i !== index));
+  };
+  const deleteBycatch = (index: number) => {
+    if (closedRowActionRefused(bycatchEntries[index], closes['dgClosePconsBycatch'])) return;
+    setBycatchEntries(prev => prev.filter((_, i) => i !== index));
+  };
 
   // Options carry codeId so a selection resolves its codeId from the chosen list entry
   // directly (never by re-matching the label string). The bycatch codeId is DISPLAY
@@ -2809,6 +2821,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // block stays while the toggle is Yes, and the SAR save gate keeps an empty first record
   // from ever completing/transmitting.
   const removeSarBlock = (uiIdx: number) => {
+    // S160 Phase 4: a CLOSED SAR block can never be removed — structural, not render-only.
+    // The target is block 1's flat stamp for uiIdx 0, else the extraSars block's own; the
+    // legacy card-level dgCloseSar closes every block at once. (Removing an OPEN block 1
+    // stays legal even when a closed block 2+ gets promoted into the flat keys — the stamp
+    // travels with it below, so nothing closed is destroyed.)
+    const sarTarget = uiIdx === 0 ? { closeDt: sarCloseDt || undefined } : extraSars[uiIdx - 1];
+    if (closedRowActionRefused(sarTarget, closes['dgCloseSar'])) return;
     setSarNoteOpen({}); // indexes shift — collapse empty note editors (content-bearing notes stay visible)
     if (uiIdx === 0) {
       if (extraSars.length > 0) {

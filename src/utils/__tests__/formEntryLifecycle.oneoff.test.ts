@@ -66,8 +66,11 @@ describe('222 entry store', () => {
   });
 
   test('deleteForm222Entry removes only the named uid', async () => {
+    // S160 repair (the S154D fixture rule: give the fixture a lawful source, never weaken the
+    // assertion): base222 is sentToDfo:true, and since S160 a sent entry REFUSES deletion — so
+    // DROP is now a deletable draft. KEEP stays sent, which the delete must (doubly) survive.
     await saveForm222Entry(base222('KEEP', NOW));
-    await saveForm222Entry(base222('DROP', NOW + 1000));
+    await saveForm222Entry({ ...base222('DROP', NOW + 1000), status: 'draft', sentToDfo: false });
     await deleteForm222Entry('DROP');
     expect((await loadForm222Entries()).map(e => e.uid)).toEqual(['KEEP']);
   });
@@ -105,8 +108,9 @@ describe('233 entry store', () => {
   });
 
   test('deleteForm233Entry removes only the named uid', async () => {
+    // S160 repair — same as the 222 twin above: DROP must be a deletable draft under the gate.
     await saveForm233Entry(base233('KEEP', NOW));
-    await saveForm233Entry(base233('DROP', NOW + 1000));
+    await saveForm233Entry({ ...base233('DROP', NOW + 1000), status: 'draft', sentToDfo: false });
     await deleteForm233Entry('DROP');
     expect((await loadForm233Entries()).map(e => e.uid)).toEqual(['KEEP']);
   });

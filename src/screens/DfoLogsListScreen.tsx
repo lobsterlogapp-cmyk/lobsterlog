@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { Plus, FileText, Send, Edit3, Eye, Trash2, CheckCircle, User, Shield, RotateCcw, Archive, HelpCircle } from 'lucide-react-native';
 import HelpSupportScreen from './HelpSupportScreen';
-import { loadAllLogs, deleteLog, markSentToDfo, DfoLog, saveTransmissionRecord, TransmissionRecord, SendFailureKind, SEND_FAILURE_BADGE_KEY, SEND_FAILURE_SHEET_KEY, isSendFailureKind, saveXmlArchiveEntry, loadTransmissionRegister, transmissionKind, unclosedUsedGroupKeys, logsOwingForm222, getCompletionDetails } from '../utils/dfoLogStorage';
+import { loadAllLogs, deleteLog, deleteOffered, formEntryDeleteOffered, markSentToDfo, DfoLog, saveTransmissionRecord, TransmissionRecord, SendFailureKind, SEND_FAILURE_BADGE_KEY, SEND_FAILURE_SHEET_KEY, isSendFailureKind, saveXmlArchiveEntry, loadTransmissionRegister, transmissionKind, unclosedUsedGroupKeys, logsOwingForm222, getCompletionDetails } from '../utils/dfoLogStorage';
 import { useTimer } from '../context/TimerContext';
 import { triggerBackup } from '../utils/dfoBackup';
 import { SentLogCard, SentLogDetailModal, indexSuccessRecords, indexFailureRecords } from '../components/SentLogCard';
@@ -552,13 +552,18 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
             <Edit3 size={15} color="#1E3A8A" />
             <Text style={styles.editButtonText}>{tc('nav.edit')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.deleteButton}
-            onPress={() => handleDeleteDraft(log.id)}
-          >
-            <Trash2 size={15} color="#B45309" />
-            <Text style={styles.deleteButtonText}>{tc('nav.delete')}</Text>
-          </TouchableOpacity>
+          {/* S160 Ruling A: Delete exists only while nothing in the log is closed (REMOVED,
+              not greyed — ruled against the S159 R2 precedent for delete controls). The one
+              rule lives in deleteOffered; the storage guard refuses independently either way. */}
+          {deleteOffered(log) && (
+            <TouchableOpacity
+              style={styles.deleteButton}
+              onPress={() => handleDeleteDraft(log.id)}
+            >
+              <Trash2 size={15} color="#B45309" />
+              <Text style={styles.deleteButtonText}>{tc('nav.delete')}</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     );
@@ -613,10 +618,14 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
             <Edit3 size={15} color="#1E3A8A" />
             <Text style={styles.editButtonText}>{tc('nav.edit')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteFormDraft(kind, entry.uid)}>
-            <Trash2 size={15} color="#B45309" />
-            <Text style={styles.deleteButtonText}>{tc('nav.delete')}</Text>
-          </TouchableOpacity>
+          {/* S160 3B: same one rule as the 234 cards (a draft entry is open by construction;
+              the gate still reads the rule so a legacy record carrying closeDt refuses). */}
+          {formEntryDeleteOffered(entry) && (
+            <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteFormDraft(kind, entry.uid)}>
+              <Trash2 size={15} color="#B45309" />
+              <Text style={styles.deleteButtonText}>{tc('nav.delete')}</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     );
@@ -749,10 +758,14 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
             <Eye size={15} color="#1E3A8A" />
             <Text style={styles.editButtonText}>{t('logs.reviewButton')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteFormDraft(kind, entry.uid)}>
-            <Trash2 size={15} color="#B45309" />
-            <Text style={styles.deleteButtonText}>{tc('nav.delete')}</Text>
-          </TouchableOpacity>
+          {/* S160 3B: a CLOSED-unsent form is exactly the A.1.2-refused state — Delete exists
+              only via the dev flag (the form twin of the S125 completed-unsent 234 door). */}
+          {formEntryDeleteOffered(entry) && (
+            <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteFormDraft(kind, entry.uid)}>
+              <Trash2 size={15} color="#B45309" />
+              <Text style={styles.deleteButtonText}>{tc('nav.delete')}</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     );
@@ -827,10 +840,15 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
                 <Edit3 size={16} color="#1E3A8A" />
                 <Text style={styles.editButtonText}>{t('logs.editReviewButton')}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteCompleted(log)}>
-                <Trash2 size={15} color="#B45309" />
-                <Text style={styles.deleteButtonText}>{tc('nav.delete')}</Text>
-              </TouchableOpacity>
+              {/* S160 Ruling A: the S125 Phase-8 Delete falls out of the SAME one rule as the
+                  draft card (a completed log has its used sections closed, so this renders
+                  only via the dev flag — or on a pre-S124 stamp-less legacy complete log). */}
+              {deleteOffered(log) && (
+                <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteCompleted(log)}>
+                  <Trash2 size={15} color="#B45309" />
+                  <Text style={styles.deleteButtonText}>{tc('nav.delete')}</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </>
         )}
@@ -899,6 +917,23 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
     // so it does not depend on the loadAllLogs sort order.
     if (drafts.length > 0) {
       const target = drafts.reduce((oldest, d) => (d.createdAt < oldest.createdAt ? d : oldest));
+      // S160 Ruling B: the same one rule gates this door. A draft with any closed section
+      // cannot be deleted (Standard v6.1 A.1.2), so the popup drops "Delete it" and says why:
+      // "Review it" here OPENS the draft (it fills the ruled action slot — the only road left
+      // is to finish the log and send it); "Not now" dismisses. Body deliberately names no
+      // trip — the S123 block means only one draft can exist (ruled B.3, chosen not accidental).
+      if (!deleteOffered(target)) {
+        Alert.alert(
+          t('logs.draftWarnTitle'),
+          t('logs.draftWarnClosedBody'),
+          [
+            { text: t('logs.draftWarnReview'), style: 'cancel', onPress: () => onEditLog(target.id) },
+            { text: t('logs.draftWarnNotNow') },
+          ],
+        );
+        return;
+      }
+      // Fully open draft (or the dev flag): today's popup, untouched (Ruling B item 3).
       const { filled, total } = getCompletionDetails(target);
       Alert.alert(
         t('logs.draftWarnTitle'),

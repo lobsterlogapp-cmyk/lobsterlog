@@ -7,6 +7,9 @@ import { buildSaveIncomingFileEnvelope, toCloseTimestamp } from './dfoXmlGenerat
 import { DFO_CIE_ID, DFO_SOFT_VER, clampCoord4 } from './dfoConstants';
 import { MV_NOAA_MM_SPECIES, MV_INCIDENT_TYPE, MV_CONFIDENCE_LEVEL, MV_MM_SPECIMENS_CONDITION, MV_MM_LENGTH_CATEGORY } from '../data/reftables';
 import { dfoKey, DFO_STORE_BASES } from './dfoStorageKeys';
+// S160 Phase 3B: the one delete decision + shared result shape (no cycle — dfoLogStorage
+// imports no generator; verified before this import was added).
+import { formEntryDeleteOffered, DeleteLogResult } from './dfoLogStorage';
 
 const THREE_YEARS_MS = 94608000000;
 
@@ -145,12 +148,23 @@ export async function loadForm222EntryByUid(uid: string): Promise<Form222Entry |
 
 // S125 7a: delete one entry by uid (mirrors dfoLogStorage.deleteLog). Used by 7c/Phase 8
 // (draft discard / delete). Rewrites the array without the uid.
-export async function deleteForm222Entry(uid: string): Promise<void> {
+// S160 Phase 3B: the refusal lives in the function, not only in the hidden button (the
+// deleteLog pattern). The 222 is a SINGLE data group (MM_INTER), so its whole closure census
+// is one closeDt — a stamped, unsent entry is exactly the state Standard v6.1 A.1.2 refuses
+// to destroy. The decision itself is dfoLogStorage.destructionOffered (one rule, never a
+// per-form copy); result shape shared with deleteLog so callers act on one vocabulary.
+export async function deleteForm222Entry(uid: string): Promise<DeleteLogResult> {
   const existing = await loadForm222Entries();
+  const target = existing.find(e => e.uid === uid);
+  if (!target) return { ok: true, notFound: true };
+  if (!formEntryDeleteOffered(target)) {
+    return { ok: false, reason: target.sentToDfo === true ? 'sent' : 'closedGroup' };
+  }
   await AsyncStorage.setItem(
     dfoKey(DFO_STORE_BASES.form222_entries),
     JSON.stringify(existing.filter(e => e.uid !== uid)),
   );
+  return { ok: true };
 }
 
 function xmlEscape(s: string): string {

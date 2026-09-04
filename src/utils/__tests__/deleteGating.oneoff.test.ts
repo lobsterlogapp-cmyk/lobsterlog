@@ -18,6 +18,7 @@ import {
   loadAllLogs,
   hasAnyClosedGroup,
   rowsAnyClosed,
+  deleteOffered,
   DEV_ALLOW_DELETE_CLOSED,
   saveActiveDraft,
   loadActiveDraft,
@@ -27,6 +28,9 @@ import {
   loadXmlArchive,
   DfoLog,
 } from '../dfoLogStorage';
+import { formEntryDeleteOffered, closedRowActionRefused } from '../dfoLogStorage';
+import { Form222Entry, saveForm222Entry, loadForm222Entries, deleteForm222Entry } from '../dfoForm222Generator';
+import { Form233Entry, saveForm233Entry, loadForm233Entries, deleteForm233Entry } from '../dfoForm233Generator';
 
 const STAMP = '2026-09-01T15:00:00.000Z';
 
@@ -224,6 +228,19 @@ test('⚠ SHIP BLOCKER PIN: DEV_ALLOW_DELETE_CLOSED is OFF — a red here means 
   expect(DEV_ALLOW_DELETE_CLOSED).toBe(false);
 });
 
+// --- the door rule (S160 Phase 3) ---
+// deleteOffered is what all three Delete doors render off. With the flag off (the pinned
+// state) it must equal !hasAnyClosedGroup exactly — Ruling A's one sentence. The flag-on
+// half of its behaviour is proven by mutation M12 (see GATE 2), not here.
+
+test('deleteOffered: true on a fully open draft, false the moment anything is closed', () => {
+  expect(deleteOffered(makeLog())).toBe(true);
+  expect(deleteOffered(makeLog({}, { dgCloseLanding: STAMP }))).toBe(false);
+  expect(deleteOffered(makeLog({}, {
+    baitEntries: JSON.stringify([{ type: 'Herring', lbs: '10', closeDt: STAMP }]),
+  }))).toBe(false);
+});
+
 // --- the predicate itself ---
 
 test('hasAnyClosedGroup is false when only unit tags ride the map (a unit is not a closure)', () => {
@@ -237,4 +254,77 @@ test('rowsAnyClosed: some-closed true, none-closed false, unparseable false, emp
   expect(rowsAnyClosed(JSON.stringify([{ lbs: '1' }]))).toBe(false);
   expect(rowsAnyClosed('not json')).toBe(false);
   expect(rowsAnyClosed(undefined)).toBe(false);
+});
+
+
+// --- S160 Phase 3B: the 222/233 form-entry guards (one rule, per-store census = one closeDt) ---
+
+const make222 = (over: Partial<Form222Entry> = {}): Form222Entry => ({
+  uid: 'AAAAAA', savedAt: Date.now(), interactInd: 'Y',
+  reportDate: '2026-09-01', interactionDate: '2026-09-01', interactionTime: '06:00',
+  lat: '43.8237', lon: '-66.1200', speciesLabel: '', nbAnimals: '1',
+  interactionTypeLabel: '', injuryInd: 'N', deathInd: 'N', entangleInd: 'N',
+  gearDamageInd: 'N', observerNm: '', contactInfo: '', remarks: '',
+  status: 'draft', sentToDfo: false, ...over,
+});
+
+const make233 = (over: Partial<Form233Entry> = {}): Form233Entry => ({
+  uid: 'BBBBBB', savedAt: Date.now(), periodStartDate: '2026-08-01',
+  periodEndDate: '2026-08-15', reason: 'Weather', licenceNo: '104460',
+  fin: '100400460', status: 'draft', sentToDfo: false, ...over,
+});
+
+test('formEntryDeleteOffered: open draft yes; closeDt no; sent no', () => {
+  expect(formEntryDeleteOffered(make222())).toBe(true);
+  expect(formEntryDeleteOffered(make222({ closeDt: STAMP, status: 'complete' }))).toBe(false);
+  expect(formEntryDeleteOffered(make222({ sentToDfo: true }))).toBe(false);
+});
+
+test('deleteForm222Entry: draft deletes; closed-unsent refused; sent refused; unknown uid flagged', async () => {
+  await saveForm222Entry(make222());
+  expect(await deleteForm222Entry('AAAAAA')).toEqual({ ok: true });
+  expect(await loadForm222Entries()).toHaveLength(0);
+
+  await saveForm222Entry(make222({ closeDt: STAMP, status: 'complete' }));
+  expect(await deleteForm222Entry('AAAAAA')).toEqual({ ok: false, reason: 'closedGroup' });
+  expect(await loadForm222Entries()).toHaveLength(1);
+
+  await saveForm222Entry(make222({ closeDt: STAMP, status: 'complete', sentToDfo: true }));
+  expect(await deleteForm222Entry('AAAAAA')).toEqual({ ok: false, reason: 'sent' });
+  expect(await loadForm222Entries()).toHaveLength(1);
+
+  expect(await deleteForm222Entry('ZZZZZZ')).toEqual({ ok: true, notFound: true });
+  expect(await loadForm222Entries()).toHaveLength(1);
+});
+
+test('deleteForm233Entry: draft deletes; closed-unsent refused; sent refused; unknown uid flagged', async () => {
+  await saveForm233Entry(make233());
+  expect(await deleteForm233Entry('BBBBBB')).toEqual({ ok: true });
+  expect(await loadForm233Entries()).toHaveLength(0);
+
+  await saveForm233Entry(make233({ closeDt: STAMP, status: 'complete' }));
+  expect(await deleteForm233Entry('BBBBBB')).toEqual({ ok: false, reason: 'closedGroup' });
+  expect(await loadForm233Entries()).toHaveLength(1);
+
+  await saveForm233Entry(make233({ closeDt: STAMP, status: 'complete', sentToDfo: true }));
+  expect(await deleteForm233Entry('BBBBBB')).toEqual({ ok: false, reason: 'sent' });
+  expect(await loadForm233Entries()).toHaveLength(1);
+
+  expect(await deleteForm233Entry('YYYYYY')).toEqual({ ok: true, notFound: true });
+  expect(await loadForm233Entries()).toHaveLength(1);
+});
+
+
+// --- S160 Phase 4: the row/block-level action refusal (the effortDeleteRefused pattern) ---
+// These tests are the ONLY automated evidence for the five FullDfoForm call sites
+// (deleteBait / deleteBycatch / openBaitEdit / openBycatchEdit / removeSarBlock) — the
+// component cannot render under jest and the guarded buttons are hidden on closed rows,
+// so no walk can reach them either. Deliberately NO dev-flag arm (defect-140 territory).
+
+test('closedRowActionRefused: open row acts; own closeDt refuses; card stamp refuses; missing row refuses', () => {
+  expect(closedRowActionRefused({ closeDt: undefined }, undefined)).toBe(false);
+  expect(closedRowActionRefused({}, undefined)).toBe(false);
+  expect(closedRowActionRefused({ closeDt: STAMP }, undefined)).toBe(true);
+  expect(closedRowActionRefused({}, STAMP)).toBe(true);          // legacy card stamp, open row
+  expect(closedRowActionRefused(undefined, undefined)).toBe(true); // missing target never acts
 });

@@ -610,11 +610,11 @@ export const deleteLog = async (id: string): Promise<DeleteLogResult> => {
     const existing = await loadAllLogs();
     const target = existing.find((l) => l.id === id);
     if (!target) return { ok: true, notFound: true };
-    // The ONE dev-flag check site: the override skips only the two refusals — notFound above
-    // and the scratch hygiene below apply to a dev delete too (that IS the sim cleanup).
-    if (!DEV_ALLOW_DELETE_CLOSED) {
-      if (target.sentToDfo === true) return { ok: false, reason: 'sent' };
-      if (hasAnyClosedGroup(target)) return { ok: false, reason: 'closedGroup' };
+    // The refusal routes through THE one decision (destructionOffered — which owns the sole
+    // dev-flag check). Sent named first: the truer reason. notFound above and the scratch
+    // hygiene below apply to a dev delete too (that IS the sim cleanup).
+    if (!destructionOffered(target.sentToDfo === true, hasAnyClosedGroup(target))) {
+      return { ok: false, reason: target.sentToDfo === true ? 'sent' : 'closedGroup' };
     }
     const filtered = existing.filter((l) => l.id !== id);
     await AsyncStorage.setItem(dfoKey(DFO_STORE_BASES.dfo_logs), JSON.stringify(filtered));
@@ -988,6 +988,48 @@ export function hasAnyClosedGroup(log: Pick<DfoLog, 'data'>): boolean {
       || rowsAnyClosed(d.baitEntries)      // per-row bait closures (S134)
       || rowsAnyClosed(d.bycatchEntries)   // per-row bycatch closures (S134 P3)
       || CARD_LEVEL_CLOSE_KEYS.some(k => !!d[k]);
+}
+
+// --- S160 Phase 3/3B: THE decision, in ONE place ---
+// Ruling A's sentence + A.1.2 + the dev flag: a thing that is SENT, or that contains anything
+// CLOSED, offers no delete — and the dev flag is the only thing that puts it back. This is
+// the ONE functional check site of DEV_ALLOW_DELETE_CLOSED (Phase 3B tightened Phase 2's
+// "one check site in deleteLog" to "one check site, full stop" — deleteLog and both form
+// guards and all five doors route through here). Per Phase 3B item 2: the decision is never
+// re-written per form; only each form's field census differs (the adapters below).
+export function destructionOffered(sent: boolean, anyClosed: boolean): boolean {
+  return DEV_ALLOW_DELETE_CLOSED || (!sent && !anyClosed);
+}
+
+// 234 adapter — the three logbook Delete doors in DfoLogsListScreen render off this.
+export function deleteOffered(log: Pick<DfoLog, 'data' | 'sentToDfo'>): boolean {
+  return destructionOffered(log.sentToDfo === true, hasAnyClosedGroup(log));
+}
+
+// Form-entry adapter (222 = MM_INTER, 233 = REPORT — each a SINGLE data group, so its whole
+// census is one closeDt). Structural fields only, the Form222LinkView precedent: importing
+// the entry types here would close the dfoLogStorage → generators → dfoXmlGenerator cycle
+// (the S90 clampCoord4 hazard class).
+export function formEntryDeleteOffered(e: { sentToDfo?: boolean; closeDt?: string }): boolean {
+  return destructionOffered(e.sentToDfo === true, !!e.closeDt);
+}
+
+// S160 Phase 4 (the effortDeleteRefused pattern, one level down): a row/block-level action —
+// edit OR delete — is refused once the target carries its OWN closeDt or sits under the
+// legacy card-level stamp. Pure and exported because FullDfoForm cannot render under jest:
+// the five call sites (deleteBait, deleteBycatch, openBaitEdit, openBycatchEdit,
+// removeSarBlock) are belt-and-braces BEHIND buttons the closed row never draws, so this
+// function's tests are their only automated evidence. A missing row refuses too — acting on
+// an index that resolves to nothing is never right.
+// ⚠ DELIBERATELY NO DEV-FLAG OVERRIDE: this is §5.1 rule 6 irreversibility (defect-140
+// territory, founder-ruled untouched at S159). The dev flag governs whole-LOG destruction
+// for sim cleanup only; a flag arm here would be a second functional check site AND an
+// unruled change to the closed-row lockout.
+export function closedRowActionRefused(
+  row: { closeDt?: string } | undefined,
+  cardStamp: string | undefined,
+): boolean {
+  return !row || !!row.closeDt || !!cardStamp;
 }
 
 // S137 Phase 6: true when ANY effort answered marine-mammal Yes — effort 1's flat mmYes and
