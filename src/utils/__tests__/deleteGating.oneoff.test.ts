@@ -18,6 +18,7 @@ import {
   loadAllLogs,
   hasAnyClosedGroup,
   rowsAnyClosed,
+  DEV_ALLOW_DELETE_CLOSED,
   saveActiveDraft,
   loadActiveDraft,
   saveTransmissionRecord,
@@ -212,6 +213,15 @@ test('refused: a sent log with no stamps at all still refuses as "sent" (arm ind
   const log = makeLog({ sentToDfo: true });
   await saveLog(log);
   expect(await deleteLog(log.id)).toEqual({ ok: false, reason: 'sent' });
+});
+
+// --- the dev flag (S160 Phase 2) ---
+
+test('⚠ SHIP BLOCKER PIN: DEV_ALLOW_DELETE_CLOSED is OFF — a red here means someone left the dev flag flipped', () => {
+  // The flag is flipped to `__DEV__ && true` only for a capture-sim cleanup session and must
+  // be flipped straight back. This pin (plus the ten refusal tests, which the override makes
+  // fail loudly) is what catches a forgotten flip before it reaches a commit.
+  expect(DEV_ALLOW_DELETE_CLOSED).toBe(false);
 });
 
 // --- the predicate itself ---

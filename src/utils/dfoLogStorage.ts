@@ -575,6 +575,22 @@ export const loadLogById = async (id: string): Promise<DfoLog | null> => {
 //                   permits for transmitted groups, which "may" allows.
 //   'closedGroup' — the A.1.2 prohibition itself, via hasAnyClosedGroup (the one predicate).
 //   'error'       — the storage layer failed; nothing was destroyed.
+//
+// --- S160 Phase 2: THE DEV FLAG (⚠ SHIP BLOCKER — see BUILD_S160_DELETE_GATING.md GATE 2) ---
+// The ONE build-time override for the delete gate, for capture-sim cleanup only. Checked in
+// exactly ONE place (the guard below) — a second check site is a second copy of the rule.
+//
+//   • DEFAULT IS OFF — `__DEV__ && false` — so dev sims walk the PRODUCTION behaviour. A bare
+//     `__DEV__` here would put Delete back on every dev build and the gate could never be
+//     seen on glass.
+//   • TO USE: flip the second word to `true` for the cleanup session, flip it back after.
+//     The pin test in deleteGating.oneoff.test.ts asserts the flag is false, so a forgotten
+//     flip turns jest RED — the ledger has an automated tooth, not just a note.
+//   • THE WALL: `__DEV__` is inlined to false by Metro in every release bundle, so the whole
+//     expression constant-folds to false at BUILD time whatever the second word says — the
+//     bypass cannot exist in a shipped bundle. A role check is a curtain; this is the wall.
+export const DEV_ALLOW_DELETE_CLOSED: boolean = __DEV__ && false;
+
 // Deleting an id that does not exist stays ok BUT carries `notFound: true` (Gate 1 ruling,
 // superseding Gate 0's plain idempotent-ok): a wrong-id bug must never look like a successful
 // delete. Nothing is written on that path — there is nothing to remove.
@@ -594,8 +610,12 @@ export const deleteLog = async (id: string): Promise<DeleteLogResult> => {
     const existing = await loadAllLogs();
     const target = existing.find((l) => l.id === id);
     if (!target) return { ok: true, notFound: true };
-    if (target.sentToDfo === true) return { ok: false, reason: 'sent' };
-    if (hasAnyClosedGroup(target)) return { ok: false, reason: 'closedGroup' };
+    // The ONE dev-flag check site: the override skips only the two refusals — notFound above
+    // and the scratch hygiene below apply to a dev delete too (that IS the sim cleanup).
+    if (!DEV_ALLOW_DELETE_CLOSED) {
+      if (target.sentToDfo === true) return { ok: false, reason: 'sent' };
+      if (hasAnyClosedGroup(target)) return { ok: false, reason: 'closedGroup' };
+    }
     const filtered = existing.filter((l) => l.id !== id);
     await AsyncStorage.setItem(dfoKey(DFO_STORE_BASES.dfo_logs), JSON.stringify(filtered));
     try {
