@@ -269,9 +269,18 @@ test('C3: & and < in the box produce a VALID file — escaped on the wire, and t
   expect(atCapResult.errors.filter(e => e.includes('OBS_TRIP_NUM'))).toEqual([]);
 });
 
-test('B5: the button is gated MAR-90 only and guards readOnly', () => {
-  // The button block: subform gate wraps it; the handler no-ops on a read-only (sent) log.
-  const btn = SRC.match(/\{subformId === 90 && \(\s*\n\s*<TouchableOpacity[\s\S]{0,600}?obsTripBtn/);
-  expect(btn).not.toBeNull();
-  expect(btn![0]).toMatch(/if \(readOnly\) return;/);
+test('B5: the button is MAR-90-gated, guards readOnly, and is ONE definition rendered by both header branches', () => {
+  // S162b REWRITE (not weakened): the button was hoisted from an inline block into
+  // renderObsTripButton so the FR-stacked and single-row Trip headers render one
+  // definition. The guard followed the code it pins (the S154D D2 lineage) and now
+  // also asserts the single-definition property the hoist exists to provide.
+  const helper = SRC.match(
+    /const renderObsTripButton = \(\)\s*=>\s*\n?\s*subformId === 90 && \(\s*\n\s*<TouchableOpacity[\s\S]{0,600}?obsTripBtn/,
+  );
+  expect(helper).not.toBeNull();
+  expect(helper![0]).toMatch(/if \(readOnly\) return;/);
+  // Exactly one definition, called from exactly the two header branches — a third
+  // call site (or a branch dropping it) is a drift signal, not a refactor.
+  expect(SRC.match(/const renderObsTripButton/g)?.length).toBe(1);
+  expect(SRC.match(/\{renderObsTripButton\(\)\}/g)?.length).toBe(2);
 });

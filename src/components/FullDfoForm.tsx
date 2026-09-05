@@ -531,6 +531,25 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     ) : null;
   };
 
+  // S162 defect 141 button, hoisted at S162b so the FR-stacked and single-row Trip
+  // headers render ONE definition (no drift between branches). Body byte-preserved
+  // from the original inline block; gate unchanged: MAR-90 only, readOnly no-ops.
+  const renderObsTripButton = () =>
+    subformId === 90 && (
+      <TouchableOpacity
+        style={styles.addNoteBtn}
+        onPress={() => {
+          if (readOnly) return;
+          if (obsTripOpen) { setObsTripNum(''); setObsTripOpen(false); }
+          else setObsTripOpen(true);
+        }}
+        activeOpacity={0.7}
+      >
+        <Eye size={13} color="#1E3A8A" />
+        <Text style={styles.addNoteBtnText}>{t('form234.obsTripBtn')}</Text>
+      </TouchableOpacity>
+    );
+
   // Quick capture — driven by global TimerContext, no local state needed
   const {
     sailActive, sailStartTime, sailElapsed, sailLogId,
@@ -4597,28 +4616,33 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         </View>}
 
         <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={[styles.sectionIcon, { backgroundColor: '#DBEAFE' }]}><Calendar size={16} color="#1E3A8A" /></View>
-            <Text style={styles.sectionTitle}>{t('form234.tripInfoSection')}</Text>
-            {renderNoteButton('trip')}
-            {/* S162 defect 141 — OBS_TRIP_NUM entry toggle, MAR-90 only (Optional per
-                Subforms_requirements row 22; Blocked 88/89/91). Second tap ERASES the code
-                and removes the field (founder ruling 3): nothing hidden may still emit. */}
-            {subformId === 90 && (
-              <TouchableOpacity
-                style={styles.addNoteBtn}
-                onPress={() => {
-                  if (readOnly) return;
-                  if (obsTripOpen) { setObsTripNum(''); setObsTripOpen(false); }
-                  else setObsTripOpen(true);
-                }}
-                activeOpacity={0.7}
-              >
-                <Eye size={13} color="#1E3A8A" />
-                <Text style={styles.addNoteBtnText}>{t('form234.obsTripBtn')}</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+          {/* S162 defect 141 — the observer toggle (renderObsTripButton, MAR-90 only,
+              second tap ERASES: nothing hidden may still emit) joined this header.
+              S162b — in FRENCH on a MAR log, « Informations du voyage » + two buttons
+              crunched the shared row into a three-line title, so FR+MAR stacks: title
+              on its own line, buttons beneath (founder rulings 1–5: stacking not
+              shortening; French only; this card only; Maritimes only — same
+              `subformId === 90` term as the button's own gate, asserted identical by
+              the frHeaderStack suite). Every other case renders the original row. */}
+          {isFr && subformId === 90 ? (
+            <View style={styles.tripHeaderStackedFr}>
+              <View style={styles.tripHeaderTitleRowFr}>
+                <View style={[styles.sectionIcon, { backgroundColor: '#DBEAFE' }]}><Calendar size={16} color="#1E3A8A" /></View>
+                <Text style={styles.sectionTitle}>{t('form234.tripInfoSection')}</Text>
+              </View>
+              <View style={styles.tripHeaderBtnRowFr}>
+                {renderNoteButton('trip')}
+                {renderObsTripButton()}
+              </View>
+            </View>
+          ) : (
+            <View style={styles.sectionHeader}>
+              <View style={[styles.sectionIcon, { backgroundColor: '#DBEAFE' }]}><Calendar size={16} color="#1E3A8A" /></View>
+              <Text style={styles.sectionTitle}>{t('form234.tripInfoSection')}</Text>
+              {renderNoteButton('trip')}
+              {renderObsTripButton()}
+            </View>
+          )}
           {renderNoteInput('trip', remarks.trip ?? '', (v) => setNote('trip', v))}
           {/* S162: the observer trip number drops in directly ABOVE Date Fished (founder
               ruling 2 — top of the card so it demands attention). Never required (ruling 6);
@@ -6049,6 +6073,17 @@ const styles = StyleSheet.create({
   },
   sectionIcon: { width: 32, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   sectionTitle: { fontSize: 15, fontWeight: '700', color: '#1E293B', flex: 1 },
+  // S162b — the FR + MAR-90 Trip Information header ONLY (rulings 3/4/5). The stacked
+  // container copies sectionHeader's border/margin/padding VALUES (not a reference —
+  // sectionHeader serves 10 other card headers and must not move) so the card keeps
+  // the sibling rhythm; column instead of row, title line above the button line.
+  tripHeaderStackedFr: {
+    marginBottom: 12, paddingBottom: 10,
+    borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
+    gap: 8,
+  },
+  tripHeaderTitleRowFr: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  tripHeaderBtnRowFr: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   // S137: the why-line under the hail section headers (STOP-2a ruling).
   hailRequiredNote: { fontSize: 12.5, color: '#64748B', fontStyle: 'italic', marginBottom: 8 },
   problemPill: { backgroundColor: '#FEE2E2', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
