@@ -4618,19 +4618,19 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         <View style={styles.section}>
           {/* S162 defect 141 — the observer toggle (renderObsTripButton, MAR-90 only,
               second tap ERASES: nothing hidden may still emit) joined this header.
-              S162c — STACK WHEN IT DOESN'T FIT (founder ruling; supersedes the S162b
-              FR+MAR-only stack, which was wrong in kind — EN crunched the same way on a
-              narrower device; the cause is width, not language). The title group keeps
-              its natural width on one unbroken line and the button group wraps WHOLE
-              onto a second line whenever the two cannot share the row. flexWrap resolves
-              in the layout pass before first paint — no one-row-then-snap flicker.
-              sectionHeader is COMPOSED by reference, never edited (10 other cards). */}
-          <View style={[styles.sectionHeader, styles.tripHeaderWrap]}>
-            <View style={styles.tripHeaderTitleGroup}>
+              S162d — ALWAYS TWO ROWS, plainly (founder ruling: "I like it better this
+              way"). The S162c fit rule stacked on every frame because two buttons plus
+              any title genuinely exceed any current iPhone's row (~417pt of natural
+              content vs ~346pt of row on the widest capture device — BUILD doc §1.1);
+              the code now says what it does. numberOfLines={1} stays — it is what killed
+              the mid-word "Trip Informatio / n" break. No language term, no subform
+              term. sectionHeader is COMPOSED by reference, never edited (10 cards). */}
+          <View style={[styles.sectionHeader, styles.tripHeaderStacked]}>
+            <View style={styles.tripHeaderTitleRow}>
               <View style={[styles.sectionIcon, { backgroundColor: '#DBEAFE' }]}><Calendar size={16} color="#1E3A8A" /></View>
               <Text style={[styles.sectionTitle, styles.tripHeaderTitleText]} numberOfLines={1}>{t('form234.tripInfoSection')}</Text>
             </View>
-            <View style={styles.tripHeaderBtnGroup}>
+            <View style={styles.tripHeaderBtnRow}>
               {renderNoteButton('trip')}
               {renderObsTripButton()}
             </View>
@@ -6065,16 +6065,17 @@ const styles = StyleSheet.create({
   },
   sectionIcon: { width: 32, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   sectionTitle: { fontSize: 15, fontWeight: '700', color: '#1E293B', flex: 1 },
-  // S162c — the Trip Information header stacks WHEN IT DOESN'T FIT (flexWrap, the
-  // house reflow idiom — CrewSelector/SentLogCard/FormSentCard/DfoSetupScreen).
-  // sectionHeader is composed by reference at the call site, never edited (10 other
-  // cards render from it). Flex line-breaking places items at their NATURAL size
-  // first, so the button group wraps whole when it cannot share the row; the title
-  // shrinks/ellipsizes only in the degenerate case where it ALONE exceeds the row.
-  tripHeaderWrap: { flexWrap: 'wrap' },
-  tripHeaderTitleGroup: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
+  // S162d — the Trip Information header is ALWAYS TWO ROWS (title row above, button
+  // row beneath, buttons right-aligned as walked). sectionHeader is composed by
+  // reference at the call site — the column override rides on top of its border/
+  // margin/padding/gap, and the shared key is never edited (10 other cards render
+  // from it). The title keeps flex:0 (natural width — the inherited flex:1 squeeze
+  // is what caused the FR three-line crunch) + flexShrink so an over-long title
+  // ellipsizes on its own row rather than overflowing.
+  tripHeaderStacked: { flexDirection: 'column', alignItems: 'stretch' },
+  tripHeaderTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   tripHeaderTitleText: { flex: 0, flexShrink: 1 },
-  tripHeaderBtnGroup: { flexDirection: 'row', alignItems: 'center', gap: 10, marginLeft: 'auto' },
+  tripHeaderBtnRow: { flexDirection: 'row', alignItems: 'center', gap: 10, justifyContent: 'flex-end' },
   // S137: the why-line under the hail section headers (STOP-2a ruling).
   hailRequiredNote: { fontSize: 12.5, color: '#64748B', fontStyle: 'italic', marginBottom: 8 },
   problemPill: { backgroundColor: '#FEE2E2', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
