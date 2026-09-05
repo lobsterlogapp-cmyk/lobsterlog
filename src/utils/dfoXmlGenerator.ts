@@ -794,7 +794,9 @@ const TRIP_SPEC: ChildSpec[] = [
   // PORT_ID is an integer code in the XSD; free-text names will fail here until the
   // ports name→code retype lands (open question 4)
   { name: 'PORT_ID',        min: 0, max: 1, type: 'id' },
-  { name: 'OBS_TRIP_NUM',   min: 0, max: 1, type: 'string' },
+  // S162 defect 141: string_20 (XSD :217, dictionary row 855) — the cap measures the
+  // DECODED value (the S154D xmlUnescape rule). min stays 0: never required (ruling 6).
+  { name: 'OBS_TRIP_NUM',   min: 0, max: 1, type: 'string', maxLen: 20 },
   { name: 'FIRST_ENTRY_DT', min: 1, max: 1, type: 'date_14' },
   { name: 'USE_CR_IND',     min: 0, max: 1, type: 'ind_yn' },
   { name: 'PRTNSHP_ID',     min: 0, max: 1, type: 'id' },
@@ -1026,6 +1028,14 @@ export function validateElogXml(xml: string, subformId: number): { valid: boolea
     } else {
       if (useCr) errors.push(`${p}: USE_CR_IND is blocked for subform ${subformId}`);
       if (prtnshp) errors.push(`${p}: PRTNSHP_ID is blocked for subform ${subformId}`);
+    }
+    // OBS_TRIP_NUM: Optional for MAR(90), Blocked for 88/89/91 (Subforms_requirements_234
+    // row 22). S162: blocked direction only — NO requiredness arm, an empty value is never
+    // refused (ruling 6). The two-direction pattern of TRP_SZ_ID/GEAR_SBTYP_ID minus the
+    // mandatory half.
+    const obsTrip = get(trip, 'OBS_TRIP_NUM')[0];
+    if (subformId !== 90 && obsTrip) {
+      errors.push(`${p}: OBS_TRIP_NUM is blocked for subform ${subformId}`);
     }
 
     const tripStart = get(trip, 'START_DT')[0]?.text ?? '';

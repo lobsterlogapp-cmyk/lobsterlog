@@ -211,6 +211,41 @@ test('B4: the field render is gated MAR-90 AND open, and carries the 20-char cap
   expect(renderSite).not.toBeNull();
 });
 
+// ---------------------------------------------------------------------------
+// PART C — the validator arms (S162 Phase 4): blocked direction + the 20-cap.
+// The generator never produces these documents (A5 proves the emit gate), so the
+// blocked test INJECTS the element — the validateMar90Blocks injection pattern.
+// ---------------------------------------------------------------------------
+
+test('C1: OBS_TRIP_NUM injected into an 88/89/91 document trips the blocked guard', () => {
+  for (const [subformId, regId] of [[88, 1006], [89, 1014], [91, 1002]] as const) {
+    const clean = generateElogXml(baseLog(subformId, regId), profile);
+    expect(clean).not.toContain('OBS_TRIP_NUM'); // sanity: injection target is clean
+    const injected = clean.replace(
+      /(<TRIP_NUM>[^<]*<\/TRIP_NUM>)/,
+      '$1\n    <OBS_TRIP_NUM>OBS-X</OBS_TRIP_NUM>',
+    );
+    expect(injected).toContain('<OBS_TRIP_NUM>OBS-X</OBS_TRIP_NUM>');
+    const { errors } = validateElogXml(injected, subformId);
+    expect(errors.some(e => e.includes(`OBS_TRIP_NUM is blocked for subform ${subformId}`))).toBe(true);
+  }
+});
+
+test('C2: a 21-character code trips the string_20 cap; exactly 20 passes', () => {
+  const over = makeMar90Log();
+  over.data.obsTripNum = 'A'.repeat(21);
+  const overXml = generateElogXml(closeAllGroups(over), profile);
+  const overResult = validateElogXml(overXml, 90);
+  expect(overResult.errors.some(e => e.includes('OBS_TRIP_NUM') && e.includes('exceeds 20 characters'))).toBe(true);
+
+  const atCap = makeMar90Log();
+  atCap.data.obsTripNum = 'B'.repeat(20);
+  const atCapXml = generateElogXml(closeAllGroups(atCap), profile);
+  const atCapResult = validateElogXml(atCapXml, 90);
+  expect(atCapResult.valid).toBe(true);
+  expect(atCapResult.errors.filter(e => e.includes('OBS_TRIP_NUM'))).toEqual([]);
+});
+
 test('B5: the button is gated MAR-90 only and guards readOnly', () => {
   // The button block: subform gate wraps it; the handler no-ops on a read-only (sent) log.
   const btn = SRC.match(/\{subformId === 90 && \(\s*\n\s*<TouchableOpacity[\s\S]{0,600}?obsTripBtn/);
