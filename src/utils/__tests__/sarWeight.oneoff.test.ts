@@ -220,6 +220,10 @@ function sarLog(overrides: Record<string, string> = {}): any {
       baitEntries: JSON.stringify([{ type: 'Mackerel, Atlantic', lbs: '100' }]),
       mmYes: 'false',
       hlinCompany: 'Atlantic Catch Data Ltd.', hlinConfirmNo: 'HI-1001',
+      // S161: the Rule 660/661 validator arm made ETA_DT + TOT_WT_ONBRD required on a 38b
+      // HLIN — this fixture predates the arm (the S154D fixture rule: lawful source, never
+      // a weakened assertion). No companion date: the trip-day fallback is the proven path.
+      hlinEta: '12:00', hlinTotalWeight: '111',
       hloutCompany: 'Atlantic Catch Data Ltd.', hloutConfirmNo: 'HO-1001',
       dgCloseHlin: '2026-06-10T15:00:00.000Z', dgCloseHlout: '2026-06-10T15:00:00.000Z',
       sarYes: 'true', sarSpecies: '10561',

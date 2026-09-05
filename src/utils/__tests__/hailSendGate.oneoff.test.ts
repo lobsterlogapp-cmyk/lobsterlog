@@ -51,6 +51,10 @@ function makeMar38bLog(): any {
       gpsLat: '44.1234', gpsLng: '-66.5432', gpsSrc: 'gps', nbSpcmnBrd: '3',
       baitEntries: JSON.stringify([{ type: 'Mackerel, Atlantic', lbs: '100' }]),
       hlinCompany: 'Atlantic Catch Data Ltd.', hlinConfirmNo: 'HI-1001',
+      // S161: the Rule 660/661 validator arm made ETA_DT + TOT_WT_ONBRD required on a 38b
+      // HLIN — this fixture predates the arm (the S154D fixture rule: lawful source, never
+      // a weakened assertion). No companion date: the trip-day fallback is the proven path.
+      hlinEta: '12:00', hlinTotalWeight: '111',
       hloutCompany: 'Atlantic Catch Data Ltd.', hloutConfirmNo: 'HO-1001',
       dgCloseHlin: CLOSE, dgCloseHlout: CLOSE,
       dgCloseEffort: CLOSE, dgCloseLanding: CLOSE, dgCloseBaitUsed: CLOSE,

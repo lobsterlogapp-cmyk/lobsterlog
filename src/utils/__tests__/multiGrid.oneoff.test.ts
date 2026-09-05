@@ -408,6 +408,9 @@ test('MAR-90 (38b) two-grid log emits two EFFORT_DETAIL with sequential GEAR_GRP
   // PRE_S121_BASELINE_90 — a deliberate byte pin — stays byte-for-byte untouched.
   log.data.hlinCompany = 'Atlantic Catch Data Ltd.';
   log.data.hlinConfirmNo = 'HI-1001';
+  // S161: Rules 660/661 now enforced — the 38b HLIN needs its ETA and weight (S154D fixture rule).
+  log.data.hlinEta = '12:00';
+  log.data.hlinTotalWeight = '111';
   log.data.dgCloseHlin = '2026-06-10T15:00:00.000Z';
   log.data.hloutCompany = 'Atlantic Catch Data Ltd.';
   log.data.hloutConfirmNo = 'HO-1001';

@@ -276,7 +276,7 @@ const parseDateTime = (dateStr: string, timeStr: string): Date => {
 // S135 Phase 4 (ruling 6): 'extraSarTime' is the combined Date & Time field on SAR blocks
 // 2+ — one PickerField for every extra block, disambiguated by the block index (passed
 // explicitly on Android, staged in extraSarPickerIdx for the iOS Done handler).
-type PickerField = 'sailed' | 'startHaul' | 'stopHaul' | 'landing' | 'transfer' | 'sarTime' | 'extraSarTime' | 'extraEffortStart' | 'extraEffortEnd';
+type PickerField = 'sailed' | 'startHaul' | 'stopHaul' | 'landing' | 'transfer' | 'hlinEta' | 'sarTime' | 'extraSarTime' | 'extraEffortStart' | 'extraEffortEnd';
 type SheetMode = 'bait' | 'bycatch' | null;
 
 const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLogId, onSaved, readOnly = false, onBack }, ref) => {
@@ -466,6 +466,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const [hlinCompany, setHlinCompany] = useState('');
   const [hlinConfirmNo, setHlinConfirmNo] = useState('');
   const [hlinEta, setHlinEta] = useState('');
+  // S161: ETA's companion date (the S90 pattern every user timestamp uses). Until S161 the
+  // ETA box was FREE TEXT feeding toDate12 raw — "16:30" is Invalid Date, so a typed ETA
+  // NEVER emitted (recon RECON_S161_HLIN_ETA). Now it rides the datetime-picker family.
+  const [hlinEtaDate, setHlinEtaDate] = useState('');
   const [hlinTotalWeight, setHlinTotalWeight] = useState('');
   const [hloutCompany, setHloutCompany] = useState('');
   const [hloutConfirmNo, setHloutConfirmNo] = useState('');
@@ -793,6 +797,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           setHlinCompany(d.hlinCompany || '');
           setHlinConfirmNo(d.hlinConfirmNo || '');
           setHlinEta(d.hlinEta || '');
+          setHlinEtaDate(d.hlinEtaDate || '');
           setHlinTotalWeight(d.hlinTotalWeight || '');
           setHloutCompany(d.hloutCompany || '');
           setHloutConfirmNo(d.hloutConfirmNo || '');
@@ -1005,7 +1010,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     nbSpcmnKept,
     // QC/NL (S154 U2) — optional discard count
     nbSpcmnDisc,
-    hlinCompany, hlinConfirmNo, hlinEta, hlinTotalWeight,
+    hlinCompany, hlinConfirmNo, hlinEta, hlinEtaDate, hlinTotalWeight,
     hloutCompany, hloutConfirmNo,
   });
 
@@ -1399,6 +1404,7 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       case 'stopHaul':   current = parseDateTime(haulEndDate || dateFished, timeStoppedHauling); break;
       case 'landing':    current = parseDateTime(landingDate || dateFished, timeOfLanding); break;
       case 'transfer':   current = parseDateTime(transferDate || dateFished, transferTime); break;
+      case 'hlinEta':    current = parseDateTime(hlinEtaDate || dateFished, hlinEta); break;
       case 'sarTime':    current = parseDateTime(sarDate, sarTime); break;
       // S135 Phase 4: SAR blocks 2+ — seed from the block's own stored strings (tolerant
       // parse: a blank/typed-malformed half falls back to now, never crashes the seed).
@@ -1449,6 +1455,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           setLandingDate(formatDate(d)); setTimeOfLanding(formatTime(d)); break;
         case 'transfer':
           setTransferDate(formatDate(d)); setTransferTime(formatTime(d)); break;
+        case 'hlinEta':
+          setHlinEtaDate(formatDate(d)); setHlinEta(formatTime(d)); break;
         case 'sarTime':
           setSarDate(formatDate(d)); setSarTime(formatTime(d)); break;
         case 'extraSarTime': {
@@ -5627,7 +5635,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
               entry BLOCKED on a 41-only log (hidden, the S110 blocked-means-hide precedent). */}
           {/* Rules 660/661 key on "any effort fishes 38b" — hail38b IS that fact, translated
               into the table's context shape (S140 P2). */}
-          {hail38b && renderField(t('form234.etaLabel'), hlinEta, setHlinEta, t('form234.etaPlaceholder'), false, false, 'default', isFieldRequired('hlinEta', { subformId, effortFmaIds: hail38b ? [DFO_FMA_38B] : [] }))}
+          {/* S161: ETA is a real timestamp now — the free-text box could never emit (toDate12
+              can't parse "16:30"); the picker writes HH:MM + companion hlinEtaDate, and the
+              emit combines them exactly like TRANSFER's. etaPlaceholder is orphaned, left. */}
+          {hail38b && renderTimestampField(t('form234.etaLabel'), formatDateTimeDisplay(hlinEtaDate, hlinEta), 'hlinEta', false, isFieldRequired('hlinEta', { subformId, effortFmaIds: hail38b ? [DFO_FMA_38B] : [] }), undefined, isClosed('dgCloseHlin'))}
           {hail38b && renderField(wLabel('form234.totalWeightLabel', isClosed('dgCloseHlin'), closeUnits.dgCloseHlinUnit), showWeight(hlinTotalWeight, isClosed('dgCloseHlin'), closeUnits.dgCloseHlinUnit), setHlinTotalWeight, '0', false, false, 'numeric', isFieldRequired('hlinTotalWeight', { subformId, effortFmaIds: hail38b ? [DFO_FMA_38B] : [] }))}
           </View>
           {/* S153 Phase 4 (R9): the weight counts too, so a typed weight raises the close door. */}

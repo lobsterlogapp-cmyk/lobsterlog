@@ -545,7 +545,17 @@ export function generateElogXml(log: DfoLog, captainProfile: CaptainProfile): st
       body += `    <HLIN>\n`;
       body += tag('HLIN_CIE_ID',  hlinCie ? String(hlinCie.codeId) : '', '      ');
       body += tag('HLIN_NUM',     d.hlinConfirmNo ?? '', '      ');
-      body += tag('ETA_DT',       toDate12(d.hlinEta ?? ''), '      ');
+      // S161: ETA_DT joins the house combine — companion date, trip-day fallback — exactly
+      // like TRIP/LANDING/TRANSFER above. Until S161 this line fed toDate12 the RAW form
+      // string ("16:30" → Invalid Date → dropped), so a typed ETA never emitted (CONF 164103
+      // shipped without it). The HH:MM shape-guard keeps a legacy free-text ETA ("about 4pm")
+      // emitting NOTHING rather than a silently-wrong midnight — localToUtcIso reads NaN
+      // hours as 0, and a wrong value is worse than an absent one.
+      const etaTime = (d.hlinEta ?? '').trim();
+      const etaIso = /^\d{1,2}:\d{2}$/.test(etaTime)
+        ? localToUtcIso(d.hlinEtaDate || log.dateFished, etaTime)
+        : '';
+      body += tag('ETA_DT',       toDate12(etaIso), '      ');
       body += tag('TOT_WT_ONBRD', kgStr(d.hlinTotalWeight ?? '', storedWeightUnit(d.dgCloseHlinUnit)), '      ');
       body += tag('DG_CLOSE_DT',  d.dgCloseHlin ? toCloseTimestamp(d.dgCloseHlin) : '', '      ');
       body += tag('REM',          rem.hlin ?? '', '      ');
@@ -1279,6 +1289,28 @@ export function validateElogXml(xml: string, subformId: number): { valid: boolea
         errors.push(`${p}: ${group} is blocked on subform ${subformId} without a fishing effort in FMA 38b or 41 (${rule})`);
       }
     });
+
+    // S161 (Rules 660/661): with a 38b effort, every HLIN must carry ETA_DT and
+    // TOT_WT_ONBRD. This is the arm the silence stack was missing — the requirements table
+    // has starred both as mandatory-when-38b since S140 while this spec carries min:0, so a
+    // typed-but-unparseable ETA was dropped at emit and the file sailed (CONF 164103): the
+    // table starred it, the emit dropped it, this walker waved it through, DFO said WS0000.
+    // ⚠ Scoped exactly as the rules scope themselves — DFO_FMA_38B ALONE, never the
+    // 38b-or-41 hail set above (fishes38b vs fishesHailArea, the comment above draws the
+    // same line): an over-broad arm would refuse legitimate LFA-41 sends, worse than the
+    // bug. The "missing required <…>" phrasing is deliberate: hailGateSections() routes it
+    // to the HLIN close key, so the refusal lands the harvester on the right card.
+    const fma38b = subformId === 90 && efforts.some(ef =>
+      Number(get(ef, 'FMA_ID')[0]?.text ?? 0) === DFO_FMA_38B);
+    if (fma38b) {
+      get(trip, 'HLIN').forEach((hlin, i) => {
+        ([['ETA_DT', 'Rule 660'], ['TOT_WT_ONBRD', 'Rule 661']] as const).forEach(([el, rule]) => {
+          if (get(hlin, el).length === 0) {
+            errors.push(`${p}.HLIN[${i}]: missing required <${el}> — mandatory with a fishing effort in FMA 38b (${rule})`);
+          }
+        });
+      });
+    }
 
     // A completed fishing day with effort + catch must record a landing. The generator
     // gates the whole <LANDING> node on a present landing time (if (landDt)); with the

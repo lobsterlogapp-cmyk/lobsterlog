@@ -44,6 +44,9 @@ function makeSarLog(): any {
 function withHail(log: any): any {
   log.data.hlinCompany = 'Atlantic Catch Data Ltd.';
   log.data.hlinConfirmNo = 'HI-1001';
+  // S161: Rules 660/661 now enforced — the 38b HLIN needs its ETA and weight (S154D fixture rule).
+  log.data.hlinEta = '12:00';
+  log.data.hlinTotalWeight = '111';
   log.data.dgCloseHlin = '2026-06-10T15:00:00.000Z';
   log.data.hloutCompany = 'Atlantic Catch Data Ltd.';
   log.data.hloutConfirmNo = 'HO-1001';

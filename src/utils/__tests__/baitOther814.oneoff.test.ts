@@ -43,6 +43,10 @@ function marLog(baitRows: object[]): any {
       gpsLat: '44.1234', gpsLng: '-66.5432', gpsSrc: 'gps', nbSpcmnBrd: '3',
       baitEntries: JSON.stringify(baitRows),
       hlinCompany: 'Atlantic Catch Data Ltd.', hlinConfirmNo: 'HI-1001',
+      // S161: the Rule 660/661 validator arm made ETA_DT + TOT_WT_ONBRD required on a 38b
+      // HLIN — this fixture predates the arm (the S154D fixture rule: lawful source, never
+      // a weakened assertion). No companion date: the trip-day fallback is the proven path.
+      hlinEta: '12:00', hlinTotalWeight: '111',
       dgCloseHlin: '2026-06-10T15:00:00.000Z',
       hloutCompany: 'Atlantic Catch Data Ltd.', hloutConfirmNo: 'HO-1001',
       dgCloseHlout: '2026-06-10T15:00:00.000Z',
