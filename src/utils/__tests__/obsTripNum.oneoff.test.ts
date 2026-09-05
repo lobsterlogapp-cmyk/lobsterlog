@@ -246,6 +246,29 @@ test('C2: a 21-character code trips the string_20 cap; exactly 20 passes', () =>
   expect(atCapResult.errors.filter(e => e.includes('OBS_TRIP_NUM'))).toEqual([]);
 });
 
+test('C3: & and < in the box produce a VALID file — escaped on the wire, and the 20-cap measures the DECODED value', () => {
+  // Founder instruction (Gate 5): close the escaping hole before it exists. A code
+  // containing XML metacharacters must escape cleanly and still validate.
+  const log = closeAllGroups(makeMar90Log());
+  log.data.obsTripNum = 'A&B<C';
+  const xml = generateElogXml(log, profile);
+  expect(xml).toContain('<OBS_TRIP_NUM>A&amp;B&lt;C</OBS_TRIP_NUM>');
+  const { valid, errors } = validateElogXml(xml, 90);
+  expect(valid).toBe(true);
+  expect(errors.filter(e => e.includes('OBS_TRIP_NUM'))).toEqual([]);
+
+  // The S154D D4 twist: '&' is 5 characters on the wire (&amp;). A code of exactly
+  // 20 DECODED characters that is 24 on the wire must still pass — the cap measures
+  // what the harvester typed, not the escaped bytes.
+  const atCap = closeAllGroups(makeMar90Log());
+  atCap.data.obsTripNum = '&' + 'D'.repeat(19); // 20 decoded, 24 on the wire
+  const atCapXml = generateElogXml(atCap, profile);
+  expect(atCapXml).toContain('<OBS_TRIP_NUM>&amp;' + 'D'.repeat(19) + '</OBS_TRIP_NUM>');
+  const atCapResult = validateElogXml(atCapXml, 90);
+  expect(atCapResult.valid).toBe(true);
+  expect(atCapResult.errors.filter(e => e.includes('OBS_TRIP_NUM'))).toEqual([]);
+});
+
 test('B5: the button is gated MAR-90 only and guards readOnly', () => {
   // The button block: subform gate wraps it; the handler no-ops on a read-only (sent) log.
   const btn = SRC.match(/\{subformId === 90 && \(\s*\n\s*<TouchableOpacity[\s\S]{0,600}?obsTripBtn/);
