@@ -4618,31 +4618,23 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
         <View style={styles.section}>
           {/* S162 defect 141 — the observer toggle (renderObsTripButton, MAR-90 only,
               second tap ERASES: nothing hidden may still emit) joined this header.
-              S162b — in FRENCH on a MAR log, « Informations du voyage » + two buttons
-              crunched the shared row into a three-line title, so FR+MAR stacks: title
-              on its own line, buttons beneath (founder rulings 1–5: stacking not
-              shortening; French only; this card only; Maritimes only — same
-              `subformId === 90` term as the button's own gate, asserted identical by
-              the frHeaderStack suite). Every other case renders the original row. */}
-          {isFr && subformId === 90 ? (
-            <View style={styles.tripHeaderStackedFr}>
-              <View style={styles.tripHeaderTitleRowFr}>
-                <View style={[styles.sectionIcon, { backgroundColor: '#DBEAFE' }]}><Calendar size={16} color="#1E3A8A" /></View>
-                <Text style={styles.sectionTitle}>{t('form234.tripInfoSection')}</Text>
-              </View>
-              <View style={styles.tripHeaderBtnRowFr}>
-                {renderNoteButton('trip')}
-                {renderObsTripButton()}
-              </View>
-            </View>
-          ) : (
-            <View style={styles.sectionHeader}>
+              S162c — STACK WHEN IT DOESN'T FIT (founder ruling; supersedes the S162b
+              FR+MAR-only stack, which was wrong in kind — EN crunched the same way on a
+              narrower device; the cause is width, not language). The title group keeps
+              its natural width on one unbroken line and the button group wraps WHOLE
+              onto a second line whenever the two cannot share the row. flexWrap resolves
+              in the layout pass before first paint — no one-row-then-snap flicker.
+              sectionHeader is COMPOSED by reference, never edited (10 other cards). */}
+          <View style={[styles.sectionHeader, styles.tripHeaderWrap]}>
+            <View style={styles.tripHeaderTitleGroup}>
               <View style={[styles.sectionIcon, { backgroundColor: '#DBEAFE' }]}><Calendar size={16} color="#1E3A8A" /></View>
-              <Text style={styles.sectionTitle}>{t('form234.tripInfoSection')}</Text>
+              <Text style={[styles.sectionTitle, styles.tripHeaderTitleText]} numberOfLines={1}>{t('form234.tripInfoSection')}</Text>
+            </View>
+            <View style={styles.tripHeaderBtnGroup}>
               {renderNoteButton('trip')}
               {renderObsTripButton()}
             </View>
-          )}
+          </View>
           {renderNoteInput('trip', remarks.trip ?? '', (v) => setNote('trip', v))}
           {/* S162: the observer trip number drops in directly ABOVE Date Fished (founder
               ruling 2 — top of the card so it demands attention). Never required (ruling 6);
@@ -6073,17 +6065,16 @@ const styles = StyleSheet.create({
   },
   sectionIcon: { width: 32, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   sectionTitle: { fontSize: 15, fontWeight: '700', color: '#1E293B', flex: 1 },
-  // S162b — the FR + MAR-90 Trip Information header ONLY (rulings 3/4/5). The stacked
-  // container copies sectionHeader's border/margin/padding VALUES (not a reference —
-  // sectionHeader serves 10 other card headers and must not move) so the card keeps
-  // the sibling rhythm; column instead of row, title line above the button line.
-  tripHeaderStackedFr: {
-    marginBottom: 12, paddingBottom: 10,
-    borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
-    gap: 8,
-  },
-  tripHeaderTitleRowFr: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  tripHeaderBtnRowFr: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  // S162c — the Trip Information header stacks WHEN IT DOESN'T FIT (flexWrap, the
+  // house reflow idiom — CrewSelector/SentLogCard/FormSentCard/DfoSetupScreen).
+  // sectionHeader is composed by reference at the call site, never edited (10 other
+  // cards render from it). Flex line-breaking places items at their NATURAL size
+  // first, so the button group wraps whole when it cannot share the row; the title
+  // shrinks/ellipsizes only in the degenerate case where it ALONE exceeds the row.
+  tripHeaderWrap: { flexWrap: 'wrap' },
+  tripHeaderTitleGroup: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
+  tripHeaderTitleText: { flex: 0, flexShrink: 1 },
+  tripHeaderBtnGroup: { flexDirection: 'row', alignItems: 'center', gap: 10, marginLeft: 'auto' },
   // S137: the why-line under the hail section headers (STOP-2a ruling).
   hailRequiredNote: { fontSize: 12.5, color: '#64748B', fontStyle: 'italic', marginBottom: 8 },
   problemPill: { backgroundColor: '#FEE2E2', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
