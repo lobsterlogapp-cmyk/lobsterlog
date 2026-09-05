@@ -37,6 +37,7 @@ import {
   StickyNote,
   Lock,
   Edit3,
+  Eye,
 } from 'lucide-react-native';
 import {
   saveLog,
@@ -344,6 +345,11 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   const [departurePort, setDeparturePort] = useState('');
   const [departurePortCodeId, setDeparturePortCodeId] = useState<number | null>(null);
   const [portLandedCodeId, setPortLandedCodeId] = useState<number | null>(null);
+  // S162 defect 141 — TRIP.OBS_TRIP_NUM (MAR-90 only). The field only renders while
+  // obsTripOpen; toggling it off ERASES the value, because a hidden value that still
+  // emits is the failure ruled out ("what is on the screen is what is in the file").
+  const [obsTripNum, setObsTripNum] = useState('');
+  const [obsTripOpen, setObsTripOpen] = useState(false);
 
   const [timeSailed, setTimeSailed] = useState('');
   const [timeStartedHauling, setTimeStartedHauling] = useState('');
@@ -675,6 +681,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                     } catch { setCrewMembers([]); }
                     setDeparturePort(d.departurePort || '');
           setDeparturePortCodeId(d.departurePortCodeId ? Number(d.departurePortCodeId) : null);
+          // S162: a stored observer trip number must reopen VISIBLE — closed always means
+          // empty, so visibility derives from the value, never from a separate flag.
+          setObsTripNum(d.obsTripNum || '');
+          setObsTripOpen(!!(d.obsTripNum || '').trim());
           setTimeSailed(d.timeSailed || '');
           setTimeStartedHauling(d.timeStartedHauling || '');
           setTimeStoppedHauling(d.timeStoppedHauling || '');
@@ -982,6 +992,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
     useCrInd, carrierVrn, prtnshpId: String(prtnshpId),
     trapSize,
     gearSubtypeId,
+    // S162 defect 141: written only when non-empty — every log without an observer keeps
+    // its exact stored shape, and a toggled-off (erased) code leaves no key behind.
+    ...(obsTripNum.trim() ? { obsTripNum: obsTripNum.trim() } : {}),
     // S121: additional catch-effort blocks — key written only when blocks exist, so
     // pre-S121 logs and single-grid logs keep their exact stored shape.
     ...(extraEfforts.length > 0 ? { extraEffortDetails: JSON.stringify(extraEfforts) } : {}),
@@ -4588,8 +4601,31 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
             <View style={[styles.sectionIcon, { backgroundColor: '#DBEAFE' }]}><Calendar size={16} color="#1E3A8A" /></View>
             <Text style={styles.sectionTitle}>{t('form234.tripInfoSection')}</Text>
             {renderNoteButton('trip')}
+            {/* S162 defect 141 — OBS_TRIP_NUM entry toggle, MAR-90 only (Optional per
+                Subforms_requirements row 22; Blocked 88/89/91). Second tap ERASES the code
+                and removes the field (founder ruling 3): nothing hidden may still emit. */}
+            {subformId === 90 && (
+              <TouchableOpacity
+                style={styles.addNoteBtn}
+                onPress={() => {
+                  if (readOnly) return;
+                  if (obsTripOpen) { setObsTripNum(''); setObsTripOpen(false); }
+                  else setObsTripOpen(true);
+                }}
+                activeOpacity={0.7}
+              >
+                <Eye size={13} color="#1E3A8A" />
+                <Text style={styles.addNoteBtnText}>{t('form234.obsTripBtn')}</Text>
+              </TouchableOpacity>
+            )}
           </View>
           {renderNoteInput('trip', remarks.trip ?? '', (v) => setNote('trip', v))}
+          {/* S162: the observer trip number drops in directly ABOVE Date Fished (founder
+              ruling 2 — top of the card so it demands attention). Never required (ruling 6);
+              20-char cap = XSD string_20, a limit on the box, not a gate. */}
+          {subformId === 90 && obsTripOpen &&
+            renderField(t('form234.obsTripNumLabel'), obsTripNum, setObsTripNum,
+              t('form234.obsTripNumPlaceholder'), false, false, 'default', false, 20)}
           {/* DATE FISHED — date picker, auto-fills today on new log. S140 P2 ruling 2:
               marked (TRIP.START_DT, matrix row 16 — same element as Time Sailed). */}
           <View style={styles.fieldRow}>
