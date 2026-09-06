@@ -1,12 +1,15 @@
 // Reusable transmission-register card + detail modal (Session 60).
 // Used by BOTH DfoLogsListScreen (capped to 30 sent) and LogHistoryScreen (full archive)
 // so the sent-log layout and tap-to-detail live in exactly one place.
-import React from 'react';
-import { View, Text, TouchableOpacity, Modal, ScrollView, SafeAreaView, StyleSheet } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, Modal, ScrollView, SafeAreaView, StyleSheet, Platform, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CheckCircle, XCircle, X, Eye } from 'lucide-react-native';
+import { CheckCircle, XCircle, X, Eye, FileCode, Download } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
-import { DfoLog, TransmissionRecord, transmissionKind, SEND_FAILURE_SHEET_KEY, isSendFailureKind } from '../utils/dfoLogStorage';
+import { DfoLog, TransmissionRecord, transmissionKind, SEND_FAILURE_SHEET_KEY, isSendFailureKind, loadXmlArchive } from '../utils/dfoLogStorage';
+// S163 Phase 3 — save-to-phone reuses the delete-account export route (S150B/S151),
+// not a new one: DocumentDir write + iOS share sheet / Android view intent.
+import { writeTransmissionRecordExport } from '../utils/exportTransmissionRecord';
 import { formatSentDateTime } from '../utils/formatSentDateTime';
 
 // Latest SUCCESS transmission record per logId. A log can have several attempts
@@ -111,6 +114,40 @@ export const SentLogDetailModal: React.FC<SentLogDetailModalProps> = ({ visible,
   const insets = useSafeAreaInsets(); // S95: edge-to-edge safe-area top for this full-screen modal header
   const tripNum = record?.tripNum ?? log?.tripNum;
 
+  // S163 Phase 3 — the sent XML, visible and saveable. Resolution order: the
+  // xml_archive entry for this logId (the §13.4 store, success-only by design),
+  // falling back to the record's own xmlSnapshot — which is how a FAILED attempt's
+  // document is reachable at all (ruled in the build doc: the button renders for
+  // both outcomes whenever bytes exist; the outcome badge above the card already
+  // says which kind of document this is). Empty both ways → no button.
+  const [xmlText, setXmlText] = useState<string>('');
+  const [xmlOpen, setXmlOpen] = useState(false);
+  useEffect(() => {
+    let stale = false;
+    setXmlOpen(false);
+    setXmlText('');
+    if (!visible || !record) return;
+    (async () => {
+      const archive = await loadXmlArchive();
+      const entry = archive.find(e => e.logId === record.logId);
+      if (!stale) setXmlText(entry?.xml || record.xmlSnapshot || '');
+    })();
+    return () => { stale = true; };
+  }, [visible, record]);
+
+  // Filename: the DFO name from the record; a degraded old record without one
+  // falls back to <logId>.XML so the save path never invents a DFO-shaped name.
+  const xmlFileName = record?.fileName || `${record?.logId ?? 'log'}.XML`;
+
+  const handleSaveXml = async () => {
+    const res = await writeTransmissionRecordExport(xmlText, xmlFileName);
+    if (res.ok) {
+      Alert.alert(t('logs.xmlSaveOkTitle'), t('logs.xmlSaveOkBody', { fileName: xmlFileName }));
+    } else {
+      Alert.alert(t('logs.xmlSaveFailTitle'), t('logs.xmlSaveFailBody'));
+    }
+  };
+
   // For form records (no backing DfoLog) the header is derived from the record kind,
   // mirroring FormSentCard's title contract; logbook records ignore this and use log.*.
   const formKind = record ? transmissionKind(record) : undefined;
@@ -169,9 +206,43 @@ export const SentLogDetailModal: React.FC<SentLogDetailModalProps> = ({ visible,
                 <DetailRow label={t('logs.detailFileName')} value={record.fileName || '—'} />
                 <DetailRow label={t('logs.detailHttp')} value={record.httpStatus !== undefined ? String(record.httpStatus) : '—'} last />
               </View>
+
+              {/* S163 Phase 3 — the document itself, whenever bytes exist (archive for a
+                  success, the record's own snapshot for a failure). */}
+              {!!xmlText && (
+                <TouchableOpacity style={styles.xmlButton} onPress={() => setXmlOpen(true)} activeOpacity={0.7}>
+                  <FileCode size={16} color="#1E3A8A" />
+                  <Text style={styles.xmlButtonText}>{t('logs.viewXmlButton')}</Text>
+                </TouchableOpacity>
+              )}
             </>
           )}
         </ScrollView>
+
+        {/* S163 Phase 3 — full-screen XML viewer: monospaced, scrollable, selectable,
+            with save-to-phone through the existing export route. */}
+        <Modal visible={xmlOpen} animationType="slide" onRequestClose={() => setXmlOpen(false)}>
+          <SafeAreaView style={styles.detailContainer}>
+            <View style={[styles.detailHeader, { paddingTop: insets.top + 12 }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.detailTitle}>{t('logs.xmlViewerTitle')}</Text>
+                <Text style={styles.xmlFileName}>{xmlFileName}</Text>
+              </View>
+              <TouchableOpacity style={styles.closeBtn} onPress={() => setXmlOpen(false)}>
+                <X size={20} color="#1E293B" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={{ padding: 16 }}>
+              <Text selectable style={styles.xmlBody}>{xmlText}</Text>
+            </ScrollView>
+            <View style={[styles.xmlFooter, { paddingBottom: insets.bottom + 12 }]}>
+              <TouchableOpacity style={styles.xmlSaveButton} onPress={handleSaveXml} activeOpacity={0.8}>
+                <Download size={16} color="#FFFFFF" />
+                <Text style={styles.xmlSaveButtonText}>{t('logs.saveXmlButton')}</Text>
+              </TouchableOpacity>
+            </View>
+          </SafeAreaView>
+        </Modal>
       </SafeAreaView>
     </Modal>
   );
@@ -355,5 +426,55 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     textAlign: 'center',
     marginTop: 40,
+  },
+  // S163 Phase 3 — XML button + viewer
+  xmlButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 12,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#1E3A8A',
+    backgroundColor: '#EFF6FF',
+  },
+  xmlButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1E3A8A',
+  },
+  xmlFileName: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  xmlBody: {
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    fontSize: 11,
+    lineHeight: 16,
+    color: '#1E293B',
+  },
+  xmlFooter: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  xmlSaveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 13,
+    borderRadius: 10,
+    backgroundColor: '#1E3A8A',
+  },
+  xmlSaveButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });
