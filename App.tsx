@@ -172,6 +172,10 @@ export default function App() {
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
   const [tripStartTime, setTripStartTime] = useState<string>('');
   const [readOnlyLog, setReadOnlyLog] = useState(false);
+  // S163 Phase 1 (§6 item 5 ruling): the read-only view is reachable from BOTH the
+  // ELOGs list and Log History, so leaving the form returns to whichever screen
+  // opened it. Every entry into 'dfo-demo' sets this.
+  const [dfoFormReturnView, setDfoFormReturnView] = useState<'dfo-list' | 'dfo-history'>('dfo-list');
   // S95: real safe-area top inset drives the persistent header (edge-to-edge-correct on Android).
   const insets = useSafeAreaInsets();
   const [dfoActivated, setDfoActivated] = useState<boolean | null>(null);
@@ -647,23 +651,35 @@ const isAdmin = useMemo(() => {
                                     onNewLog={() => {
                                       setEditingLogId(null);
                                       setReadOnlyLog(false);
+                                      setDfoFormReturnView('dfo-list');
                                       setView('dfo-trip');
                                     }}
                                     onEditLog={(logId) => {
                                       setEditingLogId(logId);
                                       setReadOnlyLog(false);
+                                      setDfoFormReturnView('dfo-list');
                                       setView('dfo-demo');
                                     }}
                                     onViewLog={(logId) => {
                                       setEditingLogId(logId);
                                       setReadOnlyLog(true);
+                                      setDfoFormReturnView('dfo-list');
                                       setView('dfo-demo');
                                     }}
                                     onOpenHistory={() => setView('dfo-history')}
                                     isAdmin={isAdmin}
                                   />
                                 ) : view === 'dfo-history' ? (
-                                  <LogHistoryScreen onBack={() => setView('dfo-list')} />
+                                  <LogHistoryScreen
+                                    onBack={() => setView('dfo-list')}
+                                    // S163 §6 item 5 ruling: History gets the same View door.
+                                    onViewLog={(logId) => {
+                                      setEditingLogId(logId);
+                                      setReadOnlyLog(true);
+                                      setDfoFormReturnView('dfo-history');
+                                      setView('dfo-demo');
+                                    }}
+                                  />
                                 ) : view === 'dfo-trip' ? (
                                   <TripStartConfirmScreen
                                     onConfirm={(ts) => {
@@ -674,10 +690,10 @@ const isAdmin = useMemo(() => {
                                   />
                                 ) : view === 'dfo-demo' ? (
                                   <FullDfoForm
-                                    onSaved={() => { setReadOnlyLog(false); setView('dfo-list'); }}
+                                    onSaved={() => { setReadOnlyLog(false); setView(dfoFormReturnView); }}
                                     editingLogId={editingLogId}
                                     readOnly={readOnlyLog}
-                                    onBack={() => { setReadOnlyLog(false); setView('dfo-list'); }}
+                                    onBack={() => { setReadOnlyLog(false); setView(dfoFormReturnView); }}
                                   />
                                 ) : (
             <ScrollView

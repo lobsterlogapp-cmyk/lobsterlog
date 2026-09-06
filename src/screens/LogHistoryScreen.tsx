@@ -20,6 +20,11 @@ import { FormSentCard } from '../components/FormSentCard';
 
 interface LogHistoryScreenProps {
   onBack: () => void;
+  // S163 §6 item 5 ruling: History gets the same View door as the ELOGs list —
+  // a sent 234 opens the full read-only log. Form 222/233 rows (FormSentCard)
+  // never get it: the read-only renderer is the trip form and a form record has
+  // no entry in the dfo_logs store to hydrate from.
+  onViewLog: (logId: string) => void;
   refreshKey?: number;
 }
 
@@ -69,7 +74,7 @@ const Dropdown: React.FC<DropdownProps> = ({ label, value, open, onToggle, optio
   </View>
 );
 
-const LogHistoryScreen: React.FC<LogHistoryScreenProps> = ({ onBack, refreshKey = 0 }) => {
+const LogHistoryScreen: React.FC<LogHistoryScreenProps> = ({ onBack, onViewLog, refreshKey = 0 }) => {
   const { t } = useTranslation('dfo');
 
   const [sentLogs, setSentLogs] = useState<DfoLog[]>([]);
@@ -209,6 +214,10 @@ const LogHistoryScreen: React.FC<LogHistoryScreenProps> = ({ onBack, refreshKey 
               log={row.log}
               record={row.record}
               onPress={() => { setDetailLog(row.log); setDetailRecord(row.record); }}
+              // S163: the door renders only when the backing log is actually SENT
+              // (locked). A fail row's log may be completed-unsent — still editable
+              // from the ELOGs list — so it gets no View door here.
+              onView={row.log.sentToDfo === true ? () => onViewLog(row.log.id) : undefined}
             />
           ) : (
             <FormSentCard

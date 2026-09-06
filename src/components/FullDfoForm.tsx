@@ -498,8 +498,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // read-only (S125). isNoteLocked resolves the note→close-key mapping (single-sourced in
   // dfoLogStorage). This holds for all eight closeable note sections; 'trip' has no close key
   // so it is never locked.
+  // S163 Phase 1 (recon R4): in the read-only sent-log view the button is removed
+  // too — 'trip' has no close key, so without this gate a viewed sent log still
+  // offered "Add a note" on the Trip section (inert input, but a control that
+  // can't be used is removed, S124).
   const renderNoteButton = (openKey: string) =>
-    isNoteLocked(openKey, closes) ? null : (
+    readOnly || isNoteLocked(openKey, closes) ? null : (
     <TouchableOpacity style={styles.addNoteBtn} onPress={() => toggleNote(openKey)} activeOpacity={0.7}>
       <StickyNote size={13} color="#1E3A8A" />
       <Text style={styles.addNoteBtnText}>{t('form234.addNote')}</Text>

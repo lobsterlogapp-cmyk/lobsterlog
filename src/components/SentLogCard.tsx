@@ -4,7 +4,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, SafeAreaView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CheckCircle, XCircle, X } from 'lucide-react-native';
+import { CheckCircle, XCircle, X, Eye } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { DfoLog, TransmissionRecord, transmissionKind, SEND_FAILURE_SHEET_KEY, isSendFailureKind } from '../utils/dfoLogStorage';
 import { formatSentDateTime } from '../utils/formatSentDateTime';
@@ -60,9 +60,13 @@ interface SentLogCardProps {
   log: DfoLog;
   record?: TransmissionRecord;
   onPress: () => void;
+  // S163 Phase 1 — the door into the full read-only log (App's onViewLog route).
+  // OPTIONAL so LogHistoryScreen, which shares this card but has no route to the
+  // form, renders exactly as before unless deliberately wired (§6 item 5).
+  onView?: () => void;
 }
 
-export const SentLogCard: React.FC<SentLogCardProps> = ({ log, record, onPress }) => {
+export const SentLogCard: React.FC<SentLogCardProps> = ({ log, record, onPress, onView }) => {
   const { t, i18n } = useTranslation('dfo');
   const tripNum = record?.tripNum ?? log.tripNum;
 
@@ -84,6 +88,13 @@ export const SentLogCard: React.FC<SentLogCardProps> = ({ log, record, onPress }
         {!!record?.confNumber && <Field label={t('logs.regConfLabel')} value={record.confNumber} />}
         <Field label={t('logs.regSentLabel')} value={formatSentDateTime(record?.attemptedAt, i18n.language)} />
       </View>
+
+      {onView && (
+        <TouchableOpacity style={styles.viewButton} onPress={onView} activeOpacity={0.7}>
+          <Eye size={15} color="#1E3A8A" />
+          <Text style={styles.viewButtonText}>{t('logs.viewButton')}</Text>
+        </TouchableOpacity>
+      )}
     </TouchableOpacity>
   );
 };
@@ -248,6 +259,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#334155',
+  },
+  // S163 Phase 1 — mirrors the list screen's editButton so View reads the same
+  // everywhere a card offers it.
+  viewButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#1E3A8A',
+    backgroundColor: '#EFF6FF',
+    marginTop: 8,
+  },
+  viewButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1E3A8A',
   },
   // Detail modal
   detailContainer: {

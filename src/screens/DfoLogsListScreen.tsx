@@ -800,7 +800,11 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
         )}
 
         {sent ? (
-          /* SENT — unchanged single row: View + Sent ✓ (Phase 8 touches only the unsent card). */
+          /* SENT — ⚠ DEAD BRANCH (S163 recon R3): this card is only rendered for
+             mergedCompleted rows, which are built from completedUnsent, so sent
+             logs never reach it — they render as SentLogCard in the SENT section,
+             which now carries the live View door (S163 Phase 1). Annotated, not
+             removed, per §6 item 5 pending Jonathon's ruling. */
           <View style={styles.logActions}>
             <TouchableOpacity style={styles.editButton} onPress={() => onViewLog(log.id)}>
               <Eye size={16} color="#1E3A8A" />
@@ -1124,6 +1128,10 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
                 log={row.log}
                 record={row.record}
                 onPress={() => setDetailLog(row.log)}
+                // S163 Phase 1 — the door into the full read-only log. Before this,
+                // onViewLog's only call site was renderCompletedCard's unreachable
+                // sent branch, so no sent card could reach the readOnly view at all.
+                onView={() => onViewLog(row.log.id)}
               />
             ) : (
               <FormSentCard
@@ -1151,6 +1159,10 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
                 log={row.log}
                 record={row.rec}
                 onPress={() => { setDetailLog(row.log); setDetailRecord(row.rec); }}
+                // S163: same one rule as Log History — the door renders only when the
+                // backing log is SENT (a failed attempt that later succeeded). An
+                // unsent log's fail row gets no door; its own card carries Edit/Review.
+                onView={row.log.sentToDfo === true ? () => onViewLog(row.log.id) : undefined}
               />
             ) : (
               <FormSentCard
