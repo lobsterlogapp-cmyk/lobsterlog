@@ -349,6 +349,8 @@
     "websiteLabel": "Site Web",
     "replyNote": "Nous répondons habituellement en moins d’une journée.",
     "guideLabel": "Guide de l’utilisateur et instructions",
+    "usersGuideLabel": "Guide de l’utilisateur",
+    "providersInstructionsLabel": "Instructions du fournisseur",
     "dfoFooter": "Problème avec votre clé JBE du MPO ou votre compte?",
     "dfoSupport": "Soutien JBE du MPO · {{phone}}",
     "docClose": "Fermer"

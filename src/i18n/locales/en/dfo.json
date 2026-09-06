@@ -348,6 +348,8 @@
     "websiteLabel": "Website",
     "replyNote": "We usually reply within a day.",
     "guideLabel": "User guide & instructions",
+    "usersGuideLabel": "User's Guide",
+    "providersInstructionsLabel": "Provider's Instructions",
     "dfoFooter": "Trouble with your DFO ELOG key or account?",
     "dfoSupport": "DFO ELOG support · {{phone}}",
     "docClose": "Close"

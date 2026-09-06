@@ -23,8 +23,18 @@ const SUPPORT_WEBSITE = 'https://lobsterlog.ca';
 const DFO_ELOG_SUPPORT_DISPLAY = '1-877-535-7307';
 const DFO_ELOG_SUPPORT_TEL = 'tel:18775357307';
 
+// S164: the one "User guide & instructions" button split in two — the label promised a
+// user guide the app did not carry. Two maps, two buttons; the §22 User's Guide PDFs are
+// TRACKED as of this build (Phase 1) so the clean-tree (EAS) hazard the old header named
+// is closed. ⚠ v1_5 is deliberate and the version stays IN the filename: when the v1_8
+// masters land, the filename changes and this require must change with it — that forces
+// the swap to be noticed (swap procedure: docs/S164_BUILD_HELP_SPLIT.md).
+const USERS_GUIDE_SOURCES = {
+  en: require('../../assets/docs/LobsterLog_Users_Guide_v1_5_EN.pdf'),
+  fr: require('../../assets/docs/LobsterLog_Guide_Utilisateur_v1_5_FR.pdf'),
+} as const;
 // Bundled §17 Provider's Instructions (tracked; already shipped for the Settings card)
-const GUIDE_SOURCES = {
+const PROVIDERS_SOURCES = {
   en: require('../../assets/docs/LobsterLog_Providers_Instructions_v1_2_EN.pdf'),
   fr: require('../../assets/docs/LobsterLog_Instructions_Fournisseur_v1_2_FR.pdf'),
 } as const;
@@ -39,9 +49,10 @@ export default function HelpSupportScreen({ onClose }: Props) {
   const [docVisible, setDocVisible] = useState(false);
   const [docUri, setDocUri] = useState<string | null>(null);
 
-  const openGuide = async () => {
+  // One opener for both documents — same language rule, same viewer, nothing invented.
+  const openDoc = async (sources: typeof USERS_GUIDE_SOURCES | typeof PROVIDERS_SOURCES) => {
     const lang: 'en' | 'fr' = i18n.language?.startsWith('fr') ? 'fr' : 'en';
-    const asset = Asset.fromModule(GUIDE_SOURCES[lang]);
+    const asset = Asset.fromModule(sources[lang]);
     if (!asset.localUri) {
       await asset.downloadAsync();
     }
@@ -88,8 +99,13 @@ export default function HelpSupportScreen({ onClose }: Props) {
         </View>
 
         <View style={s.card}>
-          {row(<FileText size={18} color="#1E3A8A" />, t('help.guideLabel'), null,
-            () => { void openGuide(); })}
+          {/* S164: User's Guide FIRST — the harvester's document on top; this is the
+              harvester's app. help.guideLabel is now an ORPHAN (left in place, S54
+              precedent, standing orphan-cleanup job). */}
+          {row(<FileText size={18} color="#1E3A8A" />, t('help.usersGuideLabel'), null,
+            () => { void openDoc(USERS_GUIDE_SOURCES); })}
+          {row(<FileText size={18} color="#1E3A8A" />, t('help.providersInstructionsLabel'), null,
+            () => { void openDoc(PROVIDERS_SOURCES); })}
         </View>
 
         {/* DFO's own ELOG support line — kept separate from LobsterLog support */}
