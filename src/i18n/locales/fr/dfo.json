@@ -444,6 +444,7 @@
     "xmlSaveFailTitle": "Échec de l’enregistrement",
     "xmlSaveFailBody": "Le fichier n’a pas pu être écrit. Réessayez.",
     "detailWsCode": "Code de réponse du MPO",
+    "detailXsd": "Validation XSD",
     "detailFileName": "Nom du fichier",
     "detailHttp": "Statut HTTP",
     "detailErr": "Erreur",

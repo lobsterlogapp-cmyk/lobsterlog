@@ -443,6 +443,7 @@
     "xmlSaveFailTitle": "Could not save",
     "xmlSaveFailBody": "The file could not be written. Try again.",
     "detailWsCode": "DFO response code",
+    "detailXsd": "XSD validation",
     "detailFileName": "File name",
     "detailHttp": "HTTP status",
     "detailErr": "Error",

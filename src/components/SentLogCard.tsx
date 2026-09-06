@@ -204,6 +204,20 @@ export const SentLogDetailModal: React.FC<SentLogDetailModalProps> = ({ visible,
                 )}
                 <DetailRow label={t('logs.detailWsCode')} value={record.wsErrCode || '—'} />
                 <DetailRow label={t('logs.detailFileName')} value={record.fileName || '—'} />
+                {/* S163 Phase 4 — the §13.3.1 XSD validation result, back on the card.
+                    xsdValid is written ONLY by an actually-executed validator run
+                    (doSubmit :309 / sendFormEntry :33,:63 — proven, no default-true
+                    anywhere), so "Passed" is earned; absent = no check ran = "—".
+                    Values REUSE export.xsdPassed/xsdFailed: one stored fact, one
+                    string — the card and the deletion export cannot drift apart. */}
+                <DetailRow
+                  label={t('logs.detailXsd')}
+                  value={
+                    record.xsdValid === true ? t('export.xsdPassed')
+                    : record.xsdValid === false ? t('export.xsdFailed')
+                    : '—'
+                  }
+                />
                 <DetailRow label={t('logs.detailHttp')} value={record.httpStatus !== undefined ? String(record.httpStatus) : '—'} last />
               </View>
 
