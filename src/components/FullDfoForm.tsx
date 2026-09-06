@@ -538,8 +538,12 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
   // S162 defect 141 button, hoisted at S162b so the FR-stacked and single-row Trip
   // headers render ONE definition (no drift between branches). Body byte-preserved
   // from the original inline block; gate unchanged: MAR-90 only, readOnly no-ops.
+  // S163 Phase 5 sweep: the button no longer RENDERS in readOnly (was render-but-inert;
+  // a control that can't be used is removed, S124 — and its toggle-off ERASES the value,
+  // S162, so it has no business on a sent log). The stored number still displays through
+  // the locked renderField below the header.
   const renderObsTripButton = () =>
-    subformId === 90 && (
+    !readOnly && subformId === 90 && (
       <TouchableOpacity
         style={styles.addNoteBtn}
         onPress={() => {
@@ -4031,7 +4035,9 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       <Text style={styles.label}>{t('form234.speciesLabel')}{bare && isRequired('sarSpecies') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
       <TouchableOpacity
         style={styles.dropdownBtn}
-        onPress={() => setDropdownOpen(!dropdownOpen)}
+        // S163 Phase 5 sweep: this renderer relied on the closed-block pointerEvents
+        // wrapper alone; the readOnly gate now stands on its own like every sibling.
+        onPress={() => { if (readOnly) return; setDropdownOpen(!dropdownOpen); }}
       >
         <Text style={[styles.dropdownBtnText, !species && styles.dropdownPlaceholder]}>
           {selectedLabel || t('form234.selectSpecies')}
@@ -4061,12 +4067,13 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
 
       {species === 'Other' && (
         <TextInput
-          style={[styles.input, { marginTop: 8 }]}
+          style={[styles.input, { marginTop: 8 }, readOnly && styles.inputReadOnly]}
           value={speciesOther}
           onChangeText={setSpeciesOther}
           placeholder={t('form234.enterSpecies')}
           placeholderTextColor="#94A3B8"
           autoFocus
+          editable={!readOnly}
         />
       )}
 
@@ -4077,21 +4084,23 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
       <Text style={[styles.label, { marginTop: 6 }]}>{t('form234.gpsLocationLabel')}{bare && isRequired('sarGps') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
       <View style={styles.gpsRow}>
         <TextInput
-          style={[styles.input, { flex: 1 }]}
+          style={[styles.input, { flex: 1 }, readOnly && styles.inputReadOnly]}
           value={lat}
           onChangeText={setLat}
           placeholder={t('form234.latPlaceholder')}
           placeholderTextColor="#94A3B8"
           keyboardType="numeric"
+          editable={!readOnly}
         />
         <View style={{ width: 8 }} />
         <TextInput
-          style={[styles.input, { flex: 1 }]}
+          style={[styles.input, { flex: 1 }, readOnly && styles.inputReadOnly]}
           value={lng}
           onChangeText={setLng}
           placeholder={t('form234.lngPlaceholder')}
           placeholderTextColor="#94A3B8"
           keyboardType="numeric"
+          editable={!readOnly}
         />
       </View>
     </View>
@@ -4686,7 +4695,8 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
           {isVisible('crewNb') && (
             <View style={styles.fieldRow}>
               <Text style={styles.label}>{t('form234.crewRegistryLabel')}{isRequired('crewNb') && <Text style={{ color: REQUIRED_ASTERISK_COLOR }}> *</Text>}</Text>
-              <CrewSelector selected={crewMembers} onChange={setCrewMembers} />
+              {/* S163 Phase 5 defect: was fully interactive on the read-only view. */}
+              <CrewSelector selected={crewMembers} onChange={setCrewMembers} readOnly={readOnly} />
             </View>
           )}
           {/* S128 Phase 4: departure port (TRIP.PORT_ID, Rule 299) is Mandatory on QC(88)/NL(91)
@@ -5595,7 +5605,10 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
                 <TouchableOpacity
                   key={opt.codeId}
                   style={[styles.dropdownItem, prtnshpId === opt.codeId && styles.dropdownItemActive, { borderRadius: 8, paddingVertical: 10, paddingHorizontal: 12 }]}
-                  onPress={() => setPrtnshpId(opt.codeId)}
+                  // S163 Phase 5 sweep: these chips relied on the closed-transfer wrapper
+                  // alone — on a sent QC log whose transfer group was UNUSED (never closed,
+                  // pointerEvents stays 'auto') they were live on the read-only view.
+                  onPress={() => { if (readOnly) return; setPrtnshpId(opt.codeId); }}
                 >
                   <Text style={[styles.dropdownItemText, prtnshpId === opt.codeId && styles.dropdownItemTextActive]}>
                     {t(`form234.partnershipOption_${opt.codeId}`)}

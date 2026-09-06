@@ -269,14 +269,17 @@ test('C3: & and < in the box produce a VALID file — escaped on the wire, and t
   expect(atCapResult.errors.filter(e => e.includes('OBS_TRIP_NUM'))).toEqual([]);
 });
 
-test('B5: the button is MAR-90-gated, guards readOnly, and is ONE definition with ONE call site', () => {
+test('B5: the button is MAR-90-gated, hidden in readOnly, and is ONE definition with ONE call site', () => {
   // S162b hoisted the button into renderObsTripButton (two header branches then).
   // S162c collapsed the header to ONE width-driven block (stack-when-it-doesn't-
-  // fit), so the call count is now 1. Rewritten to follow the code it pins (the
-  // S154D D2 lineage, second time for this test); the gate and readOnly pins are
-  // unchanged and unweakened.
+  // fit), so the call count is now 1. S163 Phase 5 sweep: the button no longer
+  // RENDERS in readOnly (was render-but-inert; its toggle-off erases the value, so
+  // it had no business on a sent log's view) — the pin follows the code it pins
+  // (the S154D D2 lineage, third time for this test) and is STRENGTHENED: the
+  // render gate `!readOnly &&` is asserted AND the in-onPress readOnly guard is
+  // still required, belt and braces.
   const helper = SRC.match(
-    /const renderObsTripButton = \(\)\s*=>\s*\n?\s*subformId === 90 && \(\s*\n\s*<TouchableOpacity[\s\S]{0,600}?obsTripBtn/,
+    /const renderObsTripButton = \(\)\s*=>\s*\n?\s*!readOnly && subformId === 90 && \(\s*\n\s*<TouchableOpacity[\s\S]{0,600}?obsTripBtn/,
   );
   expect(helper).not.toBeNull();
   expect(helper![0]).toMatch(/if \(readOnly\) return;/);

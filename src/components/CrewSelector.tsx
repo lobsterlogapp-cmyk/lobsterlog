@@ -18,9 +18,15 @@ import {
 interface Props {
   selected: CrewMember[];
   onChange: (crew: CrewMember[]) => void;
+  // S163 Phase 5 defect: on the read-only sent-log view this component rendered
+  // fully interactive (dropdown, saved-member Delete, add form). OPTIONAL with
+  // default false so the legacy LobsterLogProposalForm call site is untouched.
+  // When true: chips render as plain text — no remove ✕, no dropdown trigger,
+  // no add row, no inputs.
+  readOnly?: boolean;
 }
 
-export default function CrewSelector({ selected, onChange }: Props) {
+export default function CrewSelector({ selected, onChange, readOnly = false }: Props) {
   const { t } = useTranslation('dfo');
   const [savedCrew, setSavedCrew] = useState<CrewMember[]>([]);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -75,14 +81,20 @@ export default function CrewSelector({ selected, onChange }: Props) {
                 {member.name}
                 {member.fisherNumber ? ` · ${member.fisherNumber}` : ''}
               </Text>
-              <TouchableOpacity onPress={() => handleRemove(member.id)}>
-                <Text style={styles.chipRemove}>✕</Text>
-              </TouchableOpacity>
+              {!readOnly && (
+                <TouchableOpacity onPress={() => handleRemove(member.id)}>
+                  <Text style={styles.chipRemove}>✕</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ))}
         </View>
       )}
 
+      {/* Read-only: the chips above are the whole render — no trigger, no dropdown,
+          no add form (S163). */}
+      {readOnly ? null : (
+      <>
       {/* Dropdown trigger */}
       <TouchableOpacity
         style={styles.trigger}
@@ -150,6 +162,8 @@ export default function CrewSelector({ selected, onChange }: Props) {
             </View>
           )}
         </View>
+      )}
+      </>
       )}
     </View>
   );
