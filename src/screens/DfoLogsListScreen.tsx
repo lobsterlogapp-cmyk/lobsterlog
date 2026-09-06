@@ -458,7 +458,10 @@ const DfoLogsListScreen: React.FC<DfoLogsListScreenProps> = ({
     const isRetry = !!failedSends[log.id];
     Alert.alert(
       isRetry ? t('logs.retryConfirmTitle') : t('logs.sendConfirmTitle'),
-      t('logs.sendConfirmBody', { id: log.id }),
+      // S163 Phase 2a (Appendix B row 32): the review-and-contact sentence is APPENDED
+      // to the existing body, its own key — the sent-log view carries a separate one
+      // worded for after the send (never one key for both, per the build ruling).
+      `${t('logs.sendConfirmBody', { id: log.id })}\n\n${t('logs.sendConfirmReviewNotice')}`,
       [
         { text: tc('nav.cancel'), style: 'cancel' },
         { text: isRetry ? t('logs.retry') : t('logs.sendButton'), style: 'default', onPress: () => doSubmit(log) },

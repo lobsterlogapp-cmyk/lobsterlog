@@ -4567,6 +4567,15 @@ const FullDfoForm = forwardRef<FullDfoFormHandle, FullDfoFormProps>(({ editingLo
 
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
 
+        {/* S163 Phase 2b — the contact-DFO notice, first thing on the read-only sent-log
+            view so it is read before the data (Appendix B row 32). Its own key, worded
+            for AFTER the send; the send-confirm dialog carries a separate sentence. */}
+        {readOnly && (
+          <View style={styles.sentLockedNotice}>
+            <Text style={styles.sentLockedNoticeText}>{t('form234.sentLockedNotice')}</Text>
+          </View>
+        )}
+
         {!readOnly && <View style={styles.captureCard}>
           <Text style={styles.captureTitle}>{t('form234.quickCaptureTitle')}</Text>
           <Text style={styles.captureSubtitle}>{t('form234.quickCaptureSubtitle')}</Text>
@@ -6045,6 +6054,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF', borderRadius: 12, padding: 14,
     marginBottom: 12, borderWidth: 1, borderColor: '#E2E8F0',
   },
+  // S163 Phase 2b — the contact-DFO notice on the read-only sent-log view. Amber:
+  // attention without alarm (nothing failed), sits where the capture card sits for
+  // editors, matching its footprint.
+  sentLockedNotice: {
+    backgroundColor: '#FEF3C7', borderRadius: 12, padding: 14,
+    marginBottom: 12, borderWidth: 1, borderColor: '#FDE68A',
+  },
+  sentLockedNoticeText: { fontSize: 14, lineHeight: 20, color: '#92400E', fontWeight: '600' },
   captureTitle: { fontSize: 15, fontWeight: '700', color: '#1E293B', marginBottom: 2 },
   captureSubtitle: { fontSize: 12, color: '#64748B', marginBottom: 12 },
   captureRow: { flexDirection: 'row', gap: 10 },
