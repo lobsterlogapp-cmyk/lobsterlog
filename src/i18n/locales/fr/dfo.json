@@ -362,7 +362,7 @@
     "unsentWarnTitle": "Journal non transmis",
     "unsentWarnBody": "Vous avez un journal terminé qui n’a pas encore été transmis au MPO. Transmettez-le d’abord, ou commencez un nouveau?",
     "unsentWarnReview": "Consulter",
-    "unsentWarnStartNew": "Nouveau journal",
+    "unsentWarnStartNew": "Nouveau",
     "draftWarnTitle": "Journal non terminé",
     "draftWarnBody": "{{tripId}} est toujours en cours ({{filled}} champs sur {{total}}). Consultez-le avant d’en commencer un nouveau.",
     "draftWarnReview": "Le consulter",
