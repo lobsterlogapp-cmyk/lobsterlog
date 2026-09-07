@@ -39,7 +39,7 @@ const Field: React.FC<{ label: string; value: string }> = ({ label, value }) => 
   </View>
 );
 
-// Success keeps the green "Accepted" badge; failure shows a red one. Driven by the record
+// Success keeps the green "Success" badge; failure shows a red one. Driven by the record
 // outcome so the same card + modal render both register row types (§13.3.3).
 const OutcomeBadge: React.FC<{ outcome?: TransmissionRecord['outcome'] }> = ({ outcome }) => {
   const { t } = useTranslation('dfo');
