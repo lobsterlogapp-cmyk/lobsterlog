@@ -75,7 +75,7 @@ describe('transmission record export', () => {
     expect(out).toContain('RECORD 2 OF 2');
     expect(out).toContain('LL-20260828-001');
     expect(out).toContain('FORM222-OYTWTM');
-    expect(out).toContain('Records:                  2 (1 accepted, 1 failed)');
+    expect(out).toContain('Records:                  2 (1 sent, 1 failed)');
   });
 
   it('contains a label for every one of the 16 TransmissionRecord fields', () => {
@@ -94,7 +94,7 @@ describe('transmission record export', () => {
     expect(out).toContain('WS0000');                          // DFO response code
     expect(out).toContain('WS1038');                          // and the failed one
     expect(out).toContain('1004-104460-20260828155103.XML');  // sent file name
-    expect(out).toContain('Accepted by DFO');
+    expect(out).toContain('Successfully Sent to DFO');
     expect(out).toContain('Failed');
     expect(out).toContain('2026-08-28 15:51:03 UTC');
   });
@@ -127,7 +127,7 @@ describe('transmission record export', () => {
     const out = build([], []);
     expect(out).toContain('No transmissions were recorded');
     expect(out).toContain('No sent XML documents were archived');
-    expect(out).toContain('Records:                  0 (0 accepted, 0 failed)');
+    expect(out).toContain('Records:                  0 (0 sent, 0 failed)');
   });
 
   it('orders records newest first', () => {

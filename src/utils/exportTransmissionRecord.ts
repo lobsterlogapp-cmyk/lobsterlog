@@ -175,7 +175,7 @@ const padFor = (labels: string[]) => Math.max(...labels.map(l => l.length)) + 3;
 const line = (label: string, value: string, pad: number) => `${(label + ':').padEnd(pad)}${value}`;
 
 const OUTCOME_TEXT: Record<string, string> = {
-  success: 'Accepted by DFO',
+  success: 'Successfully Sent to DFO',
   failure: 'Failed',
 };
 const OUTCOME_KEYS: Record<string, string> = {
@@ -326,7 +326,7 @@ export function buildTransmissionRecordExport(input: TransmissionRecordExportInp
   out.push(
     line(
       recordsLbl,
-      t('dfo:export.recordsCount', '{{total}} ({{accepted}} accepted, {{failed}} failed)', {
+      t('dfo:export.recordsCount', '{{total}} ({{accepted}} sent, {{failed}} failed)', {
         total: sorted.length,
         accepted,
         failed,

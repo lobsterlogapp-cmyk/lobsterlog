@@ -138,7 +138,7 @@ const ENGLISH_MARKERS = [
   'RECORD 1 OF 2',
   'XML 1 OF 1',
   'Saved at (UTC)',
-  'Accepted by DFO',
+  'Successfully Sent to DFO',
   'Logbook (Form 234)',
   'Form 222 (marine mammal)',
   'DFO rejected it',
@@ -211,13 +211,13 @@ describe('L-2 — the export follows the app language', () => {
 
   it('translates the VALUES too, not only the labels', () => {
     const out = build(tFr);
-    expect(out).toContain('Accepté par le MPO');       // outcome
+    expect(out).toContain('Transmis avec succès au MPO'); // outcome
     expect(out).toContain('Journal de bord (formulaire 234)'); // kind
     expect(out).toContain('Le MPO l’a rejeté');        // failureKind
     expect(out).toContain('Réussie');                  // xsdValid true
     expect(out).toContain('Échouée');                  // xsdValid false
     expect(out).toContain('présente, non incluse');    // soapSnapshot
-    expect(out).toContain('2 (1 acceptés, 1 échoués)'); // the summary count line
+    expect(out).toContain('2 (1 transmis, 1 échoués)'); // the summary count line
   });
 
   it('still withholds the ELOG key in French', () => {
