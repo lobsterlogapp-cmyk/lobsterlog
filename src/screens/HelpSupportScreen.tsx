@@ -25,18 +25,18 @@ const DFO_ELOG_SUPPORT_TEL = 'tel:18775357307';
 
 // S164: the one "User guide & instructions" button split in two — the label promised a
 // user guide the app did not carry. Two maps, two buttons; the §22 User's Guide PDFs are
-// TRACKED as of this build (Phase 1) so the clean-tree (EAS) hazard the old header named
-// is closed. ⚠ v1_5 is deliberate and the version stays IN the filename: when the v1_8
-// masters land, the filename changes and this require must change with it — that forces
-// the swap to be noticed (swap procedure: docs/S164_BUILD_HELP_SPLIT.md).
+// TRACKED so the clean-tree (EAS) hazard the old header named is closed. ⚠ The version
+// stays IN the filename on purpose: a guide update changes the filename and this require
+// must change with it, so a swap cannot be forgotten silently (procedure:
+// docs/S164_BUILD_HELP_SPLIT.md). v1_9 landed 2026-09-06, replacing the wired v1_5.
 const USERS_GUIDE_SOURCES = {
-  en: require('../../assets/docs/LobsterLog_Users_Guide_v1_5_EN.pdf'),
-  fr: require('../../assets/docs/LobsterLog_Guide_Utilisateur_v1_5_FR.pdf'),
+  en: require('../../assets/docs/LobsterLog_Users_Guide_v1_9_EN.pdf'),
+  fr: require('../../assets/docs/LobsterLog_Guide_Utilisateur_v1_9_FR.pdf'),
 } as const;
-// Bundled §17 Provider's Instructions (tracked; already shipped for the Settings card)
+// Bundled §17 Provider's Instructions. v1_3 landed 2026-09-06, replacing the wired v1_2.
 const PROVIDERS_SOURCES = {
-  en: require('../../assets/docs/LobsterLog_Providers_Instructions_v1_2_EN.pdf'),
-  fr: require('../../assets/docs/LobsterLog_Instructions_Fournisseur_v1_2_FR.pdf'),
+  en: require('../../assets/docs/LobsterLog_Providers_Instructions_v1_3_EN.pdf'),
+  fr: require('../../assets/docs/LobsterLog_Instructions_Fournisseur_v1_3_FR.pdf'),
 } as const;
 
 interface Props {
