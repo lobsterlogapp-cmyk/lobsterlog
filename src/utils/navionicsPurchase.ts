@@ -51,21 +51,49 @@ export const generateGarminEncryptedTransaction = (
 };
 
 /**
+ * Why a provisioning attempt did not produce a Navionics purchase. Each value is a
+ * DISTINCT, actionable cause — the caller decides what the user is told.
+ *
+ *   missing-credential  the Garmin signing credential is not present in this build
+ *   encryption-failed   the credential is present but could not be parsed/used
+ *   store-rejected      the Garmin store answered with a non-2xx status
+ *   network-error       the request threw — offline, DNS, timeout, bad JSON
+ *   tier-unresolved     NOT raised here. Raised by a CALLER that could not work out
+ *                       which product to ask for (see resolveRestoredNavionicsProduct
+ *                       in usePurchases). It lives in this union so one reason type
+ *                       and one message map cover every provisioning failure.
+ */
+export type NavionicsFailureReason =
+  | 'missing-credential'
+  | 'encryption-failed'
+  | 'store-rejected'
+  | 'network-error'
+  | 'tier-unresolved';
+
+export type NavionicsProvisionResult =
+  | { ok: true; purchase: NavionicsPurchase }
+  | { ok: false; reason: NavionicsFailureReason; status?: number };
+
+/**
  * Full Navionics purchase flow: generate a transaction-id pair, encrypt it, POST
  * to the Garmin store, and persist the response via saveNavionicsPurchase().
- * Returns the stored purchase, or null on any failure. Never throws — failures are
- * logged silently so they cannot block the user, who already paid via RevenueCat
- * (the source of truth for access). Navionics is a feature layer on top.
+ * Never throws — a Garmin failure must not block access the user already paid for
+ * via RevenueCat (the source of truth for access). Navionics is a feature layer on top.
+ *
+ * It used to return `null` for all four failures, which is why every failure was
+ * invisible: the callers could not tell the causes apart and none of them looked.
+ * It now returns a typed result. NOTHING about the purchase logic itself changed —
+ * same order, same payload, same guards, same silence toward the caller's control flow.
  */
 export async function runNavionicsPurchase(
   productId: string,
   userId: string
-): Promise<NavionicsPurchase | null> {
+): Promise<NavionicsProvisionResult> {
   try {
     const purchasePrivateKey = process.env.EXPO_PUBLIC_GARMIN_PURCHASE_PRIVATE_KEY || '';
     if (!purchasePrivateKey) {
       console.log('❌ EXPO_PUBLIC_GARMIN_PURCHASE_PRIVATE_KEY is UNDEFINED in .env');
-      return null;
+      return { ok: false, reason: 'missing-credential' };
     }
 
     const navionicsToken =
@@ -77,7 +105,7 @@ export async function runNavionicsPurchase(
     const encrypted64 = generateGarminEncryptedTransaction(transactionId, purchasePrivateKey);
     if (!encrypted64) {
       console.log('Aborting Navionics purchase: encryption failed.');
-      return null;
+      return { ok: false, reason: 'encryption-failed' };
     }
 
     const response = await fetch(NAVIONICS_PURCHASE_URL, {
@@ -98,7 +126,7 @@ export async function runNavionicsPurchase(
     const data = await response.json();
     if (!response.ok) {
       console.log(`⚠️ Navionics purchase failed (${response.status}):`, data);
-      return null;
+      return { ok: false, reason: 'store-rejected', status: response.status };
     }
 
     const purchase: NavionicsPurchase = {
@@ -110,9 +138,9 @@ export async function runNavionicsPurchase(
     };
     await saveNavionicsPurchase(purchase);
     console.log('💾 Navionics purchase saved to storage:', data.purchase_id);
-    return purchase;
+    return { ok: true, purchase };
   } catch (error) {
     console.log('Navionics purchase error:', error);
-    return null;
+    return { ok: false, reason: 'network-error' };
   }
 }

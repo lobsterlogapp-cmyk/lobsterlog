@@ -5,6 +5,7 @@ import { Crown } from 'lucide-react-native';
 import { ENTITLEMENT_ID } from '../config/constants';
 import { auth } from '../../firebaseConfig';
 import { runNavionicsPurchase, NAVIONICS_PRODUCT_MONTHLY, NAVIONICS_PRODUCT_ANNUAL } from '../utils/navionicsPurchase';
+import { notifyNavionicsProvisionFailed } from '../utils/navionicsNotice';
 
 const PaywallModal = ({ visible, onClose, onPurchaseSuccess, onRestore }: any) => {
     const [offerings, setOfferings] = useState<any>(null);
@@ -43,11 +44,15 @@ const PaywallModal = ({ visible, onClose, onPurchaseSuccess, onRestore }: any) =
             const { customerInfo } = await Purchases.purchasePackage(pack);
             if (customerInfo.entitlements.active[ENTITLEMENT_ID]) {
                 onPurchaseSuccess();
-                // Provision Navionics tiles for the tier just purchased. Fire-and-forget:
-                // a Garmin failure must not block access the user already paid for.
+                // Provision Navionics tiles for the tier just purchased. A Garmin failure must
+                // still not block access the user already paid for — so Pro is already granted
+                // above and nothing here can take it away. What HAS changed: a failure is no
+                // longer swallowed. The user is told the charts did not switch on, and told
+                // plainly that the payment itself succeeded.
                 const navionicsProductId =
                     pack.packageType === 'ANNUAL' ? NAVIONICS_PRODUCT_ANNUAL : NAVIONICS_PRODUCT_MONTHLY;
-                void runNavionicsPurchase(navionicsProductId, auth.currentUser?.email || '');
+                const provision = await runNavionicsPurchase(navionicsProductId, auth.currentUser?.email || '');
+                if (!provision.ok) notifyNavionicsProvisionFailed(provision.reason, provision.status);
             }
         } catch (e: any) {
             if (!e.userCancelled) Alert.alert("Purchase Error", e.message);

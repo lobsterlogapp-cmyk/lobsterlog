@@ -362,5 +362,11 @@
       "invalidEmail": "Entrez une adresse courriel valide.",
       "authErrorTitle": "Erreur d’authentification"
     }
+  },
+  "charts": {
+    "notActiveTitle": "Cartes pas encore activées",
+    "notActiveConnection": "Votre paiement a été accepté et votre abonnement Pro est actif. Le reste de Pro — la météo, les marées et la carte — fonctionne dès maintenant.\n\nLes cartes Navionics n’ont pas pu être activées cette fois-ci. C’est habituellement la connexion, ou la boutique de cartes qui ne répond pas.\n\nÉcrivez à {{email}} et nous les activerons pour vous. Mentionnez ce code : {{ref}}",
+    "notActiveOurSide": "Votre paiement a été accepté et votre abonnement Pro est actif. Le reste de Pro — la météo, les marées et la carte — fonctionne dès maintenant.\n\nLes cartes Navionics n’ont pas pu être activées. Le problème vient de chez nous, pas de votre téléphone ni de votre connexion.\n\nÉcrivez à {{email}} et nous réglerons cela. Mentionnez ce code : {{ref}}",
+    "notActiveUnresolved": "Votre paiement a été accepté et votre abonnement Pro est actif. Le reste de Pro — la météo, les marées et la carte — fonctionne dès maintenant.\n\nLes cartes Navionics n’ont pas pu être activées.\n\nÉcrivez à {{email}} et nous les activerons pour vous. Mentionnez ce code : {{ref}}"
   }
 }

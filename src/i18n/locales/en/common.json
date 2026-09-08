@@ -361,5 +361,11 @@
       "invalidEmail": "Please enter a valid email address.",
       "authErrorTitle": "Authentication Error"
     }
+  },
+  "charts": {
+    "notActiveTitle": "Charts not switched on yet",
+    "notActiveConnection": "Your payment went through and your Pro subscription is active. The rest of Pro — weather, tides and the map — is working now.\n\nThe Navionics charts could not be switched on this time. That is usually the connection, or the chart store not answering.\n\nEmail {{email}} and we will get them switched on for you. Quote this code: {{ref}}",
+    "notActiveOurSide": "Your payment went through and your Pro subscription is active. The rest of Pro — weather, tides and the map — is working now.\n\nThe Navionics charts could not be switched on. This one is on our end, not your phone and not your connection.\n\nEmail {{email}} and we will get it sorted. Quote this code: {{ref}}",
+    "notActiveUnresolved": "Your payment went through and your Pro subscription is active. The rest of Pro — weather, tides and the map — is working now.\n\nThe Navionics charts could not be switched on.\n\nEmail {{email}} and we will get them switched on for you. Quote this code: {{ref}}"
   }
 }

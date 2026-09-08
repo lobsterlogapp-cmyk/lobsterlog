@@ -7,6 +7,7 @@ import {
   NAVIONICS_PRODUCT_MONTHLY,
   NAVIONICS_PRODUCT_ANNUAL,
 } from '../utils/navionicsPurchase';
+import { notifyNavionicsProvisionFailed } from '../utils/navionicsNotice';
 import { loadNavionicsPurchase } from '../utils/navionicsStorage';
 import { auth } from '../../firebaseConfig';
 
@@ -72,7 +73,14 @@ async function maybeRenewNavionics(info: any) {
     const rcExpiry = entitlement?.expirationDate ? new Date(entitlement.expirationDate).getTime() : 0;
     const navExpiry = new Date(existing.expiration_date).getTime();
     if (rcExpiry > navExpiry) {
-      await runNavionicsPurchase(existing.product_id, auth.currentUser?.email || '');
+      const provision = await runNavionicsPurchase(existing.product_id, auth.currentUser?.email || '');
+      // DELIBERATELY NOT ALERTED. This runs from the customer-info listener, at a moment the
+      // user did not choose — a modal here could land mid-logbook, or mid-send. The reason is
+      // recorded for the console; making a renewal failure visible needs a surface that can
+      // wait (a banner on the chart screen), which is its own decision. Named in the gate doc.
+      if (!provision.ok) {
+        console.log('Navionics renewal did not provision. Reason:', provision.reason);
+      }
     }
   } catch {}
 }
@@ -156,11 +164,15 @@ export function usePurchases(user: any) {
         // NOTHING rather than guess a tier.
         const navionicsProductId = await resolveRestoredNavionicsProduct(customerInfo);
         if (navionicsProductId) {
-          void runNavionicsPurchase(navionicsProductId, user?.email || '');
+          const provision = await runNavionicsPurchase(navionicsProductId, user?.email || '');
+          if (!provision.ok) notifyNavionicsProvisionFailed(provision.reason, provision.status);
         } else {
+          // Phase 1 stopped this branch from guessing a tier. Phase 2 stops it being silent:
+          // provisioning nothing without saying so is the same defect wearing a different hat.
           console.log(
             'Navionics restore: subscription tier could not be resolved — no purchase attempted.'
           );
+          notifyNavionicsProvisionFailed('tier-unresolved');
         }
       } else {
         Alert.alert('Notice', 'No active subscription found to restore.');

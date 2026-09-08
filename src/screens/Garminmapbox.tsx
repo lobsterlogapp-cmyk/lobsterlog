@@ -118,7 +118,11 @@ const Garminmapbox = ({ savedLat, savedLng, onClose }: any) => {
     // --- GARMIN SANDBOX TEST (hidden; live flow runs via runNavionicsPurchase on Pro purchase) ---
     const testGarminTrialAccess = async () => {
         if (!currentUser) return;
-        await runNavionicsPurchase(NAVIONICS_PRODUCT_ANNUAL, currentUser.email || '');
+        const provision = await runNavionicsPurchase(NAVIONICS_PRODUCT_ANNUAL, currentUser.email || '');
+        // DEV button: log the reason instead of showing the user-facing notice. That notice says
+        // "your payment went through", which is not true of a test tap — it must never appear
+        // where no payment was made.
+        console.log('[TEST GARMIN] result:', provision.ok ? 'ok' : provision.reason);
     };
 
     const addDays = (date: Date, days: number) => {
