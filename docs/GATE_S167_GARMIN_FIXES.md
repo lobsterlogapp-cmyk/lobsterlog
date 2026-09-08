@@ -16,7 +16,10 @@ Recon basis: `docs/RECON_S167_GARMIN_FULL.md` (read-only, same day, HEAD `4e2346
 | 1 | The restore tier guess — `usePurchases.ts` restore defaults to annual | **DONE — commit `13f598a`, pushed** |
 | 2 | Silent failures — four `return null` paths, three discarding call sites | **DONE — commit `ef7ae1e`, pushed** |
 | 3 | The shared chart entitlement — un-namespaced `navionics_purchase` key | **DONE — commit `3193080`, pushed** |
-| 4 | Cleanup — placeholder tile URL (+ debug log, done early at §3.6) | **BUILT — commit block at §4.5** |
+| 4 | Cleanup — placeholder tile URL (+ debug log, done early at §3.6) | **DONE — commit `877869c`, pushed** |
+
+**S167-G IS CLOSED IN CODE.** Five commits, `4e2346f..877869c`, all pushed, tree clean.
+⚠ **Not walked** — see "WHERE IT STANDS" at the foot of this document.
 
 ---
 
@@ -783,7 +786,16 @@ git log origin/main..HEAD --oneline
 | 2 — silent failures | `ef7ae1e` | pushed |
 | 2b — status in the ref code | `45529f3` | pushed |
 | 3 — per-user receipt | `3193080` | pushed |
-| 4 — tile URL | *block at §4.5* | built, awaiting his run |
+| 4 — tile URL | `877869c` | pushed |
+
+Full range **`4e2346f..877869c`**, five commits, working tree clean, `origin/main..HEAD` empty.
+
+**FINAL FENCE PROOF, whole run:** `git diff --stat 4e2346f..877869c` over `HelpSupportScreen.tsx`,
+`config/constants.ts`, `dfoStorageKeys.ts`, `dfoBackup.ts`, `FullDfoForm.tsx`, `DfoDemoScreen.tsx`,
+`PrivacyNoticeModal.tsx`, `AttestationModal.tsx`, `en/dfo.json`, `fr/dfo.json` and `assets/docs/`
+returns **EMPTY**. The DFO side carries no Garmin-era change. The nine files S167-G touched are the
+Navionics utils, the purchase hook, the paywall modal, the Pro map screen, `useAuth` (two clear
+calls), and new keys in `common.json` only.
 
 **⚠ NOT WALKED.** Nothing in S167-G has been exercised on a device. All 83 jest suites are
 `utils`; not one of these paths — restore, purchase failure, sign-out, delete-account, the map
