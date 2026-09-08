@@ -3,13 +3,14 @@ module.exports = {
     name: "LobsterLog",
     slug: "lobsterlog",
     scheme: "lobsterlog",
-    version: "1.9.1",
+    version: "1.10.0",
     icon: "./assets/icon.png",
     ios: {
       bundleIdentifier: "com.Nickerson.LobsterLog",
       googleServicesFile: "./GoogleService-Info.plist",
       supportsTablet: false,
-      buildNumber: "88",
+      // buildNumber deliberately absent: eas.json sets appVersionSource "remote",
+              // so EAS owns the counter and any value here is ignored. Do not re-add.
       config: {
         googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY
       },
@@ -54,7 +55,7 @@ module.exports = {
       ]
     ],
     android: {
-      versionCode: 88,
+       // versionCode deliberately absent: same reason — EAS owns the Android counter.
       package: "com.lobsterlog",
       googleServicesFile: "./google-services.json",
       permissions: [
