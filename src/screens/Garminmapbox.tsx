@@ -19,6 +19,36 @@ import { runNavionicsPurchase, NAVIONICS_PRODUCT_ANNUAL } from '../utils/navioni
 // Initialize Mapbox with your Public Token
 Mapbox.setAccessToken(process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '');
 
+// ── NAVIONICS CHART TILES — DELIBERATELY DISABLED (S167-G Phase 4) ───────────────────
+// null means the overlay does not render. This is the ONLY switch; nothing else needs to
+// change to turn charts on.
+//
+// WHAT WAS HERE AND WHY IT WENT: a placeholder tile URL that could never have worked and
+// was building a live request with the literal string "undefined" baked into it —
+//
+//     https://developers-store-sandbox.navionics.com/tile/{z}/{x}/{y}?token=undefined
+//
+// Two independent faults, both flagged in its own TODO since S47 and neither ever fixed:
+//   1. WRONG HOST — developers-store-sandbox.navionics.com is the PURCHASE API host, not a
+//      tile server. It has never served a tile and was never going to.
+//   2. NO SUCH VARIABLE — it interpolated EXPO_PUBLIC_NAVIONICS_TOKEN (unsuffixed), which is
+//      defined nowhere and never has been, so `${undefined}` went into the query string. The
+//      real variables are EXPO_PUBLIC_NAVIONICS_TOKEN_IOS / _ANDROID, and those are the
+//      PURCHASE tokens, sent as an X-navionics-developer-token header by
+//      navionicsPurchase.ts — NOT proven to be the credential a tile service wants.
+//
+// The Navionics chart overlay has therefore NEVER rendered, on any build, ever.
+//
+// ⚠ TO ENABLE, THREE THINGS MUST COME FROM GARMIN FIRST — do not guess any of them:
+//   • the real tile endpoint and its {z}/{x}/{y} template;
+//   • whether a token goes in the query string or an HTTP header (a header cannot be
+//     expressed as a tileUrlTemplate at all — that would need a different wiring, so this
+//     constant may not even be the right shape once they answer);
+//   • WHICH credential authorises tiles — the developer token, or something returned by the
+//     purchase response, which this app does not currently capture.
+// Open with Aldo (cc Mauro) since S47. Full findings: docs/RECON_S167_GARMIN_FULL.md §A1/§C2.
+const NAVIONICS_TILE_URL_TEMPLATE: string | null = null;
+
 const TODAY = () => new Date().toISOString().split('T')[0];
 
 const Garminmapbox = ({ savedLat, savedLng, onClose }: any) => {
@@ -320,13 +350,12 @@ const Garminmapbox = ({ savedLat, savedLng, onClose }: any) => {
             >
                 <Mapbox.Camera ref={cameraRef} defaultSettings={{ zoomLevel: 12, centerCoordinate: mapCenterRef.current }} />
 
-                {/* TODO(Aldo): replace with REAL Navionics tile URL + correct token placement.
-                    Current URL is a PLACEHOLDER — wrong host (this is the purchase API host, not a
-                    tile server) AND EXPO_PUBLIC_NAVIONICS_TOKEN is undefined (real vars are
-                    _TOKEN_IOS / _TOKEN_ANDROID). Tiles will NOT render until this is replaced. */}
-                {navionicsActive && (
-                    <Mapbox.RasterSource id="navionics-sandbox" tileUrlTemplates={[`https://developers-store-sandbox.navionics.com/tile/{z}/{x}/{y}?token=${process.env.EXPO_PUBLIC_NAVIONICS_TOKEN}`]}>
-                        <Mapbox.RasterLayer id="navionics-layer" sourceID="navionics-sandbox" style={{ rasterOpacity: 0.8 }} />
+                {/* NAVIONICS CHART OVERLAY — DISABLED. There is no tile URL to call.
+                    See NAVIONICS_TILE_URL_TEMPLATE at the top of this file for the whole story
+                    and for the one line that switches it on. */}
+                {navionicsActive && NAVIONICS_TILE_URL_TEMPLATE !== null && (
+                    <Mapbox.RasterSource id="navionics-tiles" tileUrlTemplates={[NAVIONICS_TILE_URL_TEMPLATE]}>
+                        <Mapbox.RasterLayer id="navionics-layer" sourceID="navionics-tiles" style={{ rasterOpacity: 0.8 }} />
                     </Mapbox.RasterSource>
                 )}
 

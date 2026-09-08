@@ -15,8 +15,8 @@ Recon basis: `docs/RECON_S167_GARMIN_FULL.md` (read-only, same day, HEAD `4e2346
 |---|---|---|
 | 1 | The restore tier guess — `usePurchases.ts` restore defaults to annual | **DONE — commit `13f598a`, pushed** |
 | 2 | Silent failures — four `return null` paths, three discarding call sites | **DONE — commit `ef7ae1e`, pushed** |
-| 3 | The shared chart entitlement — un-namespaced `navionics_purchase` key | **BUILT — commit block at §3.9** |
-| 4 | Cleanup — placeholder tile URL + debug console.log | NOT STARTED (gated on 1–3 accepted) |
+| 3 | The shared chart entitlement — un-namespaced `navionics_purchase` key | **DONE — commit `3193080`, pushed** |
+| 4 | Cleanup — placeholder tile URL (+ debug log, done early at §3.6) | **BUILT — commit block at §4.5** |
 
 ---
 
@@ -665,7 +665,147 @@ git log origin/main..HEAD --oneline
 
 # PHASE 4 — CLEANUP
 
-*Not started. Gated on Phases 1–3 being accepted.*
+Phase 3 landed as **`3193080`**, pushed. One file this phase: `src/screens/Garminmapbox.tsx`.
+
+**Item 2 of this phase — the debug `console.log` that dumped the whole purchase record — was
+already done in Phase 3 and declared at §3.6.** It was accepted with that commit. Phase 4 is
+therefore the tile URL alone.
+
+## 4.1 What was there, printed before the edit
+
+`Garminmapbox.tsx:323-331`, unmodified:
+
+```tsx
+{/* TODO(Aldo): replace with REAL Navionics tile URL + correct token placement.
+    Current URL is a PLACEHOLDER — wrong host (this is the purchase API host, not a
+    tile server) AND EXPO_PUBLIC_NAVIONICS_TOKEN is undefined (real vars are
+    _TOKEN_IOS / _TOKEN_ANDROID). Tiles will NOT render until this is replaced. */}
+{navionicsActive && (
+    <Mapbox.RasterSource id="navionics-sandbox" tileUrlTemplates={[`https://developers-store-sandbox.navionics.com/tile/{z}/{x}/{y}?token=${process.env.EXPO_PUBLIC_NAVIONICS_TOKEN}`]}>
+        <Mapbox.RasterLayer id="navionics-layer" sourceID="navionics-sandbox" style={{ rasterOpacity: 0.8 }} />
+    </Mapbox.RasterSource>
+)}
+```
+
+**On any device with a stored active receipt, that shipped a live request template reading
+literally:**
+
+```
+https://developers-store-sandbox.navionics.com/tile/{z}/{x}/{y}?token=undefined
+```
+
+Two independent faults, both named in its own TODO since S47 and neither ever fixed: the host is
+the **purchase API**, not a tile server; and `EXPO_PUBLIC_NAVIONICS_TOKEN` (unsuffixed) **is
+defined nowhere and never has been**, so `${undefined}` was interpolated into the query string.
+The overlay has never rendered on any build.
+
+## 4.2 The route chosen — a marked disabled source, not deletion
+
+Both were offered. **Kept as a disabled source**, because deleting the JSX would throw away the
+one thing here that is genuinely correct: the raster-source/raster-layer wiring and its place in
+the Mapbox child order. Rebuilding that from nothing, later, on someone else's Tuesday, is how the
+next wrong URL gets invented.
+
+```ts
+const NAVIONICS_TILE_URL_TEMPLATE: string | null = null;
+```
+
+- **`null` is the single switch.** The overlay renders only when it is non-null; nothing else
+  needs changing to turn charts on.
+- **A broken URL cannot exist.** There is no string to be wrong, and no `process.env` read to
+  interpolate `undefined` into anything.
+- The dead URL survives **only inside the comment**, as the record of what was wrong with it —
+  not as a value any code can reach.
+- Source id renamed `navionics-sandbox` → `navionics-tiles`; "sandbox" described the purchase host
+  that is no longer referenced. Inert — the source does not render.
+
+⚠ **The comment states plainly that this constant may be the wrong SHAPE.** If Garmin's answer is
+that the token goes in an HTTP **header**, a `tileUrlTemplate` cannot express it at all and this
+becomes different wiring, not a filled-in string. Written down so nobody reads `null` as "just
+paste the URL here".
+
+## 4.3 What must come from Garmin before this can be switched on
+
+Copied into the code comment so it is in front of whoever opens the file, not only in a doc:
+
+1. the real tile endpoint and its `{z}/{x}/{y}` template;
+2. whether the token goes in the query string or a header;
+3. **which** credential authorises tiles — the developer token, or something in the purchase
+   response this app does not currently capture.
+
+Open with Aldo (cc Mauro) since S47. Full findings: `docs/RECON_S167_GARMIN_FULL.md` §A1 / §C2.
+
+## 4.4 What was deliberately NOT touched
+
+- **`EXPO_PUBLIC_NAVIONICS_TOKEN_IOS` / `_ANDROID`** — the real, defined purchase tokens, sent as
+  `X-navionics-developer-token` by `navionicsPurchase.ts:99-102`. Untouched. Only the phantom
+  unsuffixed name is gone.
+- **`NAVIONICS_PURCHASE_URL`** (`navionicsPurchase.ts:9-10`) — a real, working endpoint that has
+  returned HTTP 201. Untouched. It shares a hostname with the deleted placeholder, which is how
+  the placeholder came to exist; deleting it would have broken the purchase path.
+- `navionicsActive` and its foreground re-check — Phase 3's work, unchanged.
+
+## 4.5 Phase 4 commit block — Jonathon runs
+
+Expected staged count: **2 files** — one source file, one gate doc.
+
+```
+cd ~/Desktop/LobsterLog
+git add src/screens/Garminmapbox.tsx
+git add docs/GATE_S167_GARMIN_FIXES.md
+git diff --cached --stat
+```
+
+```
+git status --short src/utils/dfoStorageKeys.ts src/utils/dfoBackup.ts src/screens/HelpSupportScreen.tsx src/config/constants.ts
+```
+
+```
+git commit -m "Remove the placeholder Navionics tile URL and disable the chart overlay explicitly"
+```
+
+```
+git push
+```
+
+```
+git log --oneline -1
+git log origin/main..HEAD --oneline
+```
+
+---
+
+# S167-G — WHERE IT STANDS
+
+| Phase | Commit | State |
+|---|---|---|
+| 1 — restore tier | `13f598a` | pushed |
+| 2 — silent failures | `ef7ae1e` | pushed |
+| 2b — status in the ref code | `45529f3` | pushed |
+| 3 — per-user receipt | `3193080` | pushed |
+| 4 — tile URL | *block at §4.5* | built, awaiting his run |
+
+**⚠ NOT WALKED.** Nothing in S167-G has been exercised on a device. All 83 jest suites are
+`utils`; not one of these paths — restore, purchase failure, sign-out, delete-account, the map
+effect — is covered by a test, and this repo has no component tests. **The §3.7 walk is the only
+evidence that will ever exist for Phase 3, and Phase 2's wording has never been seen on glass.**
+With the signing credential absent from `.env`, any sandbox purchase or restore on a test build
+now produces **LL-CHART-01** — which is the cheapest way to see the notice.
+
+**Residuals carried out of S167-G, none of them built:**
+
+1. ⚠ **No retry / re-provision-on-demand path anywhere.** A failed first purchase is permanent:
+   renewal needs an existing receipt, and a Pro user cannot reach Restore Purchases. This is why
+   the Phase-2 notice says *email us* rather than *try again*, and why a Phase-3 discarded receipt
+   is never rebuilt. **Required before tiles ever render; harmless until then.**
+2. Renewal failures are silent by design (Phase 2 §2.6) — visible only in the console.
+3. The Phase-1 unresolvable-tier branch provisions nothing; a monthly subscriber who restored
+   before `13f598a` still holds a wrong-tier receipt, which Phase 3 now discards on first access.
+4. Two copies of the support address (Garmin side + DFO side), by founder ruling. Never reconcile
+   them by reaching across the fence.
+5. The FR strings added in Phase 2 are best-effort and belong on the proofreader pile.
+6. The Navionics integration remains, as the recon found it, blocked on Garmin: no SDK, no tile
+   endpoint, no token-placement answer, no Box access.
 
 ---
 
@@ -720,4 +860,13 @@ git log origin/main..HEAD --oneline
 | 45 | 3 | jest gate | `npx jest` | ✅ **83 suites / 902 tests, all passed** |
 | 46 | 3 | ⚠ Phase-4 overreach declared, not buried | §3.6 | ✅ The mount-log now prints only the boolean. Strict reduction, permitted file, declared for your ruling |
 | 47 | 3 | ⚠ The three claims are NOT test-proven | §3.5 / §3.7 | ⚠ **By construction and compiler only.** All 83 suites are `utils`; no component test covers sign-out, delete, or the map effect. **The walk at §3.7 is the only evidence** |
-| 48 | 4 | — | — | pending |
+| 48 | 4 | Placeholder block printed before edit | `grep -n -A 12` | ✅ Reproduced verbatim at §4.1, including the `${undefined}` interpolation |
+| 49 | 4 | **No code reference to the phantom variable remains** | `grep -rn "process\.env\.EXPO_PUBLIC_NAVIONICS_TOKEN\b" src/` | ✅ **blank.** The name survives only inside an explanatory comment |
+| 50 | 4 | **No broken URL remains in code** | `grep -rn "navionics.com" src/`, comments excluded | ✅ The only code hit is `NAVIONICS_PURCHASE_URL` — the real, working purchase endpoint |
+| 51 | 4 | The real purchase tokens still wired | `grep` for `_TOKEN_IOS` / `_TOKEN_ANDROID` | ✅ Both intact at `navionicsPurchase.ts:101-102` |
+| 52 | 4 | Purchase path untouched | `git diff --stat src/utils/navionicsPurchase.ts` | ✅ empty |
+| 53 | 4 | Overlay cannot render, and cannot build a request | read the guard | ✅ `NAVIONICS_TILE_URL_TEMPLATE !== null` with the constant `null`; no string exists to be wrong |
+| 54 | 4 | tsc gate | `npx tsc --noEmit` | ✅ **33 total (baseline)**; `Garminmapbox.tsx` still **6**, its pre-existing S52 count — no new error from the constant or the guard |
+| 55 | 4 | jest gate | `npx jest` | ✅ **83 suites / 902 tests, all passed** |
+| 56 | 4 | Scope + fence | `git diff --stat`, `git status --short` on 4 DFO files | ✅ **1 file changed** (`Garminmapbox.tsx`); DFO fence **blank** |
+| 57 | all | ⚠ Nothing in S167-G has been walked on a device | — | ⚠ **Open.** No test covers any of these paths; see "WHERE IT STANDS" |
