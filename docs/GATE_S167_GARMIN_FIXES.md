@@ -14,7 +14,7 @@ Recon basis: `docs/RECON_S167_GARMIN_FULL.md` (read-only, same day, HEAD `4e2346
 | Phase | Subject | Status |
 |---|---|---|
 | 1 | The restore tier guess — `usePurchases.ts` restore defaults to annual | **DONE — commit `13f598a`, pushed** |
-| 2 | Silent failures — four `return null` paths, three discarding call sites | **BUILT — commit block at §2.10** |
+| 2 | Silent failures — four `return null` paths, three discarding call sites | **DONE — commit `ef7ae1e`, pushed** |
 | 3 | The shared chart entitlement — un-namespaced `navionics_purchase` key | NOT STARTED |
 | 4 | Cleanup — placeholder tile URL + debug console.log | NOT STARTED (gated on 1–3 accepted) |
 
@@ -303,18 +303,22 @@ console. **This table is the decode key for support.**
 |---|---|---|---|
 | **LL-CHART-01** | `missing-credential` | Garmin signing credential absent from the build | our end |
 | **LL-CHART-02** | `encryption-failed` | credential present but unusable | our end |
-| **LL-CHART-03** | `store-rejected` | Garmin answered non-2xx (status in console) | connection |
+| **LL-CHART-03-**`nnn` | `store-rejected` | Garmin answered non-2xx — **the HTTP status is appended** (`LL-CHART-03-403` refused, `LL-CHART-03-429` rate-limited, `LL-CHART-03-500` their side) | connection |
 | **LL-CHART-04** | `network-error` | request threw — offline, DNS, timeout, bad JSON | connection |
 | **LL-CHART-05** | `tier-unresolved` | tier could not be resolved, so nothing was sent | unresolved |
+
+**The status rides in the code the user quotes** (founder ruling, S167-G Phase 2). Only
+`store-rejected` ever carries one, because it is the only failure where Garmin actually answered;
+every other code stays bare. Support can therefore separate a refusal from a rate-limit from a
+Garmin outage **from the harvester's message alone** — no device console, no reproduction.
 
 Both the code map and the body map are `Record<NavionicsFailureReason, …>`, so **adding a reason to
 the union without giving it a code AND a body fails to compile.** A new failure cannot go silent by
 omission — the compiler is the guard here, since this repo has no component tests.
 
-⚠ **The HTTP status is no longer visible to support through the user.** It is logged
-(`status: 403`) but the quoted code is plain `LL-CHART-03`, so support can see the class but not
-tell a 403 from a 429 without the device console. Appending it (`LL-CHART-03-403`) is a one-line
-change if you want it — named, not decided.
+~~⚠ The HTTP status is no longer visible to support through the user.~~ **RESOLVED before commit,
+founder ruling: append the status.** The user now quotes `LL-CHART-03-403`; the status reaches
+support in the harvester's own message. Codes without a status are unchanged.
 
 ## 2.5 Three bodies, and why it is three and not two
 
@@ -334,7 +338,7 @@ send a harvester to the wheelhouse to check his signal for a problem that is not
 |---|---|---|
 | Buys Pro, credential missing | 01 | Pro granted, then **LL-CHART-01**, our-end body |
 | Buys Pro, credential unusable | 02 | Pro granted, then **LL-CHART-02**, our-end body |
-| Buys Pro, Garmin refuses | 03 | Pro granted, then **LL-CHART-03**, connection body |
+| Buys Pro, Garmin refuses | 03 | Pro granted, then **LL-CHART-03-403** (status appended), connection body |
 | Buys Pro, offline / times out | 04 | Pro granted, then **LL-CHART-04**, connection body |
 | Restores, provisioning fails | 01–04 | restore-success alert, then the matching notice |
 | **Restores, tier unresolvable** | 05 | restore-success alert, then **LL-CHART-05**, unresolved body |
@@ -394,7 +398,7 @@ through"* and no payment happens on a test tap. It logs the reason instead.
 > The Navionics charts could not be switched on this time. That is usually the connection, or the
 > chart store not answering.
 >
-> Email support@lobsterlog.com and we will get them switched on for you. Quote this code: LL-CHART-03
+> Email support@lobsterlog.com and we will get them switched on for you. Quote this code: LL-CHART-03-403
 
 > Votre paiement a été accepté et votre abonnement Pro est actif. Le reste de Pro — la météo, les
 > marées et la carte — fonctionne dès maintenant.
@@ -402,7 +406,9 @@ through"* and no payment happens on a test tap. It logs the reason instead.
 > Les cartes Navionics n’ont pas pu être activées cette fois-ci. C’est habituellement la connexion,
 > ou la boutique de cartes qui ne répond pas.
 >
-> Écrivez à support@lobsterlog.com et nous les activerons pour vous. Mentionnez ce code : LL-CHART-03
+> Écrivez à support@lobsterlog.com et nous les activerons pour vous. Mentionnez ce code : LL-CHART-03-403
+
+*(shown with a 403 as the example; `LL-CHART-04` carries no status and reads bare.)*
 
 **LL-CHART-05 — unresolved, no cause claimed**
 
@@ -445,7 +451,13 @@ immediately, and the backups were re-taken under distinct names. A second check 
 printed a **vacuous "OK"** — a zsh word-splitting fault compared two empty strings — and was
 re-run explicitly rather than counted. Neither green was accepted on its face.
 
-## 2.10 Phase 2 commit block — Jonathon runs
+## 2.10 Phase 2 commit block — RUN AND PUSHED
+
+**Landed as commit `ef7ae1e`**, pushed `13f598a..ef7ae1e`, 8 files 435+/21−,
+`src/utils/navionicsNotice.ts` entering as `create mode 100644`. Empty-range verified
+(`git log origin/main..HEAD` blank). **The fence check printed nothing** — `HelpSupportScreen.tsx`
+and `config/constants.ts` were confirmed unmodified at commit time, on the terminal, by the block
+itself.
 
 Expected staged count: **8 files** — six modified, one new source file, one gate doc.
 

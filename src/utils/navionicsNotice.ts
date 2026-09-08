@@ -56,8 +56,10 @@ const BODY_KEY: Record<NavionicsFailureReason, string> = {
 /**
  * Tell the user, in their own language, that the charts did not switch on.
  *
- * `status` is the Garmin HTTP status when there was one. It is logged, NOT shown — the user
- * reads a reference code only.
+ * `status` is the Garmin HTTP status when there was one. It is APPENDED to the reference code
+ * the user quotes — `LL-CHART-03-403` — so support can tell a refusal (403) from a rate-limit
+ * (429) from the code alone, without the device console and without asking the harvester to
+ * reproduce anything. Codes with no status stay bare: `LL-CHART-01`.
  *
  * Both maps are Record<NavionicsFailureReason, …>, so adding a reason to the union without
  * giving it a code AND a body fails to compile. A new failure cannot go silent by omission.
@@ -66,14 +68,16 @@ export function notifyNavionicsProvisionFailed(
   reason: NavionicsFailureReason,
   status?: number
 ): void {
+  const ref = status ? `${REFERENCE_CODE[reason]}-${status}` : REFERENCE_CODE[reason];
+
   console.log(
     '[navionics] provisioning failed. reason:', reason,
     status ? `status: ${status}` : '',
-    '| user ref:', REFERENCE_CODE[reason]
+    '| user ref:', ref
   );
 
   Alert.alert(
     i18next.t('charts.notActiveTitle'),
-    i18next.t(BODY_KEY[reason], { email: SUPPORT_EMAIL, ref: REFERENCE_CODE[reason] })
+    i18next.t(BODY_KEY[reason], { email: SUPPORT_EMAIL, ref })
   );
 }
