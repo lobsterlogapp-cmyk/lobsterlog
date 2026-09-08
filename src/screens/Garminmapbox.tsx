@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { View, Text, TouchableOpacity, Alert, Modal, TextInput, Switch, ActivityIndicator, ScrollView, KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, Modal, TextInput, Switch, ActivityIndicator, ScrollView, KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard, Platform, AppState } from 'react-native';
 import Mapbox from '@rnmapbox/maps';
 import * as Location from 'expo-location';
 import { Layers, X, Plus, Minus, MapPin, Trash2, LocateFixed } from 'lucide-react-native';
@@ -69,15 +69,35 @@ const Garminmapbox = ({ savedLat, savedLng, onClose }: any) => {
         fetchTide();
     }, []);
 
-    // Gate Navionics tiles on an active (non-expired) stored purchase
+    // Gate Navionics tiles on an active (non-expired) stored purchase.
+    //
+    // S167-G Phase 3: this used to run ONCE on mount and never again, so a chart screen left
+    // open across an expiry — or across a sign-out and a sign-in as somebody else — kept
+    // answering from the state it captured at mount. It now re-checks whenever the app comes
+    // back to the foreground, which is the moment any of that can have happened while we were
+    // not looking. The read is uid-namespaced, so returning as a different account now reads
+    // that account's own receipt (or none).
     useEffect(() => {
-        const checkNavionics = async () => {
+        let cancelled = false;
+
+        const checkNavionics = async (trigger: string) => {
             const purchase = await loadNavionicsPurchase();
             const active = isNavionicsPurchaseActive(purchase);
-            console.log('🧭 Navionics check on mount — purchase:', purchase, '| navionicsActive =', active);
+            if (cancelled) return;
+            console.log(`🧭 Navionics check (${trigger}) — active =`, active);
             setNavionicsActive(active);
         };
-        checkNavionics();
+
+        checkNavionics('mount');
+
+        const sub = AppState.addEventListener('change', (next) => {
+            if (next === 'active') void checkNavionics('foreground');
+        });
+
+        return () => {
+            cancelled = true;
+            sub.remove();
+        };
     }, []);
 
     useEffect(() => {

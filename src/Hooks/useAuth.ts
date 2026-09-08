@@ -16,6 +16,7 @@ import {
 import { doc, deleteDoc } from '@react-native-firebase/firestore';
 import { db } from '../../firebaseConfig';
 import { wipeAllStores, clearLocalDfoStores } from '../utils/dfoBackup';
+import { clearNavionicsPurchase } from '../utils/navionicsStorage';
 import { setActiveDfoUid } from '../utils/dfoStorageKeys';
 import {
   exportTransmissionRecordForDeletion,
@@ -99,7 +100,14 @@ export function useAuth() {
     }
   };
 
-  const handleSignOut = () => signOut(auth);
+  // S167-G Phase 3: drop this account's Navionics receipt before identity goes away. The clear
+  // must run BEFORE signOut() — afterwards auth.currentUser is null and the key would resolve
+  // to the signed-out namespace, leaving the real receipt on the device. It swallows its own
+  // errors, so it can never block a sign-out.
+  const handleSignOut = async () => {
+    await clearNavionicsPurchase();
+    return signOut(auth);
+  };
 
   const handleDeleteAccount = async () => {
     // 1. Confirm dialog still gates entry. Its destructive button opens the
@@ -209,6 +217,10 @@ export function useAuth() {
       // 5. Clear THIS account's local DFO data on-device, last — the captured uid's
       //    namespace only, so a coexisting account on this device is untouched.
       await clearLocalDfoStores(deletedUid);
+      // S167-G Phase 3: and this account's Navionics receipt, by the SAME captured uid and for
+      // the same reason — deleteUser has already nulled identity, so an ambient read would
+      // resolve to the signed-out namespace and leave the receipt behind on the device.
+      await clearNavionicsPurchase(deletedUid);
     } catch (error: any) {
       Alert.alert(i18next.t('settings.errorTitle'), error.message);
     }
