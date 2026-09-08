@@ -30,8 +30,8 @@ const DFO_ELOG_SUPPORT_TEL = 'tel:18775357307';
 // must change with it, so a swap cannot be forgotten silently (procedure:
 // docs/S164_BUILD_HELP_SPLIT.md). v1_9 landed 2026-09-06, replacing the wired v1_5.
 const USERS_GUIDE_SOURCES = {
-  en: require('../../assets/docs/LobsterLog_Users_Guide_v1_9_EN.pdf'),
-  fr: require('../../assets/docs/LobsterLog_Guide_Utilisateur_v1_9_FR.pdf'),
+  en: require('../../assets/docs/LobsterLog_Users_Guide_v1_10_EN.pdf'),
+  fr: require('../../assets/docs/LobsterLog_Guide_Utilisateur_v1_10_FR.pdf'),
 } as const;
 // Bundled §17 Provider's Instructions. v1_3 landed 2026-09-06, replacing the wired v1_2.
 const PROVIDERS_SOURCES = {
