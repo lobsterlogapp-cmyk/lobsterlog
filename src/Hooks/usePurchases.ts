@@ -2,9 +2,57 @@ import { useState, useEffect } from 'react';
 import { Alert, Platform } from 'react-native';
 import Purchases, { LOG_LEVEL } from 'react-native-purchases';
 import { REVENUECAT_KEYS, ENTITLEMENT_ID } from '../config/constants';
-import { runNavionicsPurchase, NAVIONICS_PRODUCT_ANNUAL } from '../utils/navionicsPurchase';
+import {
+  runNavionicsPurchase,
+  NAVIONICS_PRODUCT_MONTHLY,
+  NAVIONICS_PRODUCT_ANNUAL,
+} from '../utils/navionicsPurchase';
 import { loadNavionicsPurchase } from '../utils/navionicsStorage';
 import { auth } from '../../firebaseConfig';
+
+// A restored RevenueCat entitlement names the store product that unlocked it
+// (entitlement.productIdentifier) but carries NO duration — periodType is NORMAL/INTRO/TRIAL/
+// PREPAID, not monthly-vs-annual. The duration has to come from the product itself, so the tier
+// is resolved at runtime from RevenueCat, in this order:
+//   1. the store product's own subscriptionPeriod (ISO-8601), which still resolves for a product
+//      that has been retired from the current offering (grandfathered/legacy price);
+//   2. the current offering's packageType — the same join PaywallModal already uses to pick a tier.
+// Anything not recognised returns null. A null MUST NOT be turned into a tier by the caller: the
+// defect this replaces was exactly that, a silent default to annual that granted a monthly
+// subscriber a year of charts.
+const baseProductId = (id: string) => String(id).split(':')[0];
+
+function navionicsProductForPeriod(period: string | null | undefined): string | null {
+  if (!period) return null;
+  const p = String(period).toUpperCase().trim();
+  if (p === 'P1Y' || p === 'P12M') return NAVIONICS_PRODUCT_ANNUAL;
+  if (p === 'P1M') return NAVIONICS_PRODUCT_MONTHLY;
+  return null; // P1W / P3M / P6M / lifetime / anything else — not a tier Garmin sells. No guess.
+}
+
+async function resolveRestoredNavionicsProduct(info: any): Promise<string | null> {
+  const productId: string = info?.entitlements?.active?.[ENTITLEMENT_ID]?.productIdentifier || '';
+  if (!productId) return null;
+  const wanted = baseProductId(productId);
+
+  try {
+    const products = await Purchases.getProducts([productId]);
+    const match =
+      products?.find((p: any) => baseProductId(p?.identifier) === wanted) ?? products?.[0];
+    const byPeriod = navionicsProductForPeriod((match as any)?.subscriptionPeriod);
+    if (byPeriod) return byPeriod;
+  } catch {}
+
+  try {
+    const offerings = await Purchases.getOfferings();
+    const packs: any[] = offerings?.current?.availablePackages ?? [];
+    const pack = packs.find((p: any) => baseProductId(p?.product?.identifier) === wanted);
+    if (pack?.packageType === 'ANNUAL') return NAVIONICS_PRODUCT_ANNUAL;
+    if (pack?.packageType === 'MONTHLY') return NAVIONICS_PRODUCT_MONTHLY;
+  } catch {}
+
+  return null;
+}
 
 // A RevenueCat renewal isn't surfaced as an explicit event — the customer-info
 // listener fires for logins, purchases, restores and renewals alike. We treat it as
@@ -103,9 +151,17 @@ export function usePurchases(user: any) {
         setIsProStatus(true);
         Alert.alert('Success', 'Your Pro subscription has been restored.');
         setPaywallVisible(false);
-        // Re-provision Navionics. Monthly vs annual can't be resolved from a restored
-        // entitlement yet (no store product IDs in constants), so default to annual.
-        void runNavionicsPurchase(NAVIONICS_PRODUCT_ANNUAL, user?.email || '');
+        // Re-provision Navionics at the tier the user actually holds. Resolved from RevenueCat at
+        // runtime (see resolveRestoredNavionicsProduct); when it cannot be resolved we provision
+        // NOTHING rather than guess a tier.
+        const navionicsProductId = await resolveRestoredNavionicsProduct(customerInfo);
+        if (navionicsProductId) {
+          void runNavionicsPurchase(navionicsProductId, user?.email || '');
+        } else {
+          console.log(
+            'Navionics restore: subscription tier could not be resolved — no purchase attempted.'
+          );
+        }
       } else {
         Alert.alert('Notice', 'No active subscription found to restore.');
       }
