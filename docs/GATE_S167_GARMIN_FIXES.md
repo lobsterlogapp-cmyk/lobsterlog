@@ -18,7 +18,8 @@ Recon basis: `docs/RECON_S167_GARMIN_FULL.md` (read-only, same day, HEAD `4e2346
 | 3 | The shared chart entitlement — un-namespaced `navionics_purchase` key | **DONE — commit `3193080`, pushed** |
 | 4 | Cleanup — placeholder tile URL (+ debug log, done early at §3.6) | **DONE — commit `877869c`, pushed** |
 | 5 | Mapbox attribution + telemetry opt-out | **DONE — commit `8b7e91d`, pushed** |
-| 6 | iOS metrics key — closes the §5.4 block | **BUILT — commit block at §6.6** |
+| 6 | iOS metrics key — closes the §5.4 block | **DONE — commit `d00ea51`, pushed** |
+| 7 | Move the Mapbox logo above the drop-pin button | **BUILT — commit block at §7.5** |
 
 Phases 1–4 closed in code at `877869c` (record commit `5863de0`). **Phase 5 was added afterwards**
 and supersedes the "closed" line that stood here. ⚠ **Nothing has been walked** — see "WHERE IT
@@ -1037,6 +1038,96 @@ confirm the only changes are inside `infoPlist`.
 
 ---
 
+# PHASE 7 — MOVE THE LOGO ABOVE THE DROP-PIN BUTTON
+
+Phase 6 landed as **`d00ea51`**. One file, one prop: `logoPosition`. The (i) is untouched.
+
+## 7.1 The measurement, from source not from guesswork
+
+`Garminmapbox.tsx:459-464` — the wrapper is `position:'absolute', bottom: 40, alignSelf:'center'`;
+the button is `paddingVertical: 16`, `paddingHorizontal: 32`, with a row of
+`<MapPin size={24}>` + `<Text fontSize:18 bold>`.
+
+| Quantity | Value | Where it comes from |
+|---|---|---|
+| Vertical padding | 16 + 16 = **32** | `paddingVertical: 16` |
+| Content row | **24** | `max(MapPin 24, 18 pt text ≈ 22)` — the icon is the taller of the two |
+| **Button height** | **56** | 32 + 24 |
+| Button box | **40 → 96** from the bottom edge | `bottom: 40` + 56 |
+| Visible shadow halo | to ≈ **106** | `shadowRadius: 10`, `shadowOpacity: 0.3`, **no offset** → spreads evenly |
+
+**⚠ This is why the suggested `bottom: 100` was not taken.** It clears the button *box* by 4 pt but
+lands **inside the shadow halo**. Adjusted to **`bottom: 112`**, using the brief's own allowance.
+
+## 7.2 Measured clearances at `{ bottom: 112, left: 8 }`
+
+The Mapbox wordmark ornament is ≈ 23 pt tall and ≈ 85–88 pt wide.
+
+| Clearance | Value |
+|---|---|
+| **Logo → button top edge** | **16 pt** (112 − 96) |
+| Logo → button's shadow envelope | ≈ 6 pt (112 − 106) |
+| **Logo → bottom of screen** | **112 pt** |
+| Logo occupies | ≈ 112 → 135 from the bottom edge |
+| Logo horizontal | x ≈ 8 → 96 |
+
+**Nothing can occlude it.** The button is bottom-**centre** and now in a different vertical band
+entirely, so the two never share space in either axis. The tide/heat-map stack and the
+close/zoom/locate controls are all top-anchored — on the shortest supported screen (320×568) they
+end ≈ 300 pt from the top, i.e. ≈ 268 from the bottom, still far above the logo's 135. The
+attribution (i) stays at `{ bottom: 8, right: 8 }` — opposite corner, different band.
+
+Moving the logo up also takes it clear of the iOS home-indicator gesture strip, which was the one
+caveat recorded at §5.3 for the old `bottom: 8`.
+
+## 7.3 Full wordmark unclipped — what is proven, and what is not
+
+**Proven from geometry:** the wordmark needs ≈ 88 pt of width from `left: 8`, ending at x ≈ 96. The
+narrowest device this app supports is 320 pt wide, so there is ≈ 224 pt of spare width; and there
+is no sibling control anywhere in that band to overlap it. Vertically it sits 112 pt off the bottom
+inside a `flex: 1` MapView, nowhere near an edge.
+
+⚠ **NOT proven: that it renders unclipped.** That is a device observation and nothing in this repo
+can make it. Geometry says there is nothing to clip it against and ample room — **confirm on glass**
+that the full "mapbox" wordmark is drawn, not truncated, on both platforms. It joins the S167-G walk
+list.
+
+## 7.4 Gates
+
+| Gate | Result |
+|---|---|
+| tsc | **33 (baseline)**; `Garminmapbox.tsx` still exactly its pre-existing **6** |
+| Babel (bundler truth, not just tsc) | transform OK, 25,569 bytes; `bottom: 112` and `attributionPosition` both present in output |
+| jest | **83 suites / 902 tests** |
+| Scope | **1 file modified**, `src/screens/Garminmapbox.tsx` |
+| (i) untouched | `attributionPosition={{ bottom: 8, right: 8 }}` unchanged |
+
+## 7.5 Phase 7 commit block — Jonathon runs
+
+Expected staged count: **2 files** — one source file, one gate doc.
+
+```
+cd ~/Desktop/LobsterLog
+git add src/screens/Garminmapbox.tsx
+git add docs/GATE_S167_GARMIN_FIXES.md
+git diff --cached --stat
+```
+
+```
+git commit -m "Move the Mapbox logo above the drop-pin button"
+```
+
+```
+git push
+```
+
+```
+git log --oneline -1
+git log origin/main..HEAD --oneline
+```
+
+---
+
 # S167-G — WHERE IT STANDS
 
 | Phase | Commit | State |
@@ -1162,3 +1253,12 @@ now produces **LL-CHART-01** — which is the cheapest way to see the notice.
 | 76 | 6 | Scope | `git status --porcelain`, modified only | ✅ exactly `app.config.js` + `ios/LobsterLog/Info.plist`; **nothing under `src/`** |
 | 77 | 6 | tsc / jest | `npx tsc --noEmit`, `npx jest` | ✅ **33 (baseline)** / **83 suites, 902 tests** |
 | 78 | 6 | ⚠ Config is only proven on a build | — | ⚠ **Open.** Needs an iOS build + a tap on the (i) to confirm the toggle renders |
+| 79 | 7 | Button height MEASURED from source, not assumed | read `Garminmapbox.tsx:459-464` | ✅ 16+16 padding + `max(icon 24, 18pt text ≈22)` = **56**; box occupies 40→96 |
+| 80 | 7 | The suggested value was checked, not just accepted | shadow maths | ⚠ `bottom: 100` clears the box by 4 but sits **inside** the `shadowRadius: 10` halo (≈106) → adjusted to **112** per the brief's allowance |
+| 81 | 7 | Clearances stated | §7.2 | ✅ **16 pt** logo→button, ≈6 pt to the shadow envelope, **112 pt** to the bottom edge |
+| 82 | 7 | Nothing can occlude the logo | enumerated every control | ✅ button is bottom-centre in a different band; all other controls top-anchored (end ≈268 from bottom even on a 568-tall screen); (i) is the opposite corner |
+| 83 | 7 | One position, both platforms | single `logoPosition` prop | ✅ no platform branch |
+| 84 | 7 | (i) left where it was | `grep` | ✅ `attributionPosition={{ bottom: 8, right: 8 }}` unchanged |
+| 85 | 7 | Full wordmark unclipped | geometry only | ⚠ **Room proven** (needs ≈88 pt from left:8; narrowest device 320 pt wide; nothing in the band). **Rendering NOT proven — device observation, on the walk list** |
+| 86 | 7 | Babel, not just tsc | `@babel/core` with project config | ✅ OK, 25,569 bytes, `bottom: 112` present in output |
+| 87 | 7 | tsc / jest / scope | gates | ✅ **33 (baseline)**, Garminmapbox still its 6; **83 suites / 902 tests**; **1 file modified** |

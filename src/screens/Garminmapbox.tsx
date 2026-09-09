@@ -359,12 +359,18 @@ const Garminmapbox = ({ savedLat, savedLng, onClose }: any) => {
                 // attribution dialog carries Telemetry Settings natively and is complete as-is.
                 // Flagged in docs/GATE_S167_GARMIN_FIXES.md §5.4 — NOT a solved problem on iOS.
                 //
-                // Positions are corners, chosen to clear every control on this screen: the
-                // drop-pin button is bottom-CENTRE from bottom:40 up, the tide/heat-map stack is
-                // top-left, and the close/zoom/locate controls are top-right. Bottom-left and
-                // bottom-right are the only unoccupied corners.
+                // Positions clear every control on this screen: the tide/heat-map stack is
+                // top-left, the close/zoom/locate controls are top-right, and the drop-pin button
+                // is bottom-CENTRE.
+                //
+                // The logo sits ABOVE the drop-pin button, one position on both platforms.
+                // Measured, not guessed: the button is paddingVertical 16 ×2 plus a content row of
+                // max(MapPin 24, 18pt text ≈ 22) = 56 tall, at bottom:40, so its box occupies
+                // 40→96 — and shadowRadius 10 with no offset puts its visible halo near 106.
+                // bottom:112 therefore clears the box by 16 and the halo by ~6. (bottom:100 would
+                // have landed inside that shadow.)
                 logoEnabled={true}
-                logoPosition={{ bottom: 8, left: 8 }}
+                logoPosition={{ bottom: 112, left: 8 }}
                 attributionEnabled={true}
                 attributionPosition={{ bottom: 8, right: 8 }}
             >
