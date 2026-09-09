@@ -345,8 +345,28 @@ const Garminmapbox = ({ savedLat, savedLng, onClose }: any) => {
                     if (e.properties?.center) mapCenterRef.current = e.properties.center;
                     if (e.properties?.zoom) setCurrentZoom(e.properties.zoom);
                 }}
-                logoEnabled={false}
-                attributionEnabled={false}
+                // MAPBOX ORNAMENTS — ON, and the reason is the telemetry opt-out, not the logo.
+                // The Mapbox SDK sends location and usage telemetry by DEFAULT, and Mapbox's terms
+                // require an individual opt-out for end users. That opt-out lives inside the
+                // attribution (i) control — so `attributionEnabled={false}` did not just hide a
+                // credit, it removed the only way a harvester could turn telemetry off. Their terms
+                // also require the logo and attribution to be visible on the map.
+                //
+                // ⚠ iOS ALSO NEEDS `MGLMapboxMetricsEnabledSettingShownInApp=YES` in Info.plist
+                // before the attribution sheet shows the opt-out TOGGLE — see the SDK's own note on
+                // `attributionEnabled`. That key is ABSENT from both ios/LobsterLog/Info.plist and
+                // app.config.js, and both files are outside this phase's scope. Android's
+                // attribution dialog carries Telemetry Settings natively and is complete as-is.
+                // Flagged in docs/GATE_S167_GARMIN_FIXES.md §5.4 — NOT a solved problem on iOS.
+                //
+                // Positions are corners, chosen to clear every control on this screen: the
+                // drop-pin button is bottom-CENTRE from bottom:40 up, the tide/heat-map stack is
+                // top-left, and the close/zoom/locate controls are top-right. Bottom-left and
+                // bottom-right are the only unoccupied corners.
+                logoEnabled={true}
+                logoPosition={{ bottom: 8, left: 8 }}
+                attributionEnabled={true}
+                attributionPosition={{ bottom: 8, right: 8 }}
             >
                 <Mapbox.Camera ref={cameraRef} defaultSettings={{ zoomLevel: 12, centerCoordinate: mapCenterRef.current }} />
 

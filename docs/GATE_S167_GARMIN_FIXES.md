@@ -17,9 +17,12 @@ Recon basis: `docs/RECON_S167_GARMIN_FULL.md` (read-only, same day, HEAD `4e2346
 | 2 | Silent failures — four `return null` paths, three discarding call sites | **DONE — commit `ef7ae1e`, pushed** |
 | 3 | The shared chart entitlement — un-namespaced `navionics_purchase` key | **DONE — commit `3193080`, pushed** |
 | 4 | Cleanup — placeholder tile URL (+ debug log, done early at §3.6) | **DONE — commit `877869c`, pushed** |
+| 5 | Mapbox attribution + telemetry opt-out | **BUILT — commit block at §5.6. ⚠ iOS opt-out BLOCKED, §5.4** |
 
-**S167-G IS CLOSED IN CODE.** Five commits, `4e2346f..877869c`, all pushed, tree clean.
-⚠ **Not walked** — see "WHERE IT STANDS" at the foot of this document.
+Phases 1–4 closed in code at `877869c` (record commit `5863de0`). **Phase 5 was added afterwards**
+and supersedes the "closed" line that stood here. ⚠ **Nothing has been walked** — see "WHERE IT
+STANDS" at the foot of this document — and ⚠ **Phase 5 leaves the iOS telemetry opt-out unresolved
+and blocked on a decision, §5.4.**
 
 ---
 
@@ -778,6 +781,144 @@ git log origin/main..HEAD --oneline
 
 ---
 
+# PHASE 5 — MAPBOX ATTRIBUTION AND THE TELEMETRY OPT-OUT
+
+One file: `src/screens/Garminmapbox.tsx`. Opened after `5863de0`.
+
+**The point of this phase is the telemetry opt-out, not the logo.** The Mapbox SDK sends location
+and usage telemetry **by default**, and Mapbox's terms require an individual opt-out for end users.
+That opt-out lives *inside* the attribution control. So `attributionEnabled={false}` was not hiding
+a credit — **it removed the only way a harvester could turn telemetry off.**
+
+## 5.1 As it stood (printed before the edit)
+
+The map component is now at `:340-350` (Phase 4 added ~30 lines above it, so the `:294-295` in the
+brief has shifted — the props themselves were at `:348-349`):
+
+```tsx
+<Mapbox.MapView
+    ref={mapRef}
+    style={{ flex: 1 }}
+    styleURL={Mapbox.StyleURL.Satellite}
+    onCameraChanged={(e) => { … }}
+    logoEnabled={false}
+    attributionEnabled={false}
+>
+```
+
+## 5.2 What changed
+
+```tsx
+logoEnabled={true}
+logoPosition={{ bottom: 8, left: 8 }}
+attributionEnabled={true}
+attributionPosition={{ bottom: 8, right: 8 }}
+```
+
+Both position props verified against the INSTALLED SDK, not assumed —
+`@rnmapbox/maps` v10.2.10, `MapView.d.ts:169-185`, type `OrnamentPositonProp` (a corner offset pair,
+`utils/index.d.ts:20-26`). **Nothing else about the map, the layers, the camera or the pins was
+touched** — the diff is those two lines out, four lines plus a comment in.
+
+## 5.3 Where they land, and what they overlap — nothing
+
+Every absolutely-positioned control on this screen, measured from the source:
+
+| Control | Position | Occupies |
+|---|---|---|
+| Tide card + heat-map card (+ DEV button) | `top: 50, left: 20`, width 140 | top-left, y ≈ 50→260 |
+| Close (X) | `top: 50, right: 20` | top-right, y ≈ 50→102 |
+| Zoom + / − / locate column | `top: 110, right: 20` | right, y ≈ 110→280 |
+| **Drop Pin & Log** | `bottom: 40`, `alignSelf: 'center'` | **bottom-CENTRE**, from 40 up to ≈ 96 |
+
+**Bottom-left and bottom-right are the only unoccupied corners**, which is where they went.
+
+- **Logo → bottom-left**, occupying roughly y = 8→29 from the bottom edge.
+- **Attribution (i) → bottom-right**, same band.
+- **Clearance to the drop-pin button: ≈ 11 pt vertical.** The button's lower edge is at 40; the
+  ornaments top out near 29. They are also horizontally in the corners while the button is centred,
+  so the two never share screen space in either axis.
+- **Nothing overlaps.** Not the pin button, not the tide stack, not the zoom column, not the close
+  button — all four of those are in the top half or dead centre.
+
+⚠ **One thing only a device settles:** `bottom: 8` sits near the iOS home-indicator gesture strip.
+The indicator is horizontally centred (≈ 140 pt wide), so both corners fall outside it and taps
+should land — but bottom-edge gesture areas are the classic place for a tap to be eaten. **Confirm
+the (i) is tappable on a real iPhone**; if it fights the gesture, raising both to `bottom: 20` still
+clears the pin button horizontally.
+
+## 5.4 ⚠⚠ THE OPT-OUT IS REACHABLE ON ANDROID. ON iOS IT IS NOT — AND THE FIX IS OUT OF SCOPE
+
+The SDK's own documentation on `attributionEnabled` (`MapView.d.ts:167-169`) states:
+
+> *"Enable/Disable attribution on map. **For iOS you need to add
+> `MGLMapboxMetricsEnabledSettingShownInApp=YES` to your Info.plist**"*
+
+**That key is ABSENT from this project** — verified in both places it could live:
+
+| File | `MGLMapboxMetricsEnabledSettingShownInApp` |
+|---|---|
+| `ios/LobsterLog/Info.plist` (the file the build actually reads) | **absent** |
+| `app.config.js` → `ios.infoPlist` | **absent** |
+
+So today:
+
+| Platform | Attribution control | Telemetry opt-out |
+|---|---|---|
+| **Android** | (i) button, bottom-right | ✅ **Reachable — 2 taps.** Tap (i) → the native attribution dialog lists *Telemetry Settings* → opt out from there |
+| **iOS** | (i) button, bottom-right | ❌ **NOT reachable.** Without the Info.plist key the attribution sheet shows attribution links only; the in-app metrics toggle is not offered |
+
+**This phase makes the opt-out reachable on Android and satisfies the visible-logo/attribution
+requirement on both. It does NOT deliver the iOS opt-out.** Closing that needs one key added to
+`ios/LobsterLog/Info.plist` **and** to `app.config.js`'s `infoPlist` block — ⚠ note those two are
+already documented in `app.config.js` as a knowingly-accepted drift pair (S151, defect 99), so both
+must move together or the next prebuild silently drops it.
+
+**Both files are outside this phase's permitted list, so nothing was touched. STOPPING AND ASKING,
+per the standing rule.** This is not a judgment call I get to make quietly — it is a native-config
+change on the iOS build, and the blast-radius call is Jonathon's.
+
+`Mapbox.setTelemetryEnabled(false)` also exists in this SDK and was **deliberately not used**: it
+would decide for the harvester instead of offering him the choice Mapbox's terms require, and the
+brief said restore the opt-out, not force the setting.
+
+## 5.5 Verification note — tsc is not the bundler
+
+The explanatory comment sits **inside the JSX opening tag**, between attributes. That is legal but
+unusual, and `tsc` accepting it does not prove Metro will. **Proven separately** by running the
+file through `@babel/core` with this project's own `babel.config.js`: parse and transform OK,
+25,567 bytes emitted, and all four ornament props confirmed present in the output.
+
+## 5.6 Phase 5 commit block — Jonathon runs
+
+Expected staged count: **2 files** — one source file, one gate doc.
+
+```
+cd ~/Desktop/LobsterLog
+git add src/screens/Garminmapbox.tsx
+git add docs/GATE_S167_GARMIN_FIXES.md
+git diff --cached --stat
+```
+
+```
+git status --short src/utils/dfoStorageKeys.ts src/utils/dfoBackup.ts src/screens/HelpSupportScreen.tsx src/config/constants.ts ios/LobsterLog/Info.plist app.config.js
+```
+
+```
+git commit -m "Show the Mapbox logo and attribution control so the telemetry opt-out is reachable"
+```
+
+```
+git push
+```
+
+```
+git log --oneline -1
+git log origin/main..HEAD --oneline
+```
+
+---
+
 # S167-G — WHERE IT STANDS
 
 | Phase | Commit | State |
@@ -882,3 +1023,13 @@ now produces **LL-CHART-01** — which is the cheapest way to see the notice.
 | 55 | 4 | jest gate | `npx jest` | ✅ **83 suites / 902 tests, all passed** |
 | 56 | 4 | Scope + fence | `git diff --stat`, `git status --short` on 4 DFO files | ✅ **1 file changed** (`Garminmapbox.tsx`); DFO fence **blank** |
 | 57 | all | ⚠ Nothing in S167-G has been walked on a device | — | ⚠ **Open.** No test covers any of these paths; see "WHERE IT STANDS" |
+| 58 | 5 | Map component + props printed before edit | `Read` / `grep -n` | ✅ §5.1. Props were at `:348-349`, not the brief's `:294-295` — Phase 4 shifted them ~30 lines |
+| 59 | 5 | Position props verified in the INSTALLED SDK, not assumed | read `@rnmapbox/maps` v10.2.10 `MapView.d.ts:169-185`, `utils/index.d.ts:20-26` | ✅ `logoPosition` / `attributionPosition` exist; `OrnamentPositonProp` is a corner offset pair |
+| 60 | 5 | Placement clears every control | enumerated all 4 absolute controls from source | ✅ §5.3 — ornaments in the two free corners; ≈11 pt below the bottom-centre pin button, no overlap in either axis |
+| 61 | 5 | ⚠ iOS telemetry key checked, not assumed | `grep` on `ios/LobsterLog/Info.plist` **and** `app.config.js` | ⚠ **ABSENT from both.** iOS opt-out NOT delivered — §5.4, stopped and asked |
+| 62 | 5 | `setTelemetryEnabled` not used | `grep -rn setTelemetryEnabled src/ App.tsx` | ✅ none. Forcing the setting would replace the user's choice, not restore it |
+| 63 | 5 | Nothing else about the map changed | `git diff` | ✅ Two lines out, four props + comment in. Camera, layers, pins, overlay guard untouched |
+| 64 | 5 | **Babel — not just tsc** — parses the JSX-internal comment | `@babel/core` transform with this project's `babel.config.js` | ✅ OK, 25,567 bytes, all four ornament props present in output |
+| 65 | 5 | tsc gate | `npx tsc --noEmit` | ✅ **33 (baseline)**; `Garminmapbox.tsx` still exactly its pre-existing 6, none new |
+| 66 | 5 | jest gate | `npx jest` | ✅ **83 suites / 902 tests, all passed** |
+| 67 | 5 | Scope + fence | `git diff --stat`, `git status --short` on 6 files | ✅ 1 file changed; DFO fence blank; `Info.plist` and `app.config.js` **untouched** |
