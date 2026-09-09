@@ -58,6 +58,15 @@
 	     `expo prebuild` would read. The two can drift. If you change one, change the other. -->
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
+	<!-- S167-G. Mapbox sends location and usage telemetry BY DEFAULT, and Mapbox's terms require
+	     an individual opt-out for end users. On iOS that opt-out only appears when this key is
+	     present: without it the attribution (i) control shows attribution links alone and there
+	     is NO in-app way to turn telemetry off. Pairs with logoEnabled/attributionEnabled on the
+	     map (src/screens/Garminmapbox.tsx) — the control has to be visible AND this key set.
+	     ⚠ ALSO DECLARED IN app.config.js (ios.infoPlist), the same knowingly-accepted drift pair
+	     as the S151 keys above. If you change one, change the other. -->
+	<key>MGLMapboxMetricsEnabledSettingShownInApp</key>
+	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>

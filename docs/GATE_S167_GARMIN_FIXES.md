@@ -17,7 +17,8 @@ Recon basis: `docs/RECON_S167_GARMIN_FULL.md` (read-only, same day, HEAD `4e2346
 | 2 | Silent failures — four `return null` paths, three discarding call sites | **DONE — commit `ef7ae1e`, pushed** |
 | 3 | The shared chart entitlement — un-namespaced `navionics_purchase` key | **DONE — commit `3193080`, pushed** |
 | 4 | Cleanup — placeholder tile URL (+ debug log, done early at §3.6) | **DONE — commit `877869c`, pushed** |
-| 5 | Mapbox attribution + telemetry opt-out | **BUILT — commit block at §5.6. ⚠ iOS opt-out BLOCKED, §5.4** |
+| 5 | Mapbox attribution + telemetry opt-out | **DONE — commit `8b7e91d`, pushed** |
+| 6 | iOS metrics key — closes the §5.4 block | **BUILT — commit block at §6.6** |
 
 Phases 1–4 closed in code at `877869c` (record commit `5863de0`). **Phase 5 was added afterwards**
 and supersedes the "closed" line that stood here. ⚠ **Nothing has been walked** — see "WHERE IT
@@ -919,6 +920,123 @@ git log origin/main..HEAD --oneline
 
 ---
 
+# PHASE 6 — THE iOS METRICS KEY (closes §5.4)
+
+Phase 5 landed as **`8b7e91d`**. This phase answers the question §5.4 stopped on. Founder ruling:
+**add the key, both files, they move together.**
+
+Two files, both native config, both outside every earlier phase's scope:
+`ios/LobsterLog/Info.plist` and `app.config.js` (**`infoPlist` block only**).
+
+## 6.1 Printed before the edit
+
+**`app.config.js` version block (`:1-12`)** — the thing that must not move. Captured as
+`sha256 ce94ab8c2d5b5868484c090b7cbac7030798b6695f5822e945b6fd84af3e3313` **before** any edit,
+including `version: "1.10.0"` and the two comments recording that `buildNumber` and `versionCode`
+are deliberately absent under `appVersionSource: "remote"`.
+
+**`app.config.js` infoPlist block** — five keys, ending
+`UIFileSharingEnabled: true, LSSupportsOpeningDocumentsInPlace: true` with **no trailing comma**.
+
+**`ios/LobsterLog/Info.plist`** — tab-indented, keys in alphabetical order, booleans as `<true/>`.
+34 `<key>` entries. `MGLMapboxMetricsEnabledSettingShownInApp` sorts between
+`LSSupportsOpeningDocumentsInPlace` and `NSAppTransportSecurity`, which is exactly where it went —
+**the file's existing shape, not a new convention.**
+
+## 6.2 What changed
+
+Each file gained the key plus a comment in that file's own idiom (XML comment / JS comment),
+pointing at its twin and repeating the S151 drift rule already written there: *if you change one,
+change the other.*
+
+- `ios/LobsterLog/Info.plist` — +9 lines, `<key>` count **34 → 35**.
+- `app.config.js` — +7 lines / −1 (the comma), infoPlist keys **5 → 6**.
+
+`setTelemetryEnabled` remains **unused** — confirmed by grep. Forcing the setting would replace the
+harvester's choice; the key restores the choice, which is what Mapbox's terms require.
+
+## 6.3 ⚠ The version block is byte-identical — proven three ways
+
+1. **Hash of `:1-12` after the edit:** `ce94ab8c…af3e3313` — **identical to the pre-edit capture.**
+2. **Direct `diff` of the block, backup vs working file:** no output.
+3. **`diff` of every version-related line in the whole file, content-only:** identical.
+   *(A first run of check 3 compared `grep -n` output and showed one delta — a line NUMBER moving
+   58 → 64, because six lines were inserted above it. That is displacement, not modification.
+   Re-run without line numbers to confirm the content is untouched. Recorded because a green that
+   needed re-reading should be on the record, not quietly replaced.)*
+
+**Runtime confirmation** — `node -e "require('./app.config.js')"` resolves:
+
+| Value | Result |
+|---|---|
+| `expo.version` | `"1.10.0"` — unchanged |
+| `expo.ios.buildNumber` | `undefined` — still deliberately absent |
+| `expo.android.versionCode` | `undefined` — still deliberately absent |
+| `infoPlist.MGLMapboxMetricsEnabledSettingShownInApp` | `true` |
+
+## 6.4 Gates
+
+| Gate | Result |
+|---|---|
+| `plutil -lint ios/LobsterLog/Info.plist` | **OK** — still a valid plist |
+| `plutil -extract MGLMapboxMetricsEnabledSettingShownInApp raw` | `true` |
+| S151 pair still intact (`UIFileSharingEnabled`, `LSSupportsOpeningDocumentsInPlace`) | `true` / `true` |
+| `app.config.js` evaluates in node | ✅ |
+| tsc | **33 (baseline)** |
+| jest | **83 suites / 902 tests** |
+| Modified files | exactly the two config files; **nothing under `src/`** |
+
+## 6.5 Where this leaves the telemetry opt-out
+
+| Platform | Attribution control | Telemetry opt-out |
+|---|---|---|
+| Android | (i), bottom-right | ✅ 2 taps — (i) → *Telemetry Settings* |
+| **iOS** | (i), bottom-right | ✅ **now offered** — (i) → the attribution sheet carries the metrics toggle |
+
+⚠ **This is config, and config is only proven on a build.** The key changes what the iOS
+attribution sheet renders; nothing in this repo can demonstrate that. **It needs an iOS build and a
+tap on the (i).** Until then this is "correct per Mapbox's documented requirement", not "seen
+working" — and it joins the S167-G walk list, which nothing has yet been through.
+
+⚠ **The drift pair is now three keys wide.** `UIFileSharingEnabled`,
+`LSSupportsOpeningDocumentsInPlace` and now `MGLMapboxMetricsEnabledSettingShownInApp` are each
+declared twice — in the plist the build reads, and in the `app.config.js` a future `expo prebuild`
+would read. That duplication was knowingly accepted at S151 and is unchanged in kind, only wider.
+
+## 6.6 Phase 6 commit block — Jonathon runs
+
+Expected staged count: **3 files** — two config files, one gate doc.
+
+```
+cd ~/Desktop/LobsterLog
+git add ios/LobsterLog/Info.plist
+git add app.config.js
+git add docs/GATE_S167_GARMIN_FIXES.md
+git diff --cached --stat
+```
+
+```
+git diff --cached app.config.js
+```
+
+```
+git commit -m "Add the iOS Mapbox metrics key so the attribution sheet offers the telemetry opt-out"
+```
+
+```
+git push
+```
+
+```
+git log --oneline -1
+git log origin/main..HEAD --oneline
+```
+
+The second block prints the whole `app.config.js` staged diff — read it before committing and
+confirm the only changes are inside `infoPlist`.
+
+---
+
 # S167-G — WHERE IT STANDS
 
 | Phase | Commit | State |
@@ -1033,3 +1151,14 @@ now produces **LL-CHART-01** — which is the cheapest way to see the notice.
 | 65 | 5 | tsc gate | `npx tsc --noEmit` | ✅ **33 (baseline)**; `Garminmapbox.tsx` still exactly its pre-existing 6, none new |
 | 66 | 5 | jest gate | `npx jest` | ✅ **83 suites / 902 tests, all passed** |
 | 67 | 5 | Scope + fence | `git diff --stat`, `git status --short` on 6 files | ✅ 1 file changed; DFO fence blank; `Info.plist` and `app.config.js` **untouched** |
+| 68 | 6 | Version block + infoPlist block printed before edit | `sed -n '1,12p'` / `sed -n '13,33p'` | ✅ §6.1; version block hashed **before** any edit |
+| 69 | 6 | **Version block byte-identical after** | hash compare + direct `diff` vs backup | ✅ `ce94ab8c…af3e3313` both sides; `diff` silent |
+| 70 | 6 | `version` / `buildNumber` / `versionCode` untouched | content-only `diff` + `node` evaluation | ✅ `1.10.0`; both counters still `undefined` (deliberately absent). ⚠ A first line-numbered check showed a 58→64 shift — displacement from inserted lines, not modification; re-run without line numbers. Disclosed at §6.3 |
+| 71 | 6 | Key placed in each file's EXISTING shape | read both files | ✅ plist: tab-indented, alphabetical between `LSSupports…` and `NSAppTransportSecurity`, `<true/>`. config: JS boolean, after the S151 pair, comma added |
+| 72 | 6 | plist still valid | `plutil -lint` | ✅ **OK**; `<key>` count 34 → 35 |
+| 73 | 6 | The key resolves in both files | `plutil -extract` + `node -e require` | ✅ `true` in the plist; `true` in the resolved Expo config (infoPlist keys 5 → 6) |
+| 74 | 6 | S151 pair not disturbed | `plutil -extract` ×2 | ✅ `true` / `true` |
+| 75 | 6 | `setTelemetryEnabled` still unused | `grep -rn src/ App.tsx` | ✅ blank — the choice is offered, never forced |
+| 76 | 6 | Scope | `git status --porcelain`, modified only | ✅ exactly `app.config.js` + `ios/LobsterLog/Info.plist`; **nothing under `src/`** |
+| 77 | 6 | tsc / jest | `npx tsc --noEmit`, `npx jest` | ✅ **33 (baseline)** / **83 suites, 902 tests** |
+| 78 | 6 | ⚠ Config is only proven on a build | — | ⚠ **Open.** Needs an iOS build + a tap on the (i) to confirm the toggle renders |

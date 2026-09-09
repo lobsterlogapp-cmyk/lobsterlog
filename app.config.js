@@ -28,7 +28,13 @@ module.exports = {
         // fact in two files and the two CAN DRIFT — knowingly accepted, not engineered around.
         // If you change one, change the other.
         UIFileSharingEnabled: true,
-        LSSupportsOpeningDocumentsInPlace: true
+        LSSupportsOpeningDocumentsInPlace: true,
+        // S167-G. Mapbox sends location and usage telemetry BY DEFAULT and their terms require an
+        // individual opt-out for end users. On iOS the attribution sheet only offers the telemetry
+        // toggle when this key is present; without it the (i) control shows attribution links
+        // alone. Pairs with logoEnabled/attributionEnabled on the map (Garminmapbox.tsx).
+        // ⚠ ALSO in ios/LobsterLog/Info.plist — same drift pair rule as the two keys above.
+        MGLMapboxMetricsEnabledSettingShownInApp: true
       }
     },
     plugins: [
