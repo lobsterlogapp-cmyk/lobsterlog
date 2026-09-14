@@ -352,12 +352,12 @@ const Garminmapbox = ({ savedLat, savedLng, onClose }: any) => {
                 // credit, it removed the only way a harvester could turn telemetry off. Their terms
                 // also require the logo and attribution to be visible on the map.
                 //
-                // ⚠ iOS ALSO NEEDS `MGLMapboxMetricsEnabledSettingShownInApp=YES` in Info.plist
+                // iOS ALSO NEEDS `MGLMapboxMetricsEnabledSettingShownInApp=YES` in Info.plist
                 // before the attribution sheet shows the opt-out TOGGLE — see the SDK's own note on
-                // `attributionEnabled`. That key is ABSENT from both ios/LobsterLog/Info.plist and
-                // app.config.js, and both files are outside this phase's scope. Android's
+                // `attributionEnabled`. That key is PRESENT in both ios/LobsterLog/Info.plist:68 and
+                // app.config.js:37, added by d00ea51 and proven on a device. Android's
                 // attribution dialog carries Telemetry Settings natively and is complete as-is.
-                // Flagged in docs/GATE_S167_GARMIN_FIXES.md §5.4 — NOT a solved problem on iOS.
+                // History in ~/Desktop/LobsterLog_docs/GATE_S167_GARMIN_FIXES.md §5.4 — SOLVED on iOS.
                 //
                 // Positions clear every control on this screen: the tide/heat-map stack is
                 // top-left, the close/zoom/locate controls are top-right, and the drop-pin button
