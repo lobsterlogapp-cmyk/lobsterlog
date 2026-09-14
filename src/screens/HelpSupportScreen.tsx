@@ -28,7 +28,7 @@ const DFO_ELOG_SUPPORT_TEL = 'tel:18775357307';
 // TRACKED so the clean-tree (EAS) hazard the old header named is closed. ⚠ The version
 // stays IN the filename on purpose: a guide update changes the filename and this require
 // must change with it, so a swap cannot be forgotten silently (procedure:
-// docs/S164_BUILD_HELP_SPLIT.md). v1_9 landed 2026-09-06, replacing the wired v1_5.
+// docs/S164_BUILD_HELP_SPLIT.md). v1_10 landed 2026-09-07, replacing the wired v1_9.
 const USERS_GUIDE_SOURCES = {
   en: require('../../assets/docs/LobsterLog_Users_Guide_v1_10_EN.pdf'),
   fr: require('../../assets/docs/LobsterLog_Guide_Utilisateur_v1_10_FR.pdf'),
