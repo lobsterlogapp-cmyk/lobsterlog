@@ -4,6 +4,7 @@ import Mapbox from '@rnmapbox/maps';
 import * as Location from 'expo-location';
 import { Layers, X, Plus, Minus, MapPin, Trash2, LocateFixed } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // NATIVE FIREBASE IMPORTS
 import { auth, db } from '../../firebaseConfig';
@@ -55,6 +56,26 @@ const Garminmapbox = ({ savedLat, savedLng, onClose }: any) => {
     const mapRef = useRef<Mapbox.MapView>(null);
     const cameraRef = useRef<Mapbox.Camera>(null);
     const catchInputRef = useRef<TextInput>(null);
+
+    const insets = useSafeAreaInsets();
+
+    // ── MAP ORNAMENT POSITIONS — PER-PLATFORM BY RULING (S169, supersedes S167) ──────────
+    // S167 ruled ONE position prop so iOS and Android matched. S169 overturns that on
+    // Jonathon's ruling: iOS gets its own values, because Mapbox on iOS ALREADY offsets its
+    // ornaments by the bottom safe-area inset — adding insets.bottom there counts it twice.
+    // MEASURED on an iPhone 17 Pro simulator (402x874pt, pixels decoded from the frame):
+    //   logo nominal 112 rendered with its bottom edge at 147.7pt from the screen bottom (+35.7)
+    //   (i)  nominal  50 rendered with its bottom edge at  86.3pt                        (+36.3)
+    // Android does NOT do this — a bare bottom:8 is exactly what put the (i) in the gesture
+    // strip (defect 144), so Android keeps insets.bottom and stays as walked and approved.
+    // iOS targets, from the same measured frame: the DROP PIN & LOG button box runs
+    // 40.3 -> 96.0pt with its middle at 68.2pt.
+    const logoPos = Platform.OS === 'ios'
+        ? { bottom: 76, left: 8 }                        // renders ~111.7pt — clears the button top by ~16
+        : { bottom: 112, left: 8 };
+    const attributionPos = Platform.OS === 'ios'
+        ? { bottom: 21, right: 16 }                      // renders ~57.3-78.7pt — centre ~68.0 = the button's middle
+        : { bottom: insets.bottom + 16, right: 16 };
 
     const { t } = useTranslation('map');
     const { t: tc } = useTranslation('common');
@@ -370,9 +391,18 @@ const Garminmapbox = ({ savedLat, savedLng, onClose }: any) => {
                 // bottom:112 therefore clears the box by 16 and the halo by ~6. (bottom:100 would
                 // have landed inside that shadow.)
                 logoEnabled={true}
-                logoPosition={{ bottom: 112, left: 8 }}
+                logoPosition={logoPos}
                 attributionEnabled={true}
-                attributionPosition={{ bottom: 8, right: 8 }}
+                // DEFECT 144 (S169): the (i) was at bottom:8, right:8 — a hard-coded 8dp with no
+                // inset in it, which on rounded-corner hardware put it INSIDE the system gesture
+                // strip and under the corner sweep. Jonathon found it cut off on a Pixel 10; no
+                // emulator frame could ever show it (square corners — S168 rule).
+                // It STAYS bottom-right. insets.bottom lifts it clear of the gesture strip on
+                // whatever device it runs on; the +16/16 is the margin in from the rounded corner.
+                // ⚠ The logo owns bottom-left alone and must never be covered — that was
+                // defect 143. Do not move the (i) leftward into its corner.
+                // Values are per-platform: see logoPos / attributionPos above.
+                attributionPosition={attributionPos}
             >
                 <Mapbox.Camera ref={cameraRef} defaultSettings={{ zoomLevel: 12, centerCoordinate: mapCenterRef.current }} />
 
