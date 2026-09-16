@@ -4,6 +4,7 @@ module.exports = {
     slug: "lobsterlog",
     scheme: "lobsterlog",
     version: "1.10.0",
+    orientation: "portrait",
     icon: "./assets/icon.png",
     ios: {
       bundleIdentifier: "com.Nickerson.LobsterLog",
