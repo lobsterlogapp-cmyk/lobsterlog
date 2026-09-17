@@ -1,0 +1,6 @@
+node_modules/
+# Secrets NEVER live in this repo. Local emulator values go here and stay ignored.
+.env
+.env.*
+.secret.local
+*.pem

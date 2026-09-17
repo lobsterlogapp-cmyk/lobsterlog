@@ -1,0 +1,20 @@
+{
+  "name": "lobsterlog-functions",
+  "description": "LobsterLog Cloud Functions \u2014 Navionics chart-entitlement provisioning",
+  "private": true,
+  "main": "index.js",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "serve": "firebase emulators:start --only functions",
+    "logs": "firebase functions:log",
+    "test:parity": "bash scripts/parity.sh"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.2",
+    "firebase-functions": "^6.3.0",
+    "node-forge": "1.4.0"
+  }
+}
