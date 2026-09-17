@@ -1,6 +1,13 @@
 import { Platform } from 'react-native';
 import forge from 'node-forge';
+import { getApp } from '@react-native-firebase/app';
+import { getFunctions, httpsCallable } from '@react-native-firebase/functions';
 import { saveNavionicsPurchase, NavionicsPurchase } from './navionicsStorage';
+
+// S170 Phase 5 — the Cloud Function that now does the signing and the Garmin POST.
+// Region is pinned to match the deployed function (and the dfo-elog database).
+const PROVISION_FUNCTION = 'provisionNavionics';
+const PROVISION_REGION = 'northamerica-northeast1';
 
 // Navionics product IDs (Garmin developer store)
 export const NAVIONICS_PRODUCT_MONTHLY = '24d8a68d-5f52-11f1-9975-02b1eb525205';
@@ -75,72 +82,99 @@ export type NavionicsProvisionResult =
   | { ok: false; reason: NavionicsFailureReason; status?: number };
 
 /**
- * Full Navionics purchase flow: generate a transaction-id pair, encrypt it, POST
- * to the Garmin store, and persist the response via saveNavionicsPurchase().
- * Never throws — a Garmin failure must not block access the user already paid for
- * via RevenueCat (the source of truth for access). Navionics is a feature layer on top.
+ * Ask the SERVER to provision Navionics charts, and persist what it returns.
  *
- * It used to return `null` for all four failures, which is why every failure was
- * invisible: the callers could not tell the causes apart and none of them looked.
- * It now returns a typed result. NOTHING about the purchase logic itself changed —
- * same order, same payload, same guards, same silence toward the caller's control flow.
+ * ⭐ S170 PHASE 5 — THE SIGNING AND THE GARMIN POST NOW HAPPEN IN A CLOUD FUNCTION.
+ * The private key is no longer in the app, in `.env`, or in any bundle: it lives in
+ * Firebase Secret Manager and never leaves the server. This body used to sign a UUID
+ * on the device and POST it to Garmin; it now calls `provisionNavionics` and stores
+ * the result. (Founder ruling S168: the key lives server-side. Option A — an
+ * `EXPO_PUBLIC_` variable baked into the binary — is rejected permanently.)
+ *
+ * ⚠ THE CONTRACT IS UNCHANGED, deliberately:
+ *   - same signature, so the three call sites did not move;
+ *   - same `NavionicsProvisionResult` union, so `navionicsNotice.ts` needed no edit;
+ *   - still NEVER THROWS — a Garmin failure must not block access the user already
+ *     paid for through RevenueCat, which remains the source of truth for access;
+ *   - still the only `saveNavionicsPurchase()` call site.
+ *
+ * ⚠ `userId` IS NOW IGNORED. It is kept only so the callers compile unchanged.
+ * The server uses `request.auth.uid` — Jonathon's S170 ruling that Garmin's `user_id`
+ * is the Firebase uid, not the member's email address. Passing an email here no
+ * longer sends one anywhere. Phase 7 removes the parameter along with the old signer.
+ *
+ * ⚠ The old on-device signer (`generateGarminEncryptedTransaction`, above) is
+ * DELIBERATELY LEFT IN PLACE and is no longer called from here. It is removed in
+ * Phase 7, once the function is proven live. Do not delete it early.
  */
 export async function runNavionicsPurchase(
   productId: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   userId: string
 ): Promise<NavionicsProvisionResult> {
   try {
-    const purchasePrivateKey = process.env.EXPO_PUBLIC_GARMIN_PURCHASE_PRIVATE_KEY || '';
-    if (!purchasePrivateKey) {
-      console.log('❌ EXPO_PUBLIC_GARMIN_PURCHASE_PRIVATE_KEY is UNDEFINED in .env');
-      return { ok: false, reason: 'missing-credential' };
-    }
+    const callable = httpsCallable(
+      getFunctions(getApp(), PROVISION_REGION),
+      PROVISION_FUNCTION
+    );
 
-    const navionicsToken =
-      Platform.OS === 'ios'
-        ? process.env.EXPO_PUBLIC_NAVIONICS_TOKEN_IOS
-        : process.env.EXPO_PUBLIC_NAVIONICS_TOKEN_ANDROID;
+    // The server derives the Garmin user_id from the authenticated caller; the app
+    // only says WHICH product and WHICH platform token to use.
+    const response = await callable({ productId, platform: Platform.OS });
+    const data: any = response?.data;
 
-    const transactionId = generateUUID();
-    const encrypted64 = generateGarminEncryptedTransaction(transactionId, purchasePrivateKey);
-    if (!encrypted64) {
-      console.log('Aborting Navionics purchase: encryption failed.');
-      return { ok: false, reason: 'encryption-failed' };
-    }
-
-    const response = await fetch(NAVIONICS_PURCHASE_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-navionics-developer-token': navionicsToken || '',
-      },
-      body: JSON.stringify({
-        encrypted_transaction_id: encrypted64,
-        plain_transaction_id: transactionId,
-        purchase_type: 'PURCHASE',
-        product_id: productId,
-        user_id: userId,
-      }),
-    });
-
-    const data = await response.json();
-    if (!response.ok) {
-      console.log(`⚠️ Navionics purchase failed (${response.status}):`, data);
-      return { ok: false, reason: 'store-rejected', status: response.status };
+    if (!data || !data.purchase_id) {
+      // A success response with nothing in it must not become an "active" entitlement.
+      console.log('[navionics] function returned no purchase_id');
+      return { ok: false, reason: 'store-rejected' };
     }
 
     const purchase: NavionicsPurchase = {
       purchase_id: data.purchase_id,
       expiration_date: data.expiration_date,
-      plain_transaction_id: transactionId,
-      product_id: productId,
+      plain_transaction_id: data.plain_transaction_id,
+      product_id: data.product_id ?? productId,
       stored_at: new Date().toISOString(),
     };
     await saveNavionicsPurchase(purchase);
     console.log('💾 Navionics purchase saved to storage:', data.purchase_id);
     return { ok: true, purchase };
-  } catch (error) {
-    console.log('Navionics purchase error:', error);
+  } catch (error: any) {
+    // The server speaks in Firebase error codes; this app speaks in
+    // NavionicsFailureReason. Map rather than widen the union — `navionicsNotice.ts`
+    // holds exhaustive Records over it, so a new reason would mean editing a second
+    // file for no user-visible gain.
+    //
+    // ⚠ THE MAPPING RULE IS ABOUT HONESTY, NOT NEATNESS: 'store-rejected' and
+    // 'network-error' render "check your connection". Anything that never reached
+    // Garmin must therefore NOT map to those two, or a harvester is sent chasing a
+    // problem on his boat that is really on our server.
+    //
+    //   unavailable        Garmin itself refused (429/403 duplicate guards, 5xx)
+    //                        → store-rejected      (it DID reach Garmin)
+    //   failed-precondition credentials not loaded yet
+    //   permission-denied   RevenueCat says no active Pro
+    //   unauthenticated     not signed in
+    //   invalid-argument    our bug
+    //   internal            signing failed, or RevenueCat could not be reached
+    //                        → missing-credential  (none of these reached Garmin)
+    //   anything else       transport/unknown → network-error
+    //
+    // ⚠ The reference codes a harvester quotes are coarser than the server's codes.
+    // The precise code is logged here so support can decode it.
+    const code: string = String(error?.code ?? '').replace(/^functions\//, '');
+    console.log('[navionics] provision call failed. code:', code, 'message:', error?.message);
+
+    if (code === 'unavailable') return { ok: false, reason: 'store-rejected' };
+    if (
+      code === 'failed-precondition' ||
+      code === 'permission-denied' ||
+      code === 'unauthenticated' ||
+      code === 'invalid-argument' ||
+      code === 'internal'
+    ) {
+      return { ok: false, reason: 'missing-credential' };
+    }
     return { ok: false, reason: 'network-error' };
   }
 }
