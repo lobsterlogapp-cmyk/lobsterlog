@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Modal, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Modal, ActivityIndicator, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
-import { X, RotateCcw } from 'lucide-react-native';
+import { X, RotateCcw, Download, Trash2 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import ChartDownloadScreen from './ChartDownloadScreen';
 import {
     getStatus,
     getSettingLimits,
     applySettings,
+    getChartDataSize,
+    deleteAllCharts,
     type ChartSettings,
     type SettingLimits,
     type ChartState,
@@ -78,9 +81,12 @@ const clampToLimits = (settings: ChartSettings, limits: SettingLimits): ChartSet
 type Props = {
     visible: boolean;
     onClose: () => void;
+    /** Where to centre the download map. The Pro map's current centre. */
+    startLat?: number;
+    startLng?: number;
 };
 
-const ChartSettingsScreen = ({ visible, onClose }: Props) => {
+const ChartSettingsScreen = ({ visible, onClose, startLat, startLng }: Props) => {
     const { t } = useTranslation('map');
     const insets = useSafeAreaInsets();
 
@@ -88,6 +94,8 @@ const ChartSettingsScreen = ({ visible, onClose }: Props) => {
     const [limits, setLimits] = useState<SettingLimits>(FALLBACK_LIMITS);
     const [state, setState] = useState<ChartState | null>(null);
     const [loading, setLoading] = useState(true);
+    const [downloadVisible, setDownloadVisible] = useState(false);
+    const [storedBytes, setStoredBytes] = useState<number>(0);
 
     useEffect(() => {
         if (!visible) return;
@@ -112,6 +120,11 @@ const ChartSettingsScreen = ({ visible, onClose }: Props) => {
 
             setState(status.state);
 
+            // How much chart data is already on the phone. Answers safely when the
+            // library is not running, so this is 0 today rather than an error.
+            const stored = await getChartDataSize();
+            if (!cancelled) setStoredBytes(typeof stored.bytes === 'number' ? stored.bytes : 0);
+
             // Only trust reported limits when the library actually answered with some.
             //
             // ⚠ These come back even before the library has started, and in that state some
@@ -128,7 +141,7 @@ const ChartSettingsScreen = ({ visible, onClose }: Props) => {
         })();
 
         return () => { cancelled = true; };
-    }, [visible]);
+    }, [visible, downloadVisible]);
 
     const update = async (change: Partial<ChartSettings>) => {
         const next = { ...settings, ...change };
@@ -137,6 +150,35 @@ const ChartSettingsScreen = ({ visible, onClose }: Props) => {
         AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next)).catch(() => { });
         // Then offer it to the chart. Today this returns "not available" and that is fine.
         applySettings(change).catch(() => { });
+    };
+
+    // ⚠⚠ All-or-nothing by Garmin's design, so ask plainly and name the consequence.
+    const confirmDeleteAll = () => {
+        Alert.alert(
+            t('map.deleteAllTitle'),
+            t('map.deleteAllBody'),
+            [
+                { text: t('map.cancel'), style: 'cancel' },
+                {
+                    text: t('map.deleteAllConfirm'),
+                    style: 'destructive',
+                    onPress: async () => {
+                        const result = await deleteAllCharts();
+                        const fresh = await getChartDataSize();
+                        setStoredBytes(typeof fresh.bytes === 'number' ? fresh.bytes : 0);
+                        if (!result.ok) {
+                            // ⚠ Walked and corrected: this used to say "try again", which is
+                            // wrong advice when the real reason is that charts were never set
+                            // up. Trying again cannot help. Say which of the two it is.
+                            Alert.alert(
+                                t('map.deleteAllTitle'),
+                                state !== 'ready' ? t('map.deleteNotSetUpBody') : t('map.deleteFailedBody')
+                            );
+                        }
+                    },
+                },
+            ]
+        );
     };
 
     const resetAll = async () => {
@@ -297,11 +339,39 @@ const ChartSettingsScreen = ({ visible, onClose }: Props) => {
                 ) : (
                     <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}>
 
-                        {/* ⚠ Says plainly where things stand. Settings that change nothing
-                            visible would otherwise look broken. */}
+                        {/* ── THE WAY IN TO OFFLINE CHARTS ───────────────────────────
+                            First thing on the screen, because it is the thing a harvester
+                            actually came here to do. Opens even with no tokens: the screen
+                            explains itself rather than being locked away. */}
+                        <TouchableOpacity
+                            onPress={() => setDownloadVisible(true)}
+                            activeOpacity={0.85}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('map.downloadForOffline')}
+                            style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: 10,
+                                marginTop: 20,
+                                paddingVertical: 16,
+                                paddingHorizontal: 18,
+                                borderRadius: 14,
+                                backgroundColor: '#2563EB',
+                            }}
+                        >
+                            <Download size={20} color="white" />
+                            <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 15, flexShrink: 1 }}>
+                                {t('map.downloadForOffline')}
+                            </Text>
+                        </TouchableOpacity>
+
+                        {/* ⚠ Sits BELOW the download button by ruling, and stays until charts
+                            actually work. Settings that change nothing visible would
+                            otherwise look broken. */}
                         {state !== 'ready' && (
                             <View style={{
-                                backgroundColor: '#1E293B', borderRadius: 12, padding: 14, marginTop: 16,
+                                backgroundColor: '#1E293B', borderRadius: 12, padding: 14, marginTop: 12,
                                 borderLeftWidth: 3, borderLeftColor: '#FBBF24',
                             }}>
                                 <Text style={{ color: '#FBBF24', fontWeight: 'bold', fontSize: 13, marginBottom: 4 }}>
@@ -452,6 +522,33 @@ const ChartSettingsScreen = ({ visible, onClose }: Props) => {
                             />
                         </Row>
 
+                        {/* ── DELETE ALL DOWNLOADED CHARTS ───────────────────────────
+                            ⚠⚠ Garmin provides NO per-area delete. resetNavionicsData() is
+                            the only removal method in the whole extension, so this wipes
+                            every downloaded chart. That is why it asks first, and why the
+                            question names what is about to go. */}
+                        <TouchableOpacity
+                            onPress={confirmDeleteAll}
+                            activeOpacity={0.85}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('map.deleteAllCharts')}
+                            style={{
+                                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                                marginTop: 28, paddingVertical: 14, borderRadius: 12,
+                                borderWidth: 1, borderColor: '#7F1D1D',
+                            }}
+                        >
+                            <Trash2 size={16} color="#F87171" />
+                            <Text style={{ color: '#F87171', fontWeight: 'bold', fontSize: 13 }}>
+                                {t('map.deleteAllCharts')}
+                            </Text>
+                        </TouchableOpacity>
+                        <Text style={{ color: '#64748B', fontSize: 11, marginTop: 8, textAlign: 'center' }}>
+                            {storedBytes > 0
+                                ? t('map.chartsOnPhone', { size: formatBytes(storedBytes) })
+                                : t('map.noChartsOnPhone')}
+                        </Text>
+
                         <TouchableOpacity
                             onPress={resetAll}
                             activeOpacity={0.8}
@@ -471,9 +568,24 @@ const ChartSettingsScreen = ({ visible, onClose }: Props) => {
                         </Text>
                     </ScrollView>
                 )}
+
+                {/* The offline download picker, opened from the button at the top. */}
+                <ChartDownloadScreen
+                    visible={downloadVisible}
+                    onClose={() => setDownloadVisible(false)}
+                    startLat={startLat}
+                    startLng={startLng}
+                />
             </View>
         </Modal>
     );
 };
+
+function formatBytes(bytes: number): string {
+    if (bytes >= 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
+    if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+    return `${bytes} B`;
+}
 
 export default ChartSettingsScreen;
