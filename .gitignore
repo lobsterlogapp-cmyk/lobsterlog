@@ -85,3 +85,9 @@ google-services-account.json
 
 # S92 234.12 recon — raw ELOG artifacts (carry LIC_NO/VRN; reproducible from the on-device register)
 docs/s92_*.xml
+
+# S171 — GARMIN'S NAVIONICS LIBRARIES. NEVER COMMITTED. (Founder ruling, S171.)
+# The two .aar files are Garmin's proprietary binaries. They live on the Mac for local
+# builds only and must never enter git history — once committed, a binary is permanent.
+# A build machine that clones this repo will NOT have them; test builds are local (R10).
+android/libs/

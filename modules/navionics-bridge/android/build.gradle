@@ -1,0 +1,66 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.lobsterlog'
+version = '0.1.0'
+
+android {
+  namespace "expo.modules.navionicsbridge"
+  defaultConfig {
+    // expo-module-gradle-plugin REQUIRES both of these on a module project — without them
+    // configuration fails with "'android.defaultConfig.versionName' is not defined".
+    versionCode 1
+    versionName "0.1.0"
+    // The Navionics Mobile SDK's own manifest declares minSdkVersion 24, and this
+    // project already resolves to 24 (Expo's default — expo-modules-autolinking
+    // ExpoRootProjectPlugin.kt:28). It fits exactly, with no room to spare:
+    // dropping the app below 24 would silently break charts.
+    minSdk 24
+  }
+}
+
+dependencies {
+  // React Native itself. expo-module-gradle-plugin supplies expo-modules-core but NOT
+  // React Native's own classes, and this module needs two of them — ReactContext and
+  // UIManagerHelper — to turn a JavaScript node handle into the actual view.
+  // No version: the React Native Gradle plugin resolves it, the same way
+  // expo-modules-core declares it (node_modules/expo-modules-core/android/build.gradle:201).
+  // compileOnly because the app already ships React Native at runtime.
+  compileOnly 'com.facebook.react:react-android'
+
+  // S171 PHASE 2 — PROVING THE JAVASCRIPT-TO-NATIVE HOP.
+  //
+  // @rnmapbox/maps declares Mapbox as `implementation`, so Mapbox types are on the
+  // app's RUNTIME classpath but NOT on this module's COMPILE classpath. compileOnly
+  // lets us compile against them without adding a second copy to the APK — the same
+  // reasoning the S170 throwaway used, and the same artifact.
+  //
+  // The artifact is `android-ndk27` (NOT plain `android`) because rnmapbox picks the
+  // ndk27 variant whenever targetSdk >= 35, and this project targets 35
+  // (node_modules/@rnmapbox/maps/android/build.gradle:311). The version must match
+  // what rnmapbox resolves: node_modules/@rnmapbox/maps/package.json -> mapbox.android
+  // = 11.16.2.
+  //
+  // Deliberately NOT declared here: any dependency on @rnmapbox/maps itself. This
+  // module never names RNMBXMapView — it walks the resolved view's own subtree for a
+  // com.mapbox.maps.MapView, which is the type the Navionics extension actually wants.
+  // One less inter-project dependency to break.
+  compileOnly "com.mapbox.maps:android-ndk27:11.16.2"
+
+  // Garmin's two libraries, for COMPILE ONLY.
+  //
+  // ⚠ They are declared `implementation` in android/app/build.gradle instead, and they have
+  // to be. The Android Gradle Plugin REFUSES a local .aar inside a library module:
+  //   "Direct local .aar file dependencies are not supported when building an AAR. The
+  //    resulting AAR would be broken because the classes and Android resources from any
+  //    local .aar file dependencies would not be packaged in the resulting AAR."
+  // That is not a style preference, it is a hard error — proven by running it.
+  //
+  // So the app module carries them at RUNTIME (they reach the APK from there) and this
+  // module compiles against them here. rootProject is the android/ project, so this path
+  // resolves to android/libs/ — the gitignored folder the binaries live in.
+  compileOnly files(rootProject.file('libs/com.navionics.android.nms-release.aar'))
+  compileOnly files(rootProject.file('libs/Mapbox11Extension-release.aar'))
+}

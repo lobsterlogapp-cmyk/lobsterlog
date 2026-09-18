@@ -45,3 +45,24 @@ allprojects {
 }
 
 // @generated end @rnmapbox/maps-v2-maven
+// ── S171 — GARMIN LIBRARY PRESENCE CHECK ────────────────────────────────────────
+// android/libs/ is gitignored by ruling: Garmin's .aar binaries never enter git history.
+// The cost of that is a real hazard — a machine without them would build an app that runs
+// perfectly and simply has no charts, with nothing in the log to say why.
+//
+// So say so, at configure time, in plain words. Loud beats silent.
+def navionicsRequiredLibs = [
+    'libs/com.navionics.android.nms-release.aar',
+    'libs/Mapbox11Extension-release.aar'
+]
+def navionicsMissingLibs = navionicsRequiredLibs.findAll { !rootProject.file(it).exists() }
+if (!navionicsMissingLibs.isEmpty()) {
+    throw new GradleException(
+        "\n\n" +
+        "Garmin's Navionics chart libraries are missing:\n" +
+        navionicsMissingLibs.collect { "  - android/" + it }.join("\n") + "\n\n" +
+        "These are Garmin's proprietary binaries. They are DELIBERATELY not in git, so a\n" +
+        "fresh clone will never have them. Copy both .aar files into android/libs/ from\n" +
+        "Garmin's SDK folder, then build again.\n"
+    )
+}

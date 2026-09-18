@@ -187,6 +187,26 @@ dependencies {
     } else {
         implementation jscFlavor
     }
+
+    // ── S171 — GARMIN NAVIONICS CHART LIBRARIES ──────────────────────────────────
+    // The two .aar files that draw the charts, per MobileSDK_Mapbox_Android.pdf p.2.
+    //
+    // WHY THEY ARE DECLARED HERE AND NOT IN THE BRIDGE MODULE: the Android Gradle Plugin
+    // refuses a local .aar inside a library module ("Direct local .aar file dependencies
+    // are not supported when building an AAR") — a hard error, confirmed by running it at
+    // S171. So the app module carries them at runtime and modules/navionics-bridge
+    // compiles against the same two files with compileOnly. Changing that split will
+    // break the build, not merely reorganise it.
+    //
+    // ⚠ android/libs/ IS GITIGNORED BY RULING — Garmin's binaries never enter git history.
+    // A machine that clones this repo will NOT have them. The build fails loudly if they
+    // are missing rather than silently shipping an app with no charts (see the check in
+    // android/build.gradle).
+    //
+    // files(...) carries NO transitive dependencies, so Mapbox must come from the host
+    // app — it does, via @rnmapbox/maps (Mapbox 11.16.2).
+    implementation files(rootProject.file('libs/com.navionics.android.nms-release.aar'))
+    implementation files(rootProject.file('libs/Mapbox11Extension-release.aar'))
 }
 
 apply plugin: 'com.google.gms.google-services'
