@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { View, Text, TouchableOpacity, Alert, Modal, TextInput, Switch, ActivityIndicator, ScrollView, KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard, Platform, AppState } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, Modal, TextInput, Switch, ActivityIndicator, ScrollView, KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard, Platform, AppState, findNodeHandle, StyleSheet } from 'react-native';
 import Mapbox from '@rnmapbox/maps';
 import * as Location from 'expo-location';
-import { Layers, X, Plus, Minus, MapPin, Trash2, LocateFixed } from 'lucide-react-native';
+import { Layers, X, Plus, Minus, MapPin, Trash2, LocateFixed, Settings } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -13,9 +13,15 @@ import { collection, doc, onSnapshot, query, where, getDocs, getDoc, setDoc, wri
 // Styles & Services
 import { styles } from '../styles/GlobalStyles';
 import { getWeatherData, getNextTide, getTimeUntil } from '../utils/weatherService';
-import TideArrow from '../components/TideArrow';
 import { loadNavionicsPurchase, isNavionicsPurchaseActive } from '../utils/navionicsStorage';
 import { runNavionicsPurchase, NAVIONICS_PRODUCT_ANNUAL } from '../utils/navionicsPurchase';
+import ChartSettingsScreen from './ChartSettingsScreen';
+
+// ⚠ S171 — TEMPORARY SELF-CHECK, NOT THE FINISHED CHART FEATURE.
+// This calls the real bridge and writes what happened to the console under NAVBRIDGE-JS.
+// It renders nothing and changes nothing on screen. It comes out when the chart is wired
+// properly behind Pro (Phase 3).
+import { getStatus as navChartStatus, showChart as navShowChart, setMapTag as navSetMapTag, isBridgeAvailable } from '../../modules/navionics-bridge';
 
 // Initialize Mapbox with your Public Token
 Mapbox.setAccessToken(process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '');
@@ -52,7 +58,64 @@ const NAVIONICS_TILE_URL_TEMPLATE: string | null = null;
 
 const TODAY = () => new Date().toISOString().split('T')[0];
 
-const Garminmapbox = ({ savedLat, savedLng, onClose }: any) => {
+// ── S171 — THE MAP CONTROL PANEL ────────────────────────────────────────────────
+// One panel, not three floating boxes: Chart Settings and Heat Map side by side along the
+// top, the tide countdown joined along the bottom, hairline dividers instead of gaps, and
+// a single set of rounded corners around the lot.
+//
+// Width stays at 180 — the same as the old two-button row — so the TEST GARMIN button
+// below it needs no change and stays flush with the panel edge.
+const MAP_PANEL_WIDTH = 180;
+const MAP_PANEL_BG = 'rgba(15, 23, 42, 0.9)';
+const MAP_PANEL_DIVIDER = 'rgba(148, 163, 184, 0.28)';
+
+// ⚠ 44 is a floor, not a target. Below it a control is genuinely hard to hit with a wet
+// thumb on a moving boat, so "make it smaller" stops here.
+const MAP_BUTTON_MIN_HEIGHT = 44;
+
+const renderPanelButton = ({ icon, label, state, active, onPress, accessibilityLabel }: {
+    icon: React.ReactNode;
+    label: string;
+    state?: string;
+    active?: boolean;
+    onPress: () => void;
+    accessibilityLabel: string;
+}) => (
+    <TouchableOpacity
+        key={label}
+        onPress={onPress}
+        activeOpacity={0.8}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        style={{
+            flex: 1,
+            minHeight: MAP_BUTTON_MIN_HEIGHT,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 5,
+            paddingVertical: 6,
+            paddingHorizontal: 6,
+        }}
+    >
+        {icon}
+        <View style={{ flexShrink: 1 }}>
+            <Text
+                numberOfLines={2}
+                style={{ color: 'white', fontWeight: 'bold', fontSize: 9, lineHeight: 11 }}
+            >
+                {label}
+            </Text>
+            {state !== undefined && (
+                <Text style={{ color: active ? '#FBBF24' : '#94A3B8', fontWeight: 'bold', fontSize: 9, lineHeight: 11 }}>
+                    {state}
+                </Text>
+            )}
+        </View>
+    </TouchableOpacity>
+);
+
+const Garminmapbox = ({ savedLat, savedLng, onClose, isAdmin = false }: any) => {
     const mapRef = useRef<Mapbox.MapView>(null);
     const cameraRef = useRef<Mapbox.Camera>(null);
     const catchInputRef = useRef<TextInput>(null);
@@ -94,10 +157,10 @@ const Garminmapbox = ({ savedLat, savedLng, onClose }: any) => {
     const [refreshTrigger, setRefreshTrigger] = useState(0);
     const [navionicsActive, setNavionicsActive] = useState(false);
 
-    const [tideInfo, setTideInfo] = useState<any>(null);
+    const [showHeatmap, setShowHeatmap] = useState(false);
+    const [chartSettingsVisible, setChartSettingsVisible] = useState(false);
     const [nextTide, setNextTide] = useState<any>(null);
     const [countDown, setCountDown] = useState("--:--:--");
-    const [showHeatmap, setShowHeatmap] = useState(false);
     const [modalVisible, setModalVisible] = useState(false);
     const [saving, setSaving] = useState(false);
     const [selectedPin, setSelectedPin] = useState<any>(null);
@@ -109,11 +172,15 @@ const Garminmapbox = ({ savedLat, savedLng, onClose }: any) => {
     const [newBaitName, setNewBaitName] = useState('');
     const [isAddingBait, setIsAddingBait] = useState(false);
 
+    // S171: the same tide source the old Current Tide box used. Only the TIDES half of the
+    // response is read now — the weather half fed the direction arrow and the speed in
+    // knots, and both of those are gone. getWeatherData caches per location (tides for 15
+    // minutes) and the Pro dashboard calls the same function, so this is not a second
+    // Stormglass bill.
     useEffect(() => {
         const fetchTide = async () => {
             try {
                 const data = await getWeatherData(mapCenterRef.current[1], mapCenterRef.current[0]);
-                if (data?.weather?.hours) setTideInfo(data.weather.hours[0]);
                 if (data?.tides?.data) setNextTide(getNextTide(data.tides.data));
             } catch (e) { console.log("Weather Error:", e); }
         };
@@ -151,6 +218,7 @@ const Garminmapbox = ({ savedLat, savedLng, onClose }: any) => {
         };
     }, []);
 
+    // Ticks the countdown once a second. Cleared on unmount, so no timer outlives the map.
     useEffect(() => {
         if (!nextTide) return;
         const timer = setInterval(() => setCountDown(getTimeUntil(nextTide.time)), 1000);
@@ -356,12 +424,43 @@ const Garminmapbox = ({ savedLat, savedLng, onClose }: any) => {
         setIsAddingBait(false);
     };
 
+    // ⚠ S171 — TEMPORARY self-check of the chart bridge. Console only; comes out at Phase 3.
+    // Fires once the Mapbox style has loaded, which is the earliest moment a chart layer
+    // could be added. Everything it learns is written under the tag NAVBRIDGE-JS.
+    const runS171Probe = async () => {
+        console.log('🧭 NAVBRIDGE-JS: bridge present =', isBridgeAvailable());
+
+        // Hand over the map's native tag so the exact route can be attempted too.
+        navSetMapTag(findNodeHandle(mapRef.current));
+
+        const status = await navChartStatus();
+        console.log('🧭 NAVBRIDGE-JS: status =', JSON.stringify(status));
+
+        // Deliberately called with NO credentials and NO map content, because we have
+        // neither. Garmin is expected to refuse. The point is that the whole chain runs and
+        // refuses cleanly instead of crashing — that is the thing worth proving today.
+        const shown = await navShowChart({});
+        console.log('🧭 NAVBRIDGE-JS: showChart =', JSON.stringify(shown));
+
+        const reachedGarmin = shown.route === 'tree' || shown.route === 'tag';
+        if (reachedGarmin) {
+            console.log(`🧭 NAVBRIDGE-JS: VERDICT — PASS, bridge reached the live map (route "${shown.route}") and Garmin answered without crashing. Chart refused, which is expected with no tokens.`);
+        } else {
+            console.log(`🧭 NAVBRIDGE-JS: VERDICT — FAIL, could not reach the map. ${shown.detail ?? ''}`);
+        }
+    };
+
     return (
         <View style={{ flex: 1, backgroundColor: '#0F172A' }}>
             <Mapbox.MapView
                 ref={mapRef}
                 style={{ flex: 1 }}
                 styleURL={Mapbox.StyleURL.Satellite}
+                // ⚠ S171 — TEMPORARY probe trigger, DEV BUILDS ONLY. Remove with runS171Probe.
+                // Gated because it is not a feature: it fires on every map open and calls
+                // into Garmin's library each time. `__DEV__` is compiled out of release
+                // bundles, so a shipped app never wires this up at all.
+                onDidFinishLoadingMap={__DEV__ ? runS171Probe : undefined}
                 onCameraChanged={(e) => {
                     if (e.properties?.center) mapCenterRef.current = e.properties.center;
                     if (e.properties?.zoom) setCurrentZoom(e.properties.zoom);
@@ -437,40 +536,85 @@ const Garminmapbox = ({ savedLat, savedLng, onClose }: any) => {
             </Mapbox.MapView>
 
             <View style={{ position: 'absolute', top: 50, left: 20 }}>
-                {tideInfo && (
-                    <View style={{ backgroundColor: 'rgba(15, 23, 42, 0.9)', padding: 12, borderRadius: 16, width: 140, marginBottom: 10 }}>
-                        <Text style={{ color: '#94A3B8', fontSize: 10, fontWeight: 'bold', marginBottom: 4 }}>{t('map.currentTide')}</Text>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                            <View style={{ transform: [{ rotate: `${tideInfo.currentDirection?.sg || 0}deg` }] }}>
-                                <TideArrow size={24} />
-                            </View>
-                            <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 18 }}>
-                                {(tideInfo.currentSpeed?.sg * 1.94384).toFixed(1)} <Text style={{ fontSize: 12, color: '#94A3B8' }}>kts</Text>
-                            </Text>
-                        </View>
-                        {nextTide && (
-                            <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#334155' }}>
-                                <Text style={{ color: nextTide.type === 'high' ? '#4ADE80' : '#F87171', fontSize: 10, fontWeight: 'bold' }}>
+                {/* ONE PANEL. Chart Settings left, Heat Map right, tide countdown along
+                    the bottom — joined by hairline dividers rather than separated by gaps,
+                    with a single set of rounded corners around the whole thing.
+                    overflow:'hidden' is what makes the children respect those corners. */}
+                <View style={{
+                    width: MAP_PANEL_WIDTH,
+                    backgroundColor: MAP_PANEL_BG,
+                    borderRadius: 12,
+                    overflow: 'hidden',
+                }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'stretch' }}>
+                        {/* ⚠ ADMIN ONLY until charts actually draw. There is nothing to look
+                            at yet — no tokens, no map content — so this stays off every
+                            harvester's map rather than opening onto settings that do nothing. */}
+                        {isAdmin && renderPanelButton({
+                            icon: <Settings size={14} color="#FBBF24" />,
+                            label: t('map.chartSettings'),
+                            onPress: () => setChartSettingsVisible(true),
+                            accessibilityLabel: t('map.chartSettings'),
+                        })}
+
+                        {/* The divider only exists when there are two buttons to divide. */}
+                        {isAdmin && (
+                            <View style={{ width: StyleSheet.hairlineWidth, backgroundColor: MAP_PANEL_DIVIDER }} />
+                        )}
+
+                        {renderPanelButton({
+                            icon: <Layers size={14} color={showHeatmap ? '#FBBF24' : '#94A3B8'} />,
+                            label: t('map.heatMap'),
+                            // The button says whether it is on in words. Colour alone is not
+                            // readable on a bright deck.
+                            state: showHeatmap ? t('map.on') : t('map.off'),
+                            active: showHeatmap,
+                            onPress: () => setShowHeatmap(!showHeatmap),
+                            accessibilityLabel: `${t('map.heatMap')} ${showHeatmap ? t('map.on') : t('map.off')}`,
+                        })}
+                    </View>
+
+                    {/* TIDE COUNTDOWN — the one piece kept from the old Current Tide box.
+                        The direction arrow and the speed in knots are gone; this is the part
+                        that answers "how long have I got". */}
+                    {nextTide && (
+                        <>
+                            <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: MAP_PANEL_DIVIDER }} />
+                            <View
+                                accessibilityRole="text"
+                                accessibilityLabel={`${nextTide.type === 'high' ? t('map.highIn') : t('map.lowIn')} ${countDown}`}
+                                style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: 6,
+                                    paddingVertical: 7,
+                                    paddingHorizontal: 6,
+                                }}
+                            >
+                                <Text style={{
+                                    color: nextTide.type === 'high' ? '#4ADE80' : '#F87171',
+                                    fontSize: 9,
+                                    fontWeight: 'bold',
+                                }}>
                                     {nextTide.type === 'high' ? t('map.highIn') : t('map.lowIn')}
                                 </Text>
-                                <Text style={{ color: 'white', fontFamily: 'monospace', fontWeight: 'bold', fontSize: 16, marginTop: 2 }}>
+                                <Text style={{ color: 'white', fontFamily: 'monospace', fontWeight: 'bold', fontSize: 13 }}>
                                     {countDown}
                                 </Text>
                             </View>
-                        )}
-                    </View>
-                )}
-
-                <View style={{ backgroundColor: 'rgba(15, 23, 42, 0.9)', padding: 10, borderRadius: 12, alignItems: 'center', width: 140 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 5 }}>
-                        <Layers size={16} color="#FBBF24" />
-                        <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 12 }}>{t('map.heatMap')}</Text>
-                    </View>
-                    <Switch value={showHeatmap} onValueChange={setShowHeatmap} trackColor={{ false: '#334155', true: '#FBBF24' }} thumbColor={showHeatmap ? '#FFF' : '#94A3B8'} />
+                        </>
+                    )}
                 </View>
 
-                {__DEV__ && (
-                <TouchableOpacity onPress={testGarminTrialAccess} style={{ backgroundColor: '#10B981', padding: 10, borderRadius: 12, marginTop: 10, alignItems: 'center', width: 140 }}>
+                {/* TEST GARMIN — dev builds AND an admin account, the same two-lock pattern
+                    the XML test harness uses (S101b). It fires a real Garmin sandbox
+                    purchase, so `__DEV__` alone was one lock short: any non-admin running a
+                    dev build could reach it. `__DEV__` also compiles the whole block out of
+                    release bundles, so the two locks are belt and braces, not duplicates.
+                    Width is MAP_PANEL_WIDTH (180) — unchanged from before the panel. */}
+                {__DEV__ && isAdmin && (
+                <TouchableOpacity onPress={testGarminTrialAccess} style={{ backgroundColor: '#10B981', padding: 10, borderRadius: 12, marginTop: 10, alignItems: 'center', width: MAP_PANEL_WIDTH }}>
                     <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 12 }}>TEST GARMIN</Text>
                 </TouchableOpacity>
                 )}
@@ -551,6 +695,13 @@ const Garminmapbox = ({ savedLat, savedLng, onClose }: any) => {
                     </View>
                 </TouchableWithoutFeedback>
             </Modal>
+
+            {/* S171 Phase 3 — the chart settings screen. Only ever opened from the admin-gated
+                button above, so a harvester cannot reach it while charts cannot draw. */}
+            <ChartSettingsScreen
+                visible={chartSettingsVisible}
+                onClose={() => setChartSettingsVisible(false)}
+            />
         </View>
     );
 };

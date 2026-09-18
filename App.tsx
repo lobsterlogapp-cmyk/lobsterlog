@@ -629,6 +629,9 @@ const isAdmin = useMemo(() => {
               savedLat={profile.lat}
               savedLng={profile.lng}
               onClose={() => setView('pro')}
+              // S171: gates the Chart Settings button on the map. Charts cannot draw yet,
+              // so the settings screen stays off every harvester's map until they can.
+              isAdmin={isAdmin}
             />
                     ) : view === 'pro' ? (
                       <ProDashboard
